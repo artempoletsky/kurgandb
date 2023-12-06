@@ -1,0 +1,11 @@
+{
+  "users": {
+    "id": "Number",
+    "name": "String"
+  },
+  "posts": {
+    "id": "Number",
+    "text": "Text",
+    "title": "String"
+  }
+}
