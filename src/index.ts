@@ -1,73 +1,67 @@
+import { POST } from "./api";
+import { clientQuery } from "./client";
 
-const ArgumentsExp = /\s*(\{[^}]+\})|([^\{\},]+)\s*,?/g
-function parseArguments(argStr: string): string[] | null {
-  return argStr.match(ArgumentsExp);
-}
+import http from "http";
 
-const PredicateExp = /^([^\)]+)[^\{]*\{([\s\S]+)\}[^}]*$/
-function parsePredicate(predicate: string): string[] | null {
-  const execRes = PredicateExp.exec(predicate);
-  if (!execRes) return null;
-  const result = parseArguments(execRes[1].replace(/^[^(]*\(/, "").trim());
-  if (!result) return null;
-  result.push(execRes[2].trim());
-  return result;
-}
 
-async function query(scope: Record<string, any>, predicate: string) {
-  const parsedPredicate = parsePredicate(predicate);
-  if (!parsedPredicate) return;
-  // console.log(parsedPredicate);
-  let queryImplementation;
-  try {
-    queryImplementation = new Function(...parsedPredicate);
-  } catch (error) {
-    return `query construction has failed with error: ${error}`;
+http.createServer(function (req, res) {
+  if (req.method == "OPTIONS") {
+    res.writeHead(204, {
+      // 'Date': (new Date()).toString(),
+      'Server': "Mydb 0.0.1",
+      'Access-Control-Allow-Origin': '*',
+      "Access-Control-Allow-Credentials": "true",
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Request-Headers': 'X-PINGOTHER, Content-Type',
+      'Access-Control-Allow-Headers': 'Access-Control-Allow-Headers, Origin, Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers',
+      'Access-Control-Max-Age': '86400',
+      'Vary': 'Accept-Encoding, Origin',
+      'Keep-Alive': 'timeout=2, max=100',
+      'Connection': 'Keep-Alive',
+    });
+    res.end();
+    return;
   }
 
-  const tables = {
-    users: [],
-    posts: []
-  }
-  let result = "";
-  try {
-    result = queryImplementation(scope, tables);
-  } catch (error) {
-    return `query has failed with error: ${error}`;
-  }
-  return result;
-}
+  let body: any[] = [];
+  let bodystr: string;
+  req
+    .on('data', chunk => {
+      body.push(chunk);
+    })
+    .on('end', async () => {
+      bodystr = Buffer.concat(body).toString();
 
-const fun = (a: string) => { a + 1 };
+      let requestObject = JSON.parse(bodystr);
 
-type PlainObject = Record<string, any>;
-// interface Model extends PlainObject;
-interface Table extends Array<PlainObject> {
+      if (req.method == "POST") {
+        let [postResult, status] = await POST(requestObject);
+        res.statusCode = status;
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        // res.writeHead(200, {
+        //   'Content-Type': 'application/json',
+        //   'Access-Control-Allow-Origin': '*'
+        // });
+        res.write(JSON.stringify(postResult));
+      }
+      res.end();
+      // res.on('error', err => {
+      //   console.error(err);
+      // });
+    });
 
-}
 
-// console.log(fun.toString());
-type Predicate = (scope: {
-  payload: PlainObject
-  userMethods: Record<string, Function>
-  _: Record<string, Function>
-}, tables: Record<string, Table>) => any;
 
-async function clientQuery(scope: PlainObject, predicate: Predicate) {
-  // console.log(predicate.toString());
-  let result = await query(scope, predicate.toString());
-  console.log(result);
+}).listen(8080);
 
-  // parsePredicate(predicate.toString());
-}
-
-clientQuery({
-  name: "John"
-}, ({ payload, userMethods, _ }, { users, posts }) => {
+clientQuery(({ users, posts }, { payload, userMethods, _ }) => {
   const user: any = users.find(user => userMethods.md5(user.name) == payload.name);
   if (!user) return user;
   user.posts = posts.filter(post => post.user == user.id).map(_.exclude("body"));
   return user;
+}, {
+  name: "John"
 });
 
 // clientQuery({}, (a: any, b: any) => { a + b });
