@@ -3,7 +3,7 @@ import { DocumentScheme, Table, getFilesDir } from "./table";
 import { PlainObject, rfs, existsSync, wfs } from "./utils";
 
 export const LightTypes = ["string", "number", "date", "boolean"] as const;
-export const HeavyTypes = ["Text", "File"] as const;
+export const HeavyTypes = ["Text", "JSON"] as const;
 export type LightType = typeof LightTypes[number];
 export type HeavyType = typeof HeavyTypes[number];
 export type FieldType = LightType | HeavyType;
@@ -46,17 +46,22 @@ export class Document implements IDocument {
           }
           return true;
           // table.booleans[key].push();
-        } else if (type == "date") {
+        }
+
+        if (type == "date") {
           this._dates[key] = value;
           return true;
-        } else if (type == "Text") {
+        }
+        if (type == "Text") {
           fs.writeFileSync(process.cwd() + this.getExternalFilename(key), value);
           return true;
         }
 
-        if (HeavyTypes.includes(type as HeavyType)) {
-          throw new Error("not implemented yet");
+        if (type == "JSON") {
+          fs.writeFileSync(process.cwd() + this.getExternalFilename(key), JSON.stringify(value));
+          return true;
         }
+
         if (type) {
           this._data[key] = value;
           return true;
@@ -68,14 +73,18 @@ export class Document implements IDocument {
         const type = scheme.fields[key];
         if (type == "boolean") {
           return table.booleans[key].includes(this._id);
-        } else if (type == "date") {
+        }
+        if (type == "date") {
           if (this._dates[key]) return this._dates[key];
           this._dates[key] = new Date(this._data[key]);
           return this._dates[key];
         }
 
-        if (type == "File") {
-          throw new Error("not implemented yet");
+        if (type == "Text") {
+          return this.getTextContent(key);
+        }
+        if (type == "JSON") {
+          return this.getJSONContent(key);
         }
 
         if (type)
@@ -86,6 +95,15 @@ export class Document implements IDocument {
     });
 
     return proxy;
+  }
+
+  public getTextContent(key: string) {
+    const filename = this.getExternalFilename(key);
+    return existsSync(filename) ? fs.readFileSync(process.cwd() + filename, { encoding: "utf8" }) : "";
+  }
+
+  public getJSONContent(key: string) {
+    return JSON.parse(this.getTextContent(key))
   }
 
   public serialize() {
@@ -113,11 +131,12 @@ export class Document implements IDocument {
     for (const key in fields) {
       const type = fields[key];
 
-      if (type == "Text") {
-        const filename = this.getExternalFilename(key);
-        result[key] = existsSync(filename) ? fs.readFileSync(process.cwd() + filename, { encoding: "utf8" }) : "";
-      }
-      if (HeavyTypes.includes(type as HeavyType)) continue;
+      // if (type == "Text") {
+      //   result[key] = this.getTextContent(key);
+      // } else if (type == "JSON") {
+      //   result[key] == this.getJSONContent(key);
+      // } else {
+      // }
 
       result[key] = (this as PlainObject)[key];
     }
@@ -150,9 +169,13 @@ export class Document implements IDocument {
 
   getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
-    let extension = this._data[field] || "";
+    let extension;
     if (type == "Text") {
       extension = ".txt";
+    } else if (type == "JSON") {
+      extension = ".json";
+    } else {
+      throw new Error("never");
     }
     return getFilesDir(this._table.name) + this.id + "_" + field + extension;
   }

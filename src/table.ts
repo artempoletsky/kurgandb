@@ -53,6 +53,7 @@ export interface ITable {
   getDocumentData(id: string): PlainObject
   addField(name: string, type: FieldType, predicate?: (doc: IDocument) => any): void
   removeField(name: string): void
+  reopen(): void
 }
 
 export const SCHEME_PATH = "/data/scheme.json";
@@ -61,7 +62,7 @@ export function getDefaultValueForType(type: FieldType) {
   switch (type) {
     case "number": return 0;
     case "string": return "";
-    case "File": return "";
+    case "JSON": return null;
     case "Text": return "";
     case "date": return new Date();
     case "boolean": return false;
@@ -111,6 +112,18 @@ export class Table implements ITable {
       wfs(filepath, EmptyTable);
     }
 
+    ///don't need this; for TS hints
+    this.documents = new Map<number, IDocument>();
+    this.documentData = {};
+    this.meta = {} as any;
+    //end of useless code
+
+
+    this.reopen();
+  }
+
+  reopen(): void {
+    const filepath = getFilepath(this.name);
     const data: TableFileContents = rfs(filepath);
     this.documentData = data.documents;
     this.documents = new Map<number, IDocument>();
@@ -120,7 +133,6 @@ export class Table implements ITable {
     }
 
     this.meta = data.meta;
-
   }
 
   public get length(): number {
@@ -217,6 +229,8 @@ export class Table implements ITable {
       }
       if (types[key] == "Text" && data[key] != "") {
         wfs(getFilesDir(this.name) + id + "_" + key + ".txt", data[key]);
+      } else if (types[key] == "JSON" && data[key]) {
+        wfs(getFilesDir(this.name) + id + "_" + key + ".json", data[key]);
       }
     }
     this.documentData[idStr] = data;
