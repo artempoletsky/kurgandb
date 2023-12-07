@@ -1,4 +1,5 @@
 import fs from "fs";
+import { rimraf } from "rimraf";
 
 export type PlainObject = Record<string, any>;
 
@@ -27,5 +28,39 @@ export function existsSync(filename: string) {
 }
 
 export function unlinkSync(filename: string) {
-  return fs.unlinkSync(CWD + filename);
+  fs.unlinkSync(CWD + filename);
+}
+
+export function mkdirSync(dirname: string) {
+  fs.mkdirSync(CWD + dirname)
+}
+
+/**
+ * remove directory/file if exists
+ * @param dirname 
+ */
+export function rmie(name: string) {
+  if (existsSync(name)) {
+
+    // unlinkSync(name);
+    if (name.endsWith("/")) {
+      // console.log(name);?
+
+      rimraf.sync(name.slice(0, -1));
+      fs.rmdirSync(CWD + name);
+    } else {
+      unlinkSync(name);
+    }
+  }
+}
+
+
+/**
+ * make directory if not exists
+ * @param dirname 
+ */
+export function mdne(dirname: string) {
+  if (!existsSync(dirname)) {
+    mkdirSync(dirname);
+  }
 }

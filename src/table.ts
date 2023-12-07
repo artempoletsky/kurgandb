@@ -1,6 +1,6 @@
 
-import { FieldType, Document, IDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync } from "./utils";
+import { FieldType, Document, IDocument, HeavyTypes, HeavyType } from "./document";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, mdne } from "./utils";
 
 
 export type DocumentScheme = {
@@ -68,6 +68,19 @@ export function getDefaultValueForType(type: FieldType) {
   }
 }
 
+
+export function getBooleansFilepath(tableName: string): string {
+  return "/data/tables/" + tableName + "_booleans.json";
+}
+
+export function getFilepath(tableName: string): string {
+  return "/data/tables/" + tableName + ".json";
+}
+
+export function getFilesDir(tableName: string): string {
+  return "/data/tables/" + tableName + "/";
+}
+
 export class Table implements ITable {
   protected documents: Map<number, IDocument>;
   protected documentData: PlainObject;
@@ -84,16 +97,20 @@ export class Table implements ITable {
     this.name = name;
 
     this.scheme = scheme;
-    const booleansFilepath = Table.getBooleansFilepath(name);
+    const booleansFilepath = getBooleansFilepath(name);
     if (!existsSync(booleansFilepath)) {
       wfs(booleansFilepath, {});
     }
     this.booleans = rfs(booleansFilepath);
 
-    const filepath = Table.getFilepath(name);
+    mdne(getFilesDir(name))
+
+    const filepath = getFilepath(name);
+
     if (!existsSync(filepath)) {
       wfs(filepath, EmptyTable);
     }
+
     const data: TableFileContents = rfs(filepath);
     this.documentData = data.documents;
     this.documents = new Map<number, IDocument>();
@@ -103,6 +120,7 @@ export class Table implements ITable {
     }
 
     this.meta = data.meta;
+
   }
 
   public get length(): number {
@@ -139,6 +157,12 @@ export class Table implements ITable {
 
     if (type == "boolean") {
       this.booleans[name] = [];
+    }
+
+    const filesDir = `/data/tables/${this.name}/`;
+
+    if (HeavyTypes.includes(type as HeavyType) && !existsSync(filesDir)) {
+      mkdirSync(filesDir);
     }
 
     this.scheme.fields[name] = type;
@@ -186,6 +210,15 @@ export class Table implements ITable {
 
     const id = this.meta.index++;
     const idStr = Table.idString(id);
+    const types = this.scheme.fields;
+    for (const key in data) {
+      if (data[key] instanceof Date) {
+        data[key] = data[key].toJSON();
+      }
+      if (types[key] == "Text" && data[key] != "") {
+        wfs(getFilesDir(this.name) + id + "_" + key + ".txt", data[key]);
+      }
+    }
     this.documentData[idStr] = data;
     const doc = new Document(this, idStr);
     this.documents.set(id, doc);
@@ -205,8 +238,8 @@ export class Table implements ITable {
       this.documentData[idStr] = doc.serialize();
     }
     fileData.documents = this.documentData;
-    wfs(Table.getFilepath(this.name), fileData);
-    wfs(Table.getBooleansFilepath(this.name), this.booleans);
+    wfs(getFilepath(this.name), fileData);
+    wfs(getBooleansFilepath(this.name), this.booleans);
   }
 
   has(id: string | number): boolean {
@@ -236,14 +269,6 @@ export class Table implements ITable {
   at(id: number): IDocument {
     if (!this.documents.has(id)) throw new Error("wrong document id!");
     return this.documents.get(id) as IDocument;
-  }
-
-  static getBooleansFilepath(tableName: string): string {
-    return "/data/tables/" + tableName + "_booleans.json";
-  }
-
-  static getFilepath(tableName: string): string {
-    return "/data/tables/" + tableName + ".json";
   }
 
   static isTableExist(tableName: string): boolean {

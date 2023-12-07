@@ -1,5 +1,6 @@
-import { DocumentScheme, Table } from "./table";
-import { PlainObject } from "./utils";
+import fs from "fs";
+import { DocumentScheme, Table, getFilesDir } from "./table";
+import { PlainObject, rfs, existsSync, wfs } from "./utils";
 
 export const LightTypes = ["string", "number", "date", "boolean"] as const;
 export const HeavyTypes = ["Text", "File"] as const;
@@ -48,9 +49,12 @@ export class Document implements IDocument {
         } else if (type == "date") {
           this._dates[key] = value;
           return true;
+        } else if (type == "Text") {
+          fs.writeFileSync(process.cwd() + this.getExternalFilename(key), value);
+          return true;
         }
 
-        if (type in HeavyTypes) {
+        if (HeavyTypes.includes(type as HeavyType)) {
           throw new Error("not implemented yet");
         }
         if (type) {
@@ -70,7 +74,7 @@ export class Document implements IDocument {
           return this._dates[key];
         }
 
-        if (type in HeavyTypes) {
+        if (type == "File") {
           throw new Error("not implemented yet");
         }
 
@@ -89,11 +93,12 @@ export class Document implements IDocument {
     const fields = this._table.scheme.fields;
     for (const key in fields) {
       const type = fields[key];
+
       if (type == "date") {
-        result[key] = this._dates[key].toJSON();
+        result[key] = (this as PlainObject)[key].toJSON();
         continue;
       }
-      if (type in HeavyTypes) continue;
+      if (HeavyTypes.includes(type as HeavyType)) continue;
       result[key] = this._data[key];
     }
     return result;
@@ -104,17 +109,19 @@ export class Document implements IDocument {
       id: this._id
     };
 
-    for (const key in this) {
-      if (key.startsWith("_")) continue;
-      const type = this._table.scheme.fields[key];
-      if (type && type in HeavyTypes) continue;
+    const fields = this._table.scheme.fields;
+    for (const key in fields) {
+      const type = fields[key];
+
+      if (type == "Text") {
+        const filename = this.getExternalFilename(key);
+        result[key] = existsSync(filename) ? fs.readFileSync(process.cwd() + filename, { encoding: "utf8" }) : "";
+      }
+      if (HeavyTypes.includes(type as HeavyType)) continue;
 
       result[key] = (this as PlainObject)[key];
     }
-    for (const key in this._table.scheme.fields) {
-      const type = this._table.scheme.fields[key];
-      result[key] = (this as PlainObject)[key];
-    }
+
     return result;
   }
 
@@ -132,8 +139,23 @@ export class Document implements IDocument {
       if (!requiredType) return `Key: '${key}' is redundant`;
 
       if (requiredType == typeof value) continue;
+      if (requiredType == "date") {
+        const d = new Date(value);
+        if (isNaN(d.valueOf())) return `Date key: '${key}' is invalid date`;
+      }
     }
 
     return false;
   }
+
+  getExternalFilename(field: string) {
+    const type = this._table.scheme.fields[field];
+    let extension = this._data[field] || "";
+    if (type == "Text") {
+      extension = ".txt";
+    }
+    return getFilesDir(this._table.name) + this.id + "_" + field + extension;
+  }
+
+
 };

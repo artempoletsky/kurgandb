@@ -1,9 +1,9 @@
 
-import { FieldType, HeavyTypes, LightTypes } from "./document";
+import { FieldType, HeavyType, HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
-import { SCHEME_PATH, SchemeFile, Table } from "./table";
+import { SCHEME_PATH, SchemeFile, Table, getBooleansFilepath, getFilepath, getFilesDir } from "./table";
 
-import { PlainObject, rfs, wfs, existsSync, unlinkSync } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, unlinkSync, mdne, rmie } from "./utils";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
@@ -137,10 +137,10 @@ async function removeTable({ name }: TRemoveTable) {
     pretty: true
   });
 
-  const filepath = Table.getFilepath(name);
-  if (existsSync(filepath)) {
-    unlinkSync(filepath);
-  }
+  rmie(getFilepath(name));
+  rmie(getFilesDir(name));
+  rmie(getBooleansFilepath(name));
+
   return {
     message: "OK"
   };
