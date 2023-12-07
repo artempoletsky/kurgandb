@@ -22,6 +22,12 @@ export type TableFileContents = {
   meta: TableMetadata
 }
 
+
+export type BooleansFileContents = {
+  [key: string]: number[]
+}
+
+
 const EmptyTable: TableFileContents = {
   meta: {
     index: 0,
@@ -34,20 +40,33 @@ export interface ITable {
   name: string,
   length: number
   readonly scheme: DocumentScheme
-  each(predicate: (doc: IDocument, id: number, table: ITable) => any): ITable
-  map(predicate: (doc: IDocument, id: number, table: ITable) => IDocument): any[]
+  each(predicate: (doc: IDocument) => any): void
+  map(predicate: (doc: IDocument) => any): any[]
   save(): void
-  find(predicate: (doc: IDocument, id: number, table: ITable) => boolean): IDocument | null
-  filter(predicate: (doc: IDocument, id: number, table: ITable) => boolean): ITable
+  find(predicate: (doc: IDocument) => boolean): IDocument | null
+  filter(predicate: (doc: IDocument) => boolean): ITable
   push(data: PlainObject): IDocument
   delete(id: number): void
   clear(): void
   at(id: number): IDocument
   has(id: number | string): boolean
   getDocumentData(id: string): PlainObject
+  addField(name: string, type: FieldType, predicate?: (doc: IDocument) => any): void
+  removeField(name: string): void
 }
 
 export const SCHEME_PATH = "/data/scheme.json";
+
+export function getDefaultValueForType(type: FieldType) {
+  switch (type) {
+    case "number": return 0;
+    case "string": return "";
+    case "File": return "";
+    case "Text": return "";
+    case "date": return new Date();
+    case "boolean": return false;
+  }
+}
 
 export class Table implements ITable {
   protected documents: Map<number, IDocument>;
@@ -55,6 +74,7 @@ export class Table implements ITable {
   protected meta: TableMetadata;
   public readonly scheme: DocumentScheme;
   public readonly name: string;
+  public readonly booleans: BooleansFileContents;
   constructor(name: string) {
     const scheme = Table.getScheme(name);
     if (!scheme) {
@@ -64,6 +84,12 @@ export class Table implements ITable {
     this.name = name;
 
     this.scheme = scheme;
+    const booleansFilepath = Table.getBooleansFilepath(name);
+    if (!existsSync(booleansFilepath)) {
+      wfs(booleansFilepath, {});
+    }
+    this.booleans = rfs(booleansFilepath);
+
     const filepath = Table.getFilepath(name);
     if (!existsSync(filepath)) {
       wfs(filepath, EmptyTable);
@@ -83,20 +109,61 @@ export class Table implements ITable {
     return this.meta.length;
   }
 
-  filter(predicate: (doc: IDocument, id: number, table: ITable) => boolean): ITable {
+
+  protected saveScheme() {
+    const schemeFile: SchemeFile = rfs(SCHEME_PATH);
+    schemeFile.tables[this.name] = this.scheme;
+    wfs(SCHEME_PATH, schemeFile, {
+      pretty: true
+    });
+  }
+
+  removeField(name: string): void {
+    const type = this.scheme.fields[name];
+    delete this.scheme.fields[name];
+    if (type == "boolean") {
+      delete this.booleans[name];
+    } else {
+      this.each(doc => {
+        delete doc[name];
+      });
+    }
+    this.saveScheme();
+    this.save();
+  }
+
+  addField(name: string, type: FieldType, predicate?: (doc: IDocument) => any): void {
+    if (this.scheme.fields[name]) {
+      throw new Error(`field '${name}' already exists`);
+    }
+
+    if (type == "boolean") {
+      this.booleans[name] = [];
+    }
+
+    this.scheme.fields[name] = type;
+    this.each(doc => {
+      doc[name] = predicate ? predicate(doc) : getDefaultValueForType(type);
+    });
+
+    this.saveScheme();
+    this.save();
+  }
+
+  filter(predicate: (doc: IDocument) => boolean): ITable {
     for (const key of this.documents.keys()) {
       let doc = this.documents.get(key) as IDocument;
-      if (!predicate(doc, key, this)) {
+      if (!predicate(doc)) {
         this.delete(key);
       }
     }
     return this;
   }
 
-  find(predicate: (doc: IDocument, id: number, table: ITable) => boolean): IDocument | null {
+  find(predicate: (doc: IDocument) => boolean): IDocument | null {
     for (const key of this.documents.keys()) {
       let doc = this.documents.get(key) as IDocument;
-      if (predicate(doc, key, this)) return doc;
+      if (predicate(doc)) return doc;
     }
     return null;
   }
@@ -139,23 +206,24 @@ export class Table implements ITable {
     }
     fileData.documents = this.documentData;
     wfs(Table.getFilepath(this.name), fileData);
+    wfs(Table.getBooleansFilepath(this.name), this.booleans);
   }
 
   has(id: string | number): boolean {
     return this.documents.has(typeof id == "number" ? id : Table.idNumber(id));
   }
 
-  map(predicate: (doc: IDocument, id: number, table: ITable) => any): any[] {
+  map(predicate: (doc: IDocument) => any): any[] {
     const res: any[] = []
     for (const key of this.documents.keys()) {
-      res.push(predicate(this.documents.get(key) as IDocument, key, this));
+      res.push(predicate(this.documents.get(key) as IDocument));
     }
     return res;
   }
 
-  each(predicate: (doc: IDocument, id: number, table: ITable) => false | undefined): ITable {
+  each(predicate: (doc: IDocument) => any): ITable {
     for (const key of this.documents.keys()) {
-      if (predicate(this.documents.get(key) as IDocument, key, this) === false) break;
+      if (predicate(this.documents.get(key) as IDocument) === false) break;
     }
     return this;
   }
@@ -168,6 +236,10 @@ export class Table implements ITable {
   at(id: number): IDocument {
     if (!this.documents.has(id)) throw new Error("wrong document id!");
     return this.documents.get(id) as IDocument;
+  }
+
+  static getBooleansFilepath(tableName: string): string {
+    return "/data/tables/" + tableName + "_booleans.json";
   }
 
   static getFilepath(tableName: string): string {
