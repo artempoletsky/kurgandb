@@ -1,6 +1,6 @@
-import { existsSync } from "fs";
+
 import { FieldType, Document, IDocument } from "./document";
-import { PlainObject, rfs } from "./utils";
+import { PlainObject, rfs, wfs, existsSync } from "./utils";
 
 
 export type DocumentScheme = {
@@ -17,7 +17,21 @@ export type TableMetadata = {
   length: number,
 }
 
+export type TableFileContents = {
+  documents: Record<string, PlainObject>,
+  meta: TableMetadata
+}
+
+const EmptyTable: TableFileContents = {
+  meta: {
+    index: 0,
+    length: 0,
+  },
+  documents: {}
+};
+
 export interface ITable {
+  name: string,
   length: number
   readonly scheme: DocumentScheme
   each(predicate: (doc: IDocument, id: number, table: ITable) => any): ITable
@@ -40,15 +54,21 @@ export class Table implements ITable {
   protected documentData: PlainObject;
   protected meta: TableMetadata;
   public readonly scheme: DocumentScheme;
+  public readonly name: string;
   constructor(name: string) {
     const scheme = Table.getScheme(name);
     if (!scheme) {
       throw new Error(`table '${name}' doesn't exist`);
     }
 
-    this.scheme = scheme;
+    this.name = name;
 
-    const data = rfs(Table.getFilepath(name)) || {};
+    this.scheme = scheme;
+    const filepath = Table.getFilepath(name);
+    if (!existsSync(filepath)) {
+      wfs(filepath, EmptyTable);
+    }
+    const data: TableFileContents = rfs(filepath);
     this.documentData = data.documents;
     this.documents = new Map<number, IDocument>();
     for (const idString in data.documents) {
@@ -84,32 +104,41 @@ export class Table implements ITable {
   clear(): void {
     this.documentData = {};
     this.documents.clear();
+    this.meta.length = 0;
   }
 
   delete(id: number): void {
     delete this.documentData[Table.idString(id)];
     this.documents.delete(id);
+    this.meta.length--;
   }
 
   push(data: PlainObject): IDocument {
     const validationError = Document.validateData(data, this.scheme);
-    if (validationError) throw new Error("data is invalid; Use 'Document.validateData' before pushing");
+    if (validationError) throw new Error(`push failed, data is invalid for reason '${validationError}'`);
 
     const id = this.meta.index++;
     const idStr = Table.idString(id);
     this.documentData[idStr] = data;
     const doc = new Document(this, idStr);
     this.documents.set(id, doc);
+    this.meta.length++;
     return doc;
   }
 
   save(): void {
+    const fileData: TableFileContents = {
+      documents: {},
+      meta: this.meta
+    };
     this.documentData = {};
     for (const id of this.documents.keys()) {
       let doc = this.documents.get(id) as IDocument;
       let idStr = Table.idString(id);
       this.documentData[idStr] = doc.serialize();
     }
+    fileData.documents = this.documentData;
+    wfs(Table.getFilepath(this.name), fileData);
   }
 
   has(id: string | number): boolean {
@@ -142,7 +171,7 @@ export class Table implements ITable {
   }
 
   static getFilepath(tableName: string): string {
-    return process.cwd() + "/data/tables/" + tableName + ".json";
+    return "/data/tables/" + tableName + ".json";
   }
 
   static isTableExist(tableName: string): boolean {
@@ -161,5 +190,9 @@ export class Table implements ITable {
     const dbScheme: SchemeFile = rfs(SCHEME_PATH);
     if (!dbScheme?.tables) throw new Error("Scheme document is invalid! 'tables' missing");
     return dbScheme.tables[tableName];
+  }
+
+  toJSON() {
+    return this.map(doc => doc.toJSON());
   }
 }

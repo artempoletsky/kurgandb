@@ -21,3 +21,11 @@ export function wfs(filename: string, data: any, options?: WFSOptions) {
 export function rfs(filename: string) {
   return JSON.parse(fs.readFileSync(CWD + filename, { encoding: "utf8" }));
 }
+
+export function existsSync(filename: string) {
+  return fs.existsSync(CWD + filename);
+}
+
+export function unlinkSync(filename: string) {
+  return fs.unlinkSync(CWD + filename);
+}

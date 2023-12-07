@@ -1,9 +1,9 @@
-import fs, { existsSync } from "fs";
+
 import { FieldType, HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
 import { SCHEME_PATH, SchemeFile, Table } from "./table";
 
-import { PlainObject, rfs, wfs } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, unlinkSync } from "./utils";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
@@ -138,8 +138,8 @@ async function removeTable({ name }: TRemoveTable) {
   });
 
   const filepath = Table.getFilepath(name);
-  if (fs.existsSync(filepath)) {
-    fs.unlinkSync(filepath);
+  if (existsSync(filepath)) {
+    unlinkSync(filepath);
   }
   return {
     message: "OK"
