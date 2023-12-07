@@ -37,6 +37,7 @@ http.createServer(function (req, res) {
       if (req.method == "POST") {
         let [postResult, status] = await POST(requestObject);
         res.statusCode = status;
+        
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
         // res.writeHead(200, {

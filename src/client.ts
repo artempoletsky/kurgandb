@@ -46,7 +46,7 @@ export async function clientQuery(predicate: Predicate, payload: PlainObject) {
 
   if (!tables) throw new Error("Can't parse the first argument of the predicate function");
 
-  console.log(tables);
+  // console.log(tables);
 
   // predicate.toString(), payload
   // let result = await query();

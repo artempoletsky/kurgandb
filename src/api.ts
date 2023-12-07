@@ -1,15 +1,14 @@
+import fs, { existsSync } from "fs";
+import { FieldType, HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
-import { Table } from "./table";
+import { SCHEME_PATH, SchemeFile, Table } from "./table";
 
-import { PlainObject } from "./utils";
+import { PlainObject, rfs, wfs } from "./utils";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
 
-export const QueryTypes = ["read", "write"] as const;
-export type QueryType = typeof QueryTypes[number];
 type TQuery = {
-  type: QueryType,
   payload: PlainObject
   tables: string[]
   predicateBody: string
@@ -49,8 +48,7 @@ const RunQuery: Validator = async ({ payload, args }) => {
 }
 
 Rules.query = [{
-  type: validateUnionFabric(QueryTypes),
-  payload: "object",
+  payload: {},
   tables: ["string[]", AreTablesExist],
   predicateBody: "string",
 }, PrediateConstructor, RunQuery] as ValidationRule;
@@ -70,7 +68,86 @@ API.query = query;
 
 
 
+type TCreateTable = {
+  name: string
+  fields: Record<string, FieldType>
+};
 
+const validateRecordFactory = function (possibleValues: any[]): Validator {
+  return async ({ value }) => {
+    if (typeof value != "object") return "object expected"
+    for (const key in value) {
+      let v = value[key];
+      if (!possibleValues.includes(v)) {
+        return `type of '${key}' is invalid; got: '${v}' expected ${possibleValues.join(', ')}`;
+      }
+    }
+    return true;
+  };
+}
+
+const checkTableNotExists: Validator = async ({ value }) => {
+  if (Table.isTableExist(value)) return `table '${value}' already exists`;
+  return true;
+};
+
+Rules.createTable = {
+  name: ["string", checkTableNotExists],
+  fields: validateRecordFactory([...LightTypes, ...HeavyTypes])
+} as ValidationRule;
+
+async function createTable({ name, fields }: TCreateTable) {
+  const schemeFile: SchemeFile = rfs(SCHEME_PATH);
+  schemeFile.tables[name] = {
+    fields,
+    settings: {}
+  };
+
+  wfs(SCHEME_PATH, schemeFile, {
+    pretty: true
+  });
+
+  return {
+    message: "OK"
+  };
+}
+
+API.createTable = createTable;
+/////////////////////////////////////////////////////////////////////////
+
+
+type TRemoveTable = {
+  name: string
+};
+
+const checkTableExists: Validator = async ({ value }) => {
+  if (!Table.isTableExist(value)) return `table '${value}' doesn't exist`;
+  return true;
+};
+
+Rules.removeTable = {
+  name: ["string", checkTableExists],
+} as ValidationRule;
+
+async function removeTable({ name }: TRemoveTable) {
+  const schemeFile: SchemeFile = rfs(SCHEME_PATH);
+
+  delete schemeFile.tables[name];
+  wfs(SCHEME_PATH, schemeFile, {
+    pretty: true
+  });
+
+  const filepath = Table.getFilepath(name);
+  if (fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath);
+  }
+  return {
+    message: "OK"
+  };
+}
+
+API.removeTable = removeTable;
+/////////////////////////////////////////////////////////////////////////
 
 export async function POST(req: PlainObject): Promise<[any, number]> {
   if (!req.args || !req.method) {

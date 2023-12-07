@@ -16,7 +16,7 @@ type PrimitiveType = "number" | "boolean" | "string" | "any" | "stringEmpty";
 
 type ArrayType = "number[]" | "boolean[]" | "string[]" | "stringEmpty[]" | "any[]";
 
-type ValidationType = PrimitiveType | ArrayType | "object" | "email" | "optionalEmail";
+type ValidationType = PrimitiveType | ArrayType | "email" | "optionalEmail";
 
 type ValidationRecord = Record<string, Validator | ValidationType | (Validator | ValidationType)[]>;
 
@@ -211,7 +211,7 @@ const RulesObject: Record<string, Validator> = {
   string: nonEmptystringValidator,
   "string[]": arrayValidatorFabric("string[]", nonEmptystringValidator),
   email: emailValidator,
-  optionalEmail: optionalEmailValidator,
+  optionalEmail: optionalEmailValidator
 };
 
 
