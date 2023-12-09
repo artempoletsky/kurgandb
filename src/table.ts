@@ -2,7 +2,9 @@
 import { rimraf } from "rimraf";
 import { DataBase, SchemeFile } from "./db";
 import { FieldType, Document, IDocument, HeavyTypes, HeavyType, LightTypes } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, rmie, renameSync } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, renameSync } from "./utils";
+
+
 
 
 export type TableSettings = {
@@ -59,6 +61,7 @@ export interface ITable {
   find(predicate: (doc: IDocument) => boolean): IDocument | null
   remove(predicate: (doc: IDocument) => boolean): void
   removeByID(...ids: number[]): void
+  insert<Type extends PlainObject>(data: Type): IDocument
   insert(data: PlainObject): IDocument
   clear(): void
 
@@ -320,13 +323,15 @@ export class Table implements ITable {
     const { partitions } = this.meta;
     if (!partitions.length) {
       this.createNewPartition();
+    } else {
+      this.openPartition(partitions.length - 1);
     }
 
     if (!this._currentPartition) throw new Error("never");
     return this._currentPartition;
   }
 
-
+  insert<Type extends PlainObject>(data: Type): IDocument
   insert(data: PlainObject): IDocument {
     const validationError = Document.validateData(data, this.scheme);
     if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
@@ -347,7 +352,8 @@ export class Table implements ITable {
 
 
     if (!partitions.length || partitions[partitions.length - 1].length >= settings.maxPartitionLenght) {
-      this.createNewPartition();
+      if (settings.maxPartitionLenght)
+        this.createNewPartition();
     }
 
     let p = this.currentPartition;

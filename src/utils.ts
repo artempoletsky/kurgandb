@@ -73,3 +73,16 @@ export function mdne(dirname: string) {
 export function renameSync(oldName: string, newName: string) {
   return fs.renameSync(CWD + oldName, CWD + newName);
 }
+
+
+export function startPerf(name: string) {
+  performance.mark(name + "_start");
+}
+export function endPerf(name: string) {
+  performance.mark(name + "_end");
+}
+
+export function logPerf(name: string) {
+  const measure = performance.measure(name, name + "_start", name + "_end");
+  console.log(name + ": ", measure.duration);
+}
