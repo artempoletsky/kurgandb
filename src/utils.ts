@@ -51,8 +51,8 @@ export function rmie(name: string) {
     if (name.endsWith("/")) {
       // console.log(name);?
 
-      rimraf.sync(name.slice(0, -1));
-      fs.rmdirSync(CWD + name);
+      rimraf.sync(CWD + name);
+      // fs.rmdirSync();
     } else {
       unlinkSync(name);
     }

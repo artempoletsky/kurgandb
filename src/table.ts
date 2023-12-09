@@ -4,14 +4,15 @@ import { FieldType, Document, IDocument, HeavyTypes, HeavyType, LightTypes } fro
 import { PlainObject, rfs, wfs, existsSync, mkdirSync, mdne, statSync, rmie } from "./utils";
 
 
-
+export type TableSettings = {
+  largeObjects: boolean
+  manyRecords: boolean
+  maxPartitionSize: number
+  maxPartitionLenght: number
+}
 export type TableScheme = {
   fields: Record<string, FieldType>
-  settings: {
-    largeObjects: boolean
-    manyRecords: boolean
-    maxPartitionSize: number
-  }
+  settings: TableSettings
 };
 
 
@@ -41,12 +42,6 @@ export type BooleansFileContents = {
 }
 
 
-const EmptyTable: TableMetadata = {
-  index: 0,
-  length: 0,
-  partitions: []
-};
-
 
 
 export interface ITable {
@@ -63,7 +58,7 @@ export interface ITable {
   find(predicate: (doc: IDocument) => boolean): IDocument | null
   remove(predicate: (doc: IDocument) => boolean): void
   removeByID(...ids: number[]): void
-  push(data: PlainObject): IDocument
+  insert(data: PlainObject): IDocument
   clear(): void
 
   ids(ids: number[], predicate: (doc: IDocument) => any): void
@@ -90,21 +85,12 @@ export function getDefaultValueForType(type: FieldType) {
   }
 }
 
-
-export function getBooleansFilepath(tableName: string): string {
-  return `/data/tables/${tableName}.json`;
-}
-
-export function getFilepath(tableName: string): string {
-  return `/data/tables/${tableName}.json`;
+export function getMetaFilepath(tableName: string): string {
+  return `/data/${tableName}/meta.json`;
 }
 
 export function getPartitionFilePath(tableName: string, id: number): string {
-  return `/data/tables/${tableName}_part${id}.json`;
-}
-
-export function getFilesDir(tableName: string): string {
-  return "/data/tables/" + tableName + "/";
+  return `/data/${tableName}/part${id}.json`;
 }
 
 export function isHeavyType(type: FieldType): boolean {
@@ -112,7 +98,6 @@ export function isHeavyType(type: FieldType): boolean {
 }
 
 export class Table implements ITable {
-  protected currentPartition: Partition | undefined;
   protected meta: TableMetadata;
   public readonly fieldNameIndex: Record<string, number>;
   public readonly indexFieldName: string[];
@@ -128,7 +113,6 @@ export class Table implements ITable {
     this.name = name;
     this.scheme = scheme;
 
-    // this.indexFieldName = Object.keys(scheme.fields);
     this.fieldNameIndex = {};
     this.indexFieldName = [];
     let i = 0;
@@ -136,18 +120,14 @@ export class Table implements ITable {
       if (isHeavyType(type)) return;
       this.indexFieldName[i] = key;
       this.fieldNameIndex[key] = i++;
-    })
+    });
 
-    mdne(getFilesDir(name))
-    const filepath = getFilepath(name);
+    this.meta = rfs(getMetaFilepath(name));
 
-    if (!existsSync(filepath)) {
-      wfs(filepath, EmptyTable);
-    }
+  }
 
-    this.meta = rfs(filepath);
-
-    // this.reopen();
+  getLastIndex() {
+    return this.meta.index;
   }
 
   forEachField(predicate: (fieldName: string, type: FieldType, index: number) => any): void {
@@ -274,16 +254,28 @@ export class Table implements ITable {
   }
 
   getHeavyFieldFilepath(id: number | string, type: HeavyType, fieldName: string): string {
-    return `${getFilesDir(this.name)}${id}_${fieldName}.${type == "Text" ? "txt" : "json"}`;
+    return `/data/${this.name}/${fieldName}/${id}.${type == "Text" ? "txt" : "json"}`;
   }
 
-  push(data: PlainObject): IDocument {
+  private _currentPartition: Partition | undefined;
+  protected get currentPartition(): Partition {
+    if (this._currentPartition) return this._currentPartition;
+    const { partitions } = this.meta;
+    if (!partitions.length) {
+      this.createNewPartition();
+    }
+
+    if (!this._currentPartition) throw new Error("never");
+    return this._currentPartition;
+  }
+
+
+  insert(data: PlainObject): IDocument {
     const validationError = Document.validateData(data, this.scheme);
-    if (validationError) throw new Error(`push failed, data is invalid for reason '${validationError}'`);
+    if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
     const id = this.meta.index++;
     const idStr = Table.idString(id);
-
 
     this.forEachField((key, type) => {
       const value = data[key];
@@ -293,43 +285,60 @@ export class Table implements ITable {
         data[key] = data[key].toJSON();
       }
     });
+    const { partitions } = this.meta;
+    const { settings } = this.scheme;
 
-    let lastPartition = this.openPartition();
 
-    lastPartition.documents[idStr] = this.squarifyObject(data);
+    if (!partitions.length || partitions[partitions.length - 1].length >= settings.maxPartitionLenght) {
+      this.createNewPartition();
+    }
+
+    let p = this.currentPartition;
+
+    p.documents[idStr] = this.squarifyObject(data);
     const doc = new Document(this, idStr);
     this.meta.length++;
 
-    lastPartition.isDirty = true;
+    p.isDirty = true;
+    p.meta.end = id;
+    p.meta.length++;
 
-    this.meta.partitions[lastPartition.id].end = id;
-    this.meta.partitions[lastPartition.id].length++;
     return doc;
   }
 
-  openPartition(index?: number): Partition {
-    const isLastPartition = index === undefined;
+  createNewPartition(): void {
+    this.closePartition();
+    const meta: PartitionMeta = { length: 0, end: 0 };
+    const id = this.meta.partitions.length;
+    this.meta.partitions.push(meta);
+    const fileName = getPartitionFilePath(this.name, id);
+    wfs(fileName, {});
+    this._currentPartition = {
+      documents: {},
+      isDirty: false,
+      fileName,
+      size: 0,
+      meta,
+      id,
+    };
+  }
 
-    if (index === undefined) {
-      index = this.meta.partitions.length - 1;
-    }
+  openPartition(index: number): void {
     const meta: PartitionMeta | undefined = this.meta.partitions[index];
     if (!meta) {
-      throw new Error("partition doesn't exists");
+      throw new Error(`partition '${index}' doesn't exists`);
     }
 
     const fileName = getPartitionFilePath(this.name, index);
     const size = statSync(fileName).size;
+    const isLastPartition = index === this.meta.partitions.length - 1;
     if (isLastPartition && size >= this.scheme.settings.maxPartitionSize) {
-      this.meta.partitions.push({
-        end: 0,
-        length: 0,
-      });
-      wfs(fileName, {});
-      return this.openPartition();
+      this.createNewPartition();
+      return;
     }
+
     let documents: DocumentData = rfs(fileName);
-    this.currentPartition = {
+    this._currentPartition = {
       documents,
       isDirty: false,
       fileName,
@@ -337,8 +346,6 @@ export class Table implements ITable {
       meta,
       id: index,
     };
-
-    return this.currentPartition;
   }
 
 
@@ -389,20 +396,20 @@ export class Table implements ITable {
   }
 
   closePartition() {
-    const p = this.currentPartition;
+    const p = this._currentPartition;
     if (!p) return;
 
     if (p.isDirty) {
       wfs(p.fileName, p.documents);
-      wfs(getFilepath(this.name), this.meta);
+      wfs(getMetaFilepath(this.name), this.meta);
     }
   }
 
   each(predicate: (doc: IDocument) => any): void {
     for (let partitionIndex = 0; partitionIndex < this.meta.partitions.length; partitionIndex++) {
-      const partition = this.openPartition(partitionIndex);
+      const docs = this.currentPartition.documents;
       let breakSignal = false;
-      for (const strId in partition.documents) {
+      for (const strId in docs) {
         const doc = new Document(this, strId);
 
         if (breakSignal = predicate(doc) === false) break;
@@ -415,7 +422,7 @@ export class Table implements ITable {
 
   getDocumentData(id: string): any[] {
     const data = this.currentPartition?.documents[id];
-    if (!data) throw new Error("wrong IDocument id!");
+    if (!data) throw new Error(`wrong document id '${id}' (${Table.idNumber(id)})`);
     return data;
   }
 
@@ -465,7 +472,7 @@ export class Table implements ITable {
     return id.charCodeAt(0)
   }
 
-  
+
 
   toJSON(): PlainObject[] {
     if (this.scheme.settings.manyRecords) {

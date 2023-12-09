@@ -1,9 +1,9 @@
 
 import { Predicate, predicateToQuery } from "./client";
 import { DataBase, TCreateTable } from "./db";
-import { FieldType, HeavyType, HeavyTypes, LightTypes } from "./document";
+import { HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
-import { SCHEME_PATH, Table, getBooleansFilepath, getFilepath, getFilesDir } from "./table";
+import { Table } from "./table";
 
 import { PlainObject, rfs, wfs, existsSync, unlinkSync, mdne, rmie } from "./utils";
 

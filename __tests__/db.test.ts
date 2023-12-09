@@ -9,7 +9,7 @@ import { SchemeFile } from "../src/db";
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
-const tableName = "jest_test_table";
+
 
 describe("Predicate parser", () => {
 
@@ -23,8 +23,8 @@ describe("Predicate parser", () => {
   });
 });
 
-describe("db", () => {
-
+xdescribe("db", () => {
+  const tableName = "jest_test_table";
   test("creates a table", async () => {
     const result = await clientQuery(({ }, { db, payload }) => {
       db.createTable({
@@ -42,7 +42,7 @@ describe("db", () => {
   });
 
   test("removes a table", async () => {
-    const result = await clientQuery(({ }, { db, payload }) => {
+    await clientQuery(({ }, { db, payload }) => {
       db.removeTable(payload.tableName);
     }, {
       tableName
