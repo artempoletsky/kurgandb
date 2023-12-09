@@ -67,4 +67,3 @@ http.createServer(function (req, res) {
 
 // clientQuery({}, (a: any, b: any) => { a + b });
 // clientQuery({}, function ({ foo: far, bar }: any, b: any) { });
-

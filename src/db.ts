@@ -18,7 +18,7 @@ export const DefaultTableSettings: TableSettings = {
   largeObjects: false,
   manyRecords: true,
   maxPartitionSize: 1024 * 1024 * 1024,
-  maxPartitionLenght: 1000,
+  maxPartitionLenght: 0,
 }
 
 

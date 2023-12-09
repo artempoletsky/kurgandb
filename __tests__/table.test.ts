@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 import { Predicate, predicateToQuery } from "../src/client";
-import { PlainObject } from "../src/utils";
+import { PlainObject, perfEnd, perfStart, perfDur, perfLog } from "../src/utils";
 import { clientQueryUnsafe as clientQuery } from "../src/api";
 import { before } from "node:test";
 import { DataBase } from "../src/db";
@@ -11,7 +11,7 @@ const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
 
-xdescribe("Table", () => {
+describe("Table", () => {
   const tableName = "jest_test_table";
   let t: Table;
   beforeAll(() => {
@@ -106,7 +106,7 @@ xdescribe("Table", () => {
 
 
   test("fills multiple records", () => {
-    const docsToAdd = 1000000;
+    const docsToAdd = 1000 * 1000;
     type Rec = {
       random: number
       name: string
@@ -122,10 +122,13 @@ xdescribe("Table", () => {
   });
 
   test("selects from multiple partitions", () => {
-    // const measure = performance.measure("select");
-    let docs = t.select(doc => doc.random > 0.005);
-    // expect(docs.length).toBeGreaterThan(4);
-    // console.log(measure.duration);
+    perfStart("select");
+    let docs = t.select(doc => doc.random > 0.5);
+    perfEnd("select");
+    
+    expect(perfDur("select")).toBeLessThan(3000);
+    expect(docs.length).toBeGreaterThan(1);
+    perfLog("select");
   });
 
   xtest("adds lorem ipsums", () => {
@@ -153,26 +156,21 @@ xdescribe("Table", () => {
 describe("Heavy table", () => {
   test("selects by id", async () => {
 
-    performance.mark("query_start");
+    perfStart("query");
     await clientQuery(({ jest_test_table }, { db }) => {
-      return jest_test_table.at(-1);
+      return jest_test_table.at(1123);
     });
-    performance.mark("tableCtor_start");
+    perfEnd("query");
+
     const t = new Table("jest_test_table");
-    performance.mark("tableCtor_end");
 
-    performance.mark("at_start");
+    perfStart("at");
     t.at(100423);
-    performance.mark("at_end");
+    perfEnd("at");
 
-    performance.mark("query_end");
-    // expect(measure.duration).toBeLessThan(1);
-    performance.measure("query", "query_start", "query_end");
-    performance.measure("at", "at_start", "at_end");
-    performance.measure("tableCtor", "tableCtor_start", "tableCtor_end");
-    //  const measure =
-    const duration = performance.getEntriesByName("query")[0].duration;
-    // console.log(duration);
-    // console.log(performance.getEntriesByName("at")[0].duration);
+    perfLog("query");
+    expect(perfDur("query")).toBeLessThan(1)
+    expect(perfDur("at")).toBeLessThan(1)
+
   });
 });

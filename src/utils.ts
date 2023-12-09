@@ -75,14 +75,26 @@ export function renameSync(oldName: string, newName: string) {
 }
 
 
-export function startPerf(name: string) {
-  performance.mark(name + "_start");
+let PerfMeasuerements: PlainObject = {};
+export function perfStart(name: string) {
+  PerfMeasuerements[name] = performance.now();
+  // performance.mark(name + "_start");
 }
-export function endPerf(name: string) {
-  performance.mark(name + "_end");
+export function perfEnd(name: string) {
+  PerfMeasuerements[name] -= performance.now();
+  // performance.mark(name + "_end");
 }
 
-export function logPerf(name: string) {
-  const measure = performance.measure(name, name + "_start", name + "_end");
-  console.log(name + ": ", measure.duration);
+export function perfLog(name?: string) {
+  // const measure = performance.measure(name, name + "_start", name + "_end");
+  if (!name) {
+    console.log(PerfMeasuerements);
+    PerfMeasuerements = {};
+  } else {
+    console.log(name + ": ", perfDur(name), "ms");
+  }
+}
+
+export function perfDur(name: string): number {
+  return Math.floor(-PerfMeasuerements[name] * 100) / 100;
 }
