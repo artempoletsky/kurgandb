@@ -98,6 +98,12 @@ describe("Table", () => {
     expect(t.at(0)?.name).toBe("foo");
   });
 
+  test("adds a field", () => {
+    t.addField("random", "number", e => Math.random());
+    expect(t.scheme.fields).toHaveProperty("random");  
+    expect(t.at(0)?.random).toBeLessThan(1);
+  });
+
   afterAll(() => {
     t.closePartition();
     // DataBase.removeTable(tableName);

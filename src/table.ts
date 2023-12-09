@@ -100,8 +100,8 @@ export function isHeavyType(type: FieldType): boolean {
 
 export class Table implements ITable {
   protected meta: TableMetadata;
-  public readonly fieldNameIndex: Record<string, number>;
-  public readonly indexFieldName: string[];
+  protected _fieldNameIndex: Record<string, number> = {};
+  protected _indexFieldName: string[] = [];
 
   public readonly scheme: TableScheme;
   public readonly name: string;
@@ -114,17 +114,28 @@ export class Table implements ITable {
     this.name = name;
     this.scheme = scheme;
 
-    this.fieldNameIndex = {};
-    this.indexFieldName = [];
+    this.updateIndexes();
+
+    this.meta = rfs(getMetaFilepath(name));
+  }
+
+  updateIndexes() {
+    this._fieldNameIndex = {};
+    this._indexFieldName = [];
     let i = 0;
     this.forEachField((key, type) => {
       if (isHeavyType(type)) return;
-      this.indexFieldName[i] = key;
-      this.fieldNameIndex[key] = i++;
+      this._indexFieldName[i] = key;
+      this._fieldNameIndex[key] = i++;
     });
+  }
 
-    this.meta = rfs(getMetaFilepath(name));
+  public get fieldNameIndex() {
+    return this._fieldNameIndex;
+  }
 
+  public get indexFieldName() {
+    return this._indexFieldName;
   }
 
   renameField(oldName: string, newName: string) {
@@ -143,7 +154,6 @@ export class Table implements ITable {
         newFields[name] = type;
       }
     });
-
     this.scheme.fields = newFields;
     this.saveScheme();
   }
@@ -171,6 +181,7 @@ export class Table implements ITable {
     wfs(SCHEME_PATH, schemeFile, {
       pretty: true
     });
+    this.updateIndexes();
   }
 
   removeField(name: string): void {
@@ -206,18 +217,41 @@ export class Table implements ITable {
       throw new Error(`field '${name}' already exists`);
     }
 
-    const filesDir = `/data/tables/${this.name}/`;
+    const filesDir = `/data/${this.name}/${name}/`;
 
     if (isHeavyType(type) && !existsSync(filesDir)) {
       mkdirSync(filesDir);
     }
 
-    this.scheme.fields[name] = type;
-    this.each(doc => {
-      doc.set(name, predicate ? predicate(doc) : getDefaultValueForType(type));
+    this.forEachPartition((docs, current) => {
+      for (const idStr in docs) {
+        const data = docs[idStr];
+        data.push(getDefaultValueForType(type));
+        if (predicate) {
+          const doc = new Document(this, idStr);
+          const newValue = predicate(doc);
+          // doc.set(name, newValue);
+          data[data.length - 1] = newValue;
+        }
+      }
+      current.isDirty = true;
     });
 
+    this.scheme.fields[name] = type;
     this.saveScheme();
+  }
+
+  protected forEachPartition(predicate: (docs: DocumentData, current: Partition) => any, ids?: number[]) {
+    const { partitions } = this.meta;
+    if (!ids) ids = Array.from(Array(partitions.length).keys())
+    for (const i of ids) {
+      this.openPartition(i);
+      const breakSignal = predicate(this.currentPartition.documents, this.currentPartition);
+      this.closePartition();
+
+
+      if (breakSignal) break;
+    }
   }
 
   // select(predicate: (doc: IDocument) => any): IDocument[]
@@ -433,18 +467,14 @@ export class Table implements ITable {
   }
 
   each(predicate: (doc: IDocument) => any): void {
-    for (let partitionIndex = 0; partitionIndex < this.meta.partitions.length; partitionIndex++) {
-      this.openPartition(partitionIndex);
-      const docs = this.currentPartition.documents;
-      let breakSignal = false;
+    let breakSignal = false;
+    this.forEachPartition(docs => {
       for (const strId in docs) {
         const doc = new Document(this, strId);
         if (breakSignal = predicate(doc) === false) break;
       }
-
-      this.closePartition();
-      if (breakSignal) break;
-    }
+      if (breakSignal) return false;
+    });
   }
 
   getDocumentData(id: string): any[] {
