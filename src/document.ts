@@ -1,5 +1,5 @@
 import fs from "fs";
-import { TableScheme, Table, getFilesDir, isHeavyType } from "./table";
+import { TableScheme, Table, isHeavyType } from "./table";
 import { PlainObject, rfs, existsSync, wfs } from "./utils";
 
 export const LightTypes = ["string", "number", "date", "boolean", "json"] as const; //store their data in main json
@@ -194,15 +194,7 @@ export class Document implements IDocument {
 
   getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
-    let extension;
-    if (type == "Text") {
-      extension = ".txt";
-    } else if (type == "JSON") {
-      extension = ".json";
-    } else {
-      throw new Error("never");
-    }
-    return getFilesDir(this._table.name) + this.id + "_" + field + extension;
+    return this._table.getHeavyFieldFilepath(this._id, type as HeavyType, field);
   }
 
   pick(...fields: string[]): PlainObject {

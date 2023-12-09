@@ -1,4 +1,5 @@
 
+import { rimraf } from "rimraf";
 import { DataBase, SchemeFile } from "./db";
 import { FieldType, Document, IDocument, HeavyTypes, HeavyType, LightTypes } from "./document";
 import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, rmie, renameSync } from "./utils";
@@ -174,28 +175,29 @@ export class Table implements ITable {
 
   removeField(name: string): void {
     const type = this.scheme.fields[name];
-    delete this.scheme.fields[name];
     const isHeavy = isHeavyType(type);
-    const index = this.fieldNameIndex[name];
-    this.each(doc => {
-      if (!this.currentPartition) throw new Error("never");
-      this.getDocumentData(doc.getStringID()).splice(index, 1);
-      this.markCurrentPartitionDirty();
-      if (isHeavy) {
-        rmie(this.getHeavyFieldFilepath(doc.id, type as HeavyType, name));
-      }
-    });
 
+    if (isHeavy)
+      rimraf.sync(`${process.cwd()}/data/${this.name}/${name}`);
+    else {
+      const index = this.fieldNameIndex[name];
+      this.each(doc => {
+        this.getDocumentData(doc.getStringID()).splice(index, 1);
+        this.markCurrentPartitionDirty();
+      });
+      this.closePartition();
+    }
+
+    delete this.scheme.fields[name];
     this.saveScheme();
   }
 
   getCurrentPartitionID(): number {
-    if (!this.currentPartition) throw new Error("current partition is undefined");
     return this.currentPartition.id;
   }
 
   markCurrentPartitionDirty(): void {
-    if (!this.currentPartition) throw new Error("current partition is undefined");
+    if (!this._currentPartition) throw new Error("current partition is undefined");
     this.currentPartition.isDirty = true;
   }
 
@@ -350,6 +352,9 @@ export class Table implements ITable {
       throw new Error(`partition '${index}' doesn't exists`);
     }
 
+    if (this._currentPartition && this._currentPartition.id == index) return;
+
+    this.closePartition();
     const fileName = getPartitionFilePath(this.name, index);
     const size = statSync(fileName).size;
     const isLastPartition = index === this.meta.partitions.length - 1;
@@ -424,15 +429,16 @@ export class Table implements ITable {
       wfs(p.fileName, p.documents);
       wfs(getMetaFilepath(this.name), this.meta);
     }
+    this._currentPartition = undefined;
   }
 
   each(predicate: (doc: IDocument) => any): void {
     for (let partitionIndex = 0; partitionIndex < this.meta.partitions.length; partitionIndex++) {
+      this.openPartition(partitionIndex);
       const docs = this.currentPartition.documents;
       let breakSignal = false;
       for (const strId in docs) {
         const doc = new Document(this, strId);
-
         if (breakSignal = predicate(doc) === false) break;
       }
 
@@ -456,7 +462,11 @@ export class Table implements ITable {
 
     return false;
   }
-
+  /**
+   * run predicate for eacn document with given ids
+   * @param ids 
+   * @param predicate 
+   */
   ids(ids: number[], predicate: (doc: IDocument) => any): void {
     const partitionsToOpen = new Map<number, number[]>();
     for (const id of ids) {

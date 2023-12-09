@@ -92,10 +92,10 @@ describe("Table", () => {
   });
 
 
-  xtest("removes a field", () => {
+  test("removes a field", () => {
     t.removeField("foo");
-
     expect(t.scheme.fields).not.toHaveProperty("foo");
+    expect(t.at(0)?.name).toBe("foo");
   });
 
   afterAll(() => {
