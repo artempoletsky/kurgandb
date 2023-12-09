@@ -27,6 +27,11 @@ export function existsSync(filename: string) {
   return fs.existsSync(CWD + filename);
 }
 
+export function statSync(filename: string) {
+  return fs.statSync(CWD + filename);
+}
+
+
 export function unlinkSync(filename: string) {
   fs.unlinkSync(CWD + filename);
 }

@@ -44,6 +44,11 @@ const RunQuery: Validator = async ({ payload, args }) => {
   } catch (error) {
     return `query has failed with error: ${error}`;
   }
+
+  for (const key in tablesDict) {
+    const table = tablesDict[key];
+    table.closePartition();
+  }
   return true;
 }
 
@@ -100,7 +105,11 @@ async function createTable({ name, fields }: TCreateTable) {
   const schemeFile: SchemeFile = rfs(SCHEME_PATH);
   schemeFile.tables[name] = {
     fields,
-    settings: {}
+    settings: {
+      largeObjects: false,
+      manyRecords: true,
+      maxPartitionSize: 1024 * 1024
+    }
   };
 
   wfs(SCHEME_PATH, schemeFile, {

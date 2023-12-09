@@ -37,7 +37,7 @@ http.createServer(function (req, res) {
       if (req.method == "POST") {
         let [postResult, status] = await POST(requestObject);
         res.statusCode = status;
-        
+
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
         // res.writeHead(200, {
@@ -59,7 +59,7 @@ http.createServer(function (req, res) {
 clientQuery(({ users, posts }, { payload, userMethods, _ }) => {
   const user: any = users.find(user => userMethods.md5(user.name) == payload.name);
   if (!user) return user;
-  user.posts = posts.filter(post => post.user == user.id).map(_.exclude("body"));
+  user.posts = posts.select(post => post.user == user.id).map(doc => doc.pick("body"));
   return user;
 }, {
   name: "John"
