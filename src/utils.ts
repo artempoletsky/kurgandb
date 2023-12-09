@@ -54,7 +54,7 @@ export function rmie(name: string) {
       rimraf.sync(CWD + name);
       // fs.rmdirSync();
     } else {
-      unlinkSync(name);
+      unlinkSync(CWD + name);
     }
   }
 }
@@ -65,7 +65,11 @@ export function rmie(name: string) {
  * @param dirname 
  */
 export function mdne(dirname: string) {
-  if (!existsSync(dirname)) {
-    mkdirSync(dirname);
+  if (!existsSync(CWD + dirname)) {
+    mkdirSync(CWD + dirname);
   }
+}
+
+export function renameSync(oldName: string, newName: string) {
+  return fs.renameSync(CWD + oldName, CWD + newName);
 }

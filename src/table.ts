@@ -1,7 +1,7 @@
 
 import { DataBase, SchemeFile } from "./db";
 import { FieldType, Document, IDocument, HeavyTypes, HeavyType, LightTypes } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, mdne, statSync, rmie } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, rmie, renameSync } from "./utils";
 
 
 export type TableSettings = {
@@ -124,6 +124,27 @@ export class Table implements ITable {
 
     this.meta = rfs(getMetaFilepath(name));
 
+  }
+
+  renameField(oldName: string, newName: string) {
+    const { fields } = this.scheme;
+    if (!fields[oldName]) throw new Error(`feild ${oldName} doesn't exist`);
+    const newFields: Record<string, FieldType> = {};
+    this.forEachField((name, type) => {///iterate to keep the same order in the javascript dictionary
+      if (name == oldName) {
+        newFields[newName] = type;
+        if (isHeavyType(type)) {
+          //rename the folder dedicated to the heavy field
+          const workingDir = `/data/${this.name}/`;
+          renameSync(workingDir + oldName, workingDir + newName);
+        }
+      } else {
+        newFields[name] = type;
+      }
+    });
+
+    this.scheme.fields = newFields;
+    this.saveScheme();
   }
 
   getLastIndex() {

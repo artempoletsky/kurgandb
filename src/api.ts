@@ -5,7 +5,7 @@ import { HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
 import { Table } from "./table";
 
-import { PlainObject, rfs, wfs, existsSync, unlinkSync, mdne, rmie } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie } from "./utils";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
