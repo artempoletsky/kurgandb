@@ -1,5 +1,5 @@
 import { POST } from "./api";
-import { clientQuery } from "./client";
+// import { clientQuery } from "./client";
 
 import http from "http";
 
@@ -56,14 +56,14 @@ http.createServer(function (req, res) {
 
 }).listen(8080);
 
-clientQuery(({ users, posts }, { payload, userMethods, _ }) => {
-  const user: any = users.find(user => userMethods.md5(user.name) == payload.name);
-  if (!user) return user;
-  user.posts = posts.select(post => post.user == user.id).map(doc => doc.pick("body"));
-  return user;
-}, {
-  name: "John"
-});
+// clientQuery(({ users, posts }, { payload, userMethods, _ }) => {
+//   const user: any = users.find(user => userMethods.md5(user.name) == payload.name);
+//   if (!user) return user;
+//   user.posts = posts.select(post => post.user == user.id).map(doc => doc.pick("body"));
+//   return user;
+// }, {
+//   name: "John"
+// });
 
 // clientQuery({}, (a: any, b: any) => { a + b });
 // clientQuery({}, function ({ foo: far, bar }: any, b: any) { });

@@ -1,4 +1,5 @@
 
+import { DataBase, SchemeFile } from "./db";
 import { FieldType, Document, IDocument, HeavyTypes, HeavyType, LightTypes } from "./document";
 import { PlainObject, rfs, wfs, existsSync, mkdirSync, mdne, statSync, rmie } from "./utils";
 
@@ -10,13 +11,9 @@ export type TableScheme = {
     largeObjects: boolean
     manyRecords: boolean
     maxPartitionSize: number
-
   }
 };
 
-export type SchemeFile = {
-  tables: Record<string, TableScheme>
-};
 
 export type TableMetadata = {
   index: number
@@ -124,7 +121,7 @@ export class Table implements ITable {
   public readonly name: string;
 
   constructor(name: string) {
-    const scheme = Table.getScheme(name);
+    const scheme = DataBase.getScheme(name);
     if (!scheme) {
       throw new Error(`table '${name}' doesn't exist`);
     }
@@ -460,10 +457,6 @@ export class Table implements ITable {
     return docs[0] || null;
   }
 
-  static isTableExist(tableName: string): boolean {
-    return !!this.getScheme(tableName);
-  }
-
   static idString(id: number): string {
     return String.fromCharCode(id);
   }
@@ -472,11 +465,7 @@ export class Table implements ITable {
     return id.charCodeAt(0)
   }
 
-  static getScheme(tableName: string): TableScheme | undefined {
-    const dbScheme: SchemeFile = rfs(SCHEME_PATH);
-    if (!dbScheme?.tables) throw new Error("Scheme IDocument is invalid! 'tables' missing");
-    return dbScheme.tables[tableName];
-  }
+  
 
   toJSON(): PlainObject[] {
     if (this.scheme.settings.manyRecords) {

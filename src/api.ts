@@ -1,22 +1,30 @@
 
+import { Predicate, predicateToQuery } from "./client";
+import { DataBase, TCreateTable } from "./db";
 import { FieldType, HeavyType, HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
-import { SCHEME_PATH, SchemeFile, Table, getBooleansFilepath, getFilepath, getFilesDir } from "./table";
+import { SCHEME_PATH, Table, getBooleansFilepath, getFilepath, getFilesDir } from "./table";
 
 import { PlainObject, rfs, wfs, existsSync, unlinkSync, mdne, rmie } from "./utils";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
 
-type TQuery = {
+export type TQuery = {
   payload: PlainObject
   tables: string[]
   predicateBody: string
 };
 
+
+type QueryImplementation = (tables: Record<string, Table>, scope: PlainObject) => any;
+function constructQuery(args: TQuery): QueryImplementation {
+  return new Function(`{ ${args.tables.join(', ')} }`, `{ payload, db, $ }`, args.predicateBody) as QueryImplementation;
+}
+
 const PrediateConstructor: Validator = async ({ payload, args }) => {
   try {
-    payload.queryImplementation = new Function(`{ ${args.tables.join(', ')} }`, `{ payload, _, $ }`, args.predicateBody);
+    payload.queryImplementation = constructQuery(args);
   } catch (error) {
     return `query construction has failed with error: ${error}`;
   }
@@ -26,7 +34,7 @@ const PrediateConstructor: Validator = async ({ payload, args }) => {
 const AreTablesExist: Validator = async ({ payload, args }) => {
   let dict: Record<string, Table> = {};
   for (const name of args.tables) {
-    if (!Table.isTableExist(name)) {
+    if (!DataBase.isTableExist(name)) {
       return `table ${name} doesn't exist`
     }
     dict[name] = new Table(name);
@@ -68,15 +76,25 @@ async function query({ }: TQuery, { result }: TQueryPayload) {
   return result;
 }
 
+export async function queryUnsafe(args: TQuery) {
+  const queryImplementation: QueryImplementation = constructQuery(args);
+  const tables = args.tables.reduce((res: Record<string, Table>, tableName) => {
+    res[tableName] = new Table(tableName);
+    return res;
+  }, {});
+  const queryResult = queryImplementation(tables, { payload: args.payload, db: DataBase });
+  return queryResult;
+}
+
+export async function clientQueryUnsafe(p: Predicate, payload: PlainObject = {}) {
+  return queryUnsafe(predicateToQuery(p, payload));
+}
+
 API.query = query;
 ////////////////////////////////////////////////////////////////////
 
 
 
-type TCreateTable = {
-  name: string
-  fields: Record<string, FieldType>
-};
 
 const validateRecordFactory = function (possibleValues: any[]): Validator {
   return async ({ value }) => {
@@ -92,7 +110,7 @@ const validateRecordFactory = function (possibleValues: any[]): Validator {
 }
 
 const checkTableNotExists: Validator = async ({ value }) => {
-  if (Table.isTableExist(value)) return `table '${value}' already exists`;
+  if (DataBase.isTableExist(value)) return `table '${value}' already exists`;
   return true;
 };
 
@@ -101,21 +119,8 @@ Rules.createTable = {
   fields: validateRecordFactory([...LightTypes, ...HeavyTypes])
 } as ValidationRule;
 
-async function createTable({ name, fields }: TCreateTable) {
-  const schemeFile: SchemeFile = rfs(SCHEME_PATH);
-  schemeFile.tables[name] = {
-    fields,
-    settings: {
-      largeObjects: false,
-      manyRecords: true,
-      maxPartitionSize: 1024 * 1024
-    }
-  };
-
-  wfs(SCHEME_PATH, schemeFile, {
-    pretty: true
-  });
-
+export async function createTable({ name, fields }: TCreateTable) {
+  DataBase.createTable({ name, fields });
   return {
     message: "OK"
   };
@@ -130,7 +135,7 @@ type TRemoveTable = {
 };
 
 const checkTableExists: Validator = async ({ value }) => {
-  if (!Table.isTableExist(value)) return `table '${value}' doesn't exist`;
+  if (!DataBase.isTableExist(value)) return `table '${value}' doesn't exist`;
   return true;
 };
 
@@ -139,17 +144,7 @@ Rules.removeTable = {
 } as ValidationRule;
 
 async function removeTable({ name }: TRemoveTable) {
-  const schemeFile: SchemeFile = rfs(SCHEME_PATH);
-
-  delete schemeFile.tables[name];
-  wfs(SCHEME_PATH, schemeFile, {
-    pretty: true
-  });
-
-  rmie(getFilepath(name));
-  rmie(getFilesDir(name));
-  rmie(getBooleansFilepath(name));
-
+  DataBase.removeTable(name);
   return {
     message: "OK"
   };
