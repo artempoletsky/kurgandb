@@ -12,24 +12,27 @@ export type HeavyType = typeof HeavyTypes[number];
 export type SpecialType = typeof SpecialTypes[number];
 export type FieldType = typeof AllTypes[number]
 
-export interface IDocument extends Record<string, any> {
-  toJSON(): PlainObject
-  serialize(): PlainObject
-  get<Type>(fieldName: string): Type
-  get(fieldName: string): any
-  getStringID(): string
-  set(fieldName: string, value: any): void
-  pick(...fields: string[]): PlainObject
-  without(...fields: string[]): PlainObject
-  light(): PlainObject
-  id: number
-}
+// export interface IDocument extends Record<string, any> {
+//   toJSON(): PlainObject
+//   serialize(): PlainObject
+//   get<Type>(fieldName: string): Type
+//   get(fieldName: string): any
+//   getStringID(): string
+//   set(fieldName: string, value: any): void
+//   pick(...fields: string[]): PlainObject
+//   without(...fields: string[]): PlainObject
+//   light(): PlainObject
+//   id: number
+// }
 
-export class Document implements IDocument {
+
+export type TDocument<Type extends PlainObject> = Document<Type> & Type;
+
+export class Document<Type extends PlainObject> {
   protected _id: number;
   protected _stringID: string;
   protected _partitionID: number;
-  protected _table: Table;
+  protected _table: Table<Type>;
   protected _data: any[];
   protected _dates: Record<string, Date> = {};
 
@@ -45,7 +48,7 @@ export class Document implements IDocument {
     return this._id;
   }
 
-  constructor(table: Table, id: string) {
+  constructor(table: Table<Type>, id: string) {
     this._table = table;
     this._id = Table.idNumber(id);
     this._partitionID = table.getCurrentPartitionID();
@@ -53,8 +56,8 @@ export class Document implements IDocument {
     const obj = table.getDocumentData(id);
     this._data = obj;
 
-    let proxy = new Proxy(this, {
-      set: (target: Document, key: string, value: any) => {
+    let proxy = new Proxy<Document<Type>>(this, {
+      set: (target: any, key: string, value: any) => {
         this.set(key, value);
         return true;
       },
@@ -104,7 +107,7 @@ export class Document implements IDocument {
     this._table.markCurrentPartitionDirty();
   }
 
-  get<Type>(fieldName: string): Type
+  get<ValueType>(fieldName: string): ValueType
   get(fieldName: string): any {
     const scheme = this._table.scheme;
     const type = scheme.fields[fieldName];
@@ -157,7 +160,7 @@ export class Document implements IDocument {
     return result;
   }
 
-  public toJSON() {
+  public toJSON(): Type {
     const result: PlainObject = {
       id: this._id
     };
@@ -166,7 +169,7 @@ export class Document implements IDocument {
         result[key] = this.get(key);
       }
     });
-    return result;
+    return result as Type;
   }
 
   static validateData(data: PlainObject, scheme: TableScheme): false | string {
@@ -197,25 +200,25 @@ export class Document implements IDocument {
     return this._table.getHeavyFieldFilepath(this._id, type as HeavyType, field);
   }
 
-  pick(...fields: string[]): PlainObject {
+  pick(...fields: string[]): Type {
     const result: PlainObject = {};
     this._table.forEachField((key, type) => {
       if (fields.includes(key))
         result[key] = this.get(key);
     })
-    return result;
+    return result as Type;
   }
 
-  without(...fields: string[]): PlainObject {
+  without(...fields: string[]): Type {
     const result: PlainObject = {};
     this._table.forEachField((key, type) => {
       if (!fields.includes(key))
         result[key] = this.get(key);
     })
-    return result;
+    return result as Type;
   }
 
-  light(): PlainObject {
+  light(): Type {
     return this.pick(...this._table.getLightKeys());
   }
 

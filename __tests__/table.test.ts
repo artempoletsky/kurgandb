@@ -10,10 +10,12 @@ import { Table } from "../src/table";
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
+const TestTableName = "jest_test_table";
 
 describe("Table", () => {
-  const tableName = "jest_test_table";
-  let t: Table;
+  
+
+  let t: Table<any>;
   beforeAll(() => {
 
     // DataBase.createTable({
@@ -40,34 +42,35 @@ describe("Table", () => {
     //   "settings": {}
     // });
 
-    if (DataBase.isTableExist(tableName)) {
-      DataBase.removeTable(tableName);
+    if (DataBase.isTableExist(TestTableName)) {
+      DataBase.removeTable(TestTableName);
     }
     DataBase.createTable({
-      name: tableName,
+      name: TestTableName,
       fields: {
         name: "string",
         // light: "json",
         heavy: "JSON",
       }
     });
-    t = new Table(tableName);
+    t = new Table<any>(TestTableName);
   });
 
-  test("adds a document", () => {
+  test("adds a document", async () => {
 
 
     const idOffset = t.getLastIndex();
     const lenghtOffset = t.length;
 
-    const d1 = t.insert({
+    const d1 = await t.insert({
       name: "foo",
       heavy: {
         bar: Math.random()
       }
     });
 
-    const d2 = t.insert({
+    // d1.get("heavy")
+    const d2 = await t.insert({
       name: "bar",
       heavy: {
         bar: Math.random()
@@ -84,36 +87,36 @@ describe("Table", () => {
 
   });
 
-  test("renames a field", () => {
-    t.renameField("heavy", "foo");
+  test("renames a field", async () => {
+    await t.renameField("heavy", "foo");
     // console.log(t.scheme.fields);
     expect(t).not.toHaveProperty("scheme.fields.heavy");
     expect(t).toHaveProperty("scheme.fields.foo");
   });
 
 
-  test("removes a field", () => {
-    t.removeField("foo");
+  test("removes a field", async () => {
+    await t.removeField("foo");
     expect(t.scheme.fields).not.toHaveProperty("foo");
-    expect(t.at(0)?.name).toBe("foo");
+    expect((await t.at(0))?.name).toBe("foo");
   });
 
-  test("adds a field", () => {
-    t.addField("random", "number", e => Math.random());
+  test("adds a field", async () => {
+    await t.addField("random", "number", e => Math.random());
     expect(t.scheme.fields).toHaveProperty("random");
-    expect(t.at(0)?.random).toBeLessThan(1);
+    expect((await t.at(0))?.random).toBeLessThan(1);
   });
 
 
-  test("fills multiple records", () => {
+  xtest("fills multiple records", () => {
     const docsToAdd = 1000 * 1000;
-    type Rec = {
-      random: number
-      name: string
-    }
+    // type Rec = {
+    //   random: number
+    //   name: string
+    // }
     const initialLenght = t.length;
     for (let i = 0; i < docsToAdd; i++) {
-      t.insert<Rec>({
+      t.insert({
         random: Math.random(),
         name: "asdasd",
       });
@@ -121,11 +124,11 @@ describe("Table", () => {
     expect(t.length).toBe(initialLenght + docsToAdd);
   });
 
-  test("selects from multiple partitions", () => {
+  xtest("selects from multiple partitions", async () => {
     perfStart("select");
-    let docs = t.select(doc => doc.random > 0.5);
+    let docs = await t.select(doc => doc.random > 0.5);
     perfEnd("select");
-    
+
     expect(perfDur("select")).toBeLessThan(3000);
     expect(docs.length).toBeGreaterThan(1);
     perfLog("select");

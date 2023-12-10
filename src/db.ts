@@ -1,6 +1,6 @@
 import { rimraf } from "rimraf";
 import { FieldType } from "./document";
-import { SCHEME_PATH, TableMetadata, TableScheme, TableSettings, isHeavyType } from "./table";
+import { SCHEME_PATH, TableMetadata, TableScheme, isHeavyType } from "./table";
 import { mkdirSync, rfs, wfs } from "./utils";
 
 
@@ -14,13 +14,15 @@ export type SchemeFile = {
   tables: Record<string, TableScheme>
 };
 
-export const DefaultTableSettings: TableSettings = {
+export const DefaultTableSettings = {
   largeObjects: false,
   manyRecords: true,
   maxPartitionSize: 1024 * 1024 * 1024,
   maxPartitionLenght: 0,
+  dynamicData: false,
 }
 
+export type TableSettings = typeof DefaultTableSettings;
 
 const EmptyTable: TableMetadata = {
   index: 0,
