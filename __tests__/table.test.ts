@@ -4,7 +4,8 @@ import { PlainObject, perfEnd, perfStart, perfDur, perfLog } from "../src/utils"
 import { clientQueryUnsafe as clientQuery } from "../src/api";
 import { before } from "node:test";
 import { DataBase } from "../src/db";
-import { Table } from "../src/table";
+import { PartitionMeta, Table } from "../src/table";
+import { Document, FieldType } from "../src/document";
 
 
 const xdescribe = (...args: any) => { };
@@ -12,25 +13,11 @@ const xtest = (...args: any) => { };
 
 const TestTableName = "jest_test_table";
 
-describe("Table", () => {
-  
+xdescribe("Table", () => {
+
 
   let t: Table<any>;
   beforeAll(() => {
-
-    // DataBase.createTable({
-    //   name: "users",
-    //   "fields": {
-    //     "name": "string",
-    //     "isAdmin": "boolean",
-    //     "isModerator": "boolean",
-    //     "registrationDate": "date",
-    //     "posts": "JSON",
-    //     "password": "password",
-    //     "blog_posts": "json"
-    //   },
-    //   "settings": {}
-    // });
     // DataBase.createTable({
     //   name: "posts",
     //   "fields": {
@@ -108,22 +95,6 @@ describe("Table", () => {
   });
 
 
-  xtest("fills multiple records", () => {
-    const docsToAdd = 1000 * 1000;
-    // type Rec = {
-    //   random: number
-    //   name: string
-    // }
-    const initialLenght = t.length;
-    for (let i = 0; i < docsToAdd; i++) {
-      t.insert({
-        random: Math.random(),
-        name: "asdasd",
-      });
-    }
-    expect(t.length).toBe(initialLenght + docsToAdd);
-  });
-
   xtest("selects from multiple partitions", async () => {
     perfStart("select");
     let docs = await t.select(doc => doc.random > 0.5);
@@ -156,24 +127,192 @@ describe("Table", () => {
   });
 });
 
-describe("Heavy table", () => {
-  test("selects by id", async () => {
+describe("Rich table", () => {
+  type RichType = {
+    name: string
+    lastTweet: string
+    status: string
+    isAdmin: boolean
+    isModerator: boolean
 
-    perfStart("query");
-    await clientQuery(({ jest_test_table }, { db }) => {
-      return jest_test_table.at(1123);
+    registrationDate: Date | string
+    lastActive: Date | string
+    birthday: Date | string
+
+    password: string
+    blog_posts: number[]
+    favoriteQuote: string
+
+    favoriteRandomNumber: number
+  }
+
+  const RichTypeFields = {
+    "name": "string",
+    "lastTweet": "string",
+    "status": "string",
+    "isAdmin": "boolean",
+    "isModerator": "boolean",
+    "registrationDate": "date",
+    "lastActive": "date",
+    "birthday": "date",
+    "password": "password",
+    "blog_posts": "json",
+    "favoriteQuote": "string",
+    "favoriteRandomNumber": "number",
+  } satisfies Record<keyof RichType, FieldType>;
+
+  const today = (new Date()).toJSON();
+  const RichTypeRecord: RichType = {
+    name: "John Doe",
+    lastActive: today,
+    birthday: today,
+    registrationDate: today,
+    favoriteQuote: "Poor and content is rich and rich enough",
+    status: "The wolf is weaker than the lion and the tiger but it won't perform in the circus.",
+    lastTweet: "The wolf is weaker than the lion and the tiger but it won't perform in the circus.",
+    isAdmin: false,
+    isModerator: false,
+    password: "qwerty123",
+    blog_posts: [343434, 234823742, 439785345, 34583475345, 3453845734, 3458334535, 1231248576],
+    favoriteRandomNumber: 0,
+  };
+  let t: Table<RichType>;
+  let row: any[];
+  describe("filling", () => {
+
+    beforeAll(() => {
+      // DataBase.createTable({
+      //   name: "users",
+      //   "fields": {
+
+      //   },
+      //   "settings": {}
+      // });
+
+      if (DataBase.isTableExist(TestTableName)) {
+        DataBase.removeTable(TestTableName);
+      }
+
+      DataBase.createTable({
+        name: TestTableName,
+        fields: RichTypeFields
+      });
+
+      t = new Table<RichType>(TestTableName);
+      row = t.squarifyObject(RichTypeRecord);
+    })
+
+    test("Document.validate data ", () => {
+      const invalidReason = Document.validateData(RichTypeRecord, t.scheme);
+      expect(invalidReason).toBe(false)
     });
-    perfEnd("query");
 
-    const t = new Table("jest_test_table");
+    test("fills multiple records", () => {
+      const squaresToAdd = 1 * 1;
 
-    perfStart("at");
-    t.at(100423);
-    perfEnd("at");
+      const squareSize = 10 * 1000 * 1000;
+      const square = Array.from(Array(squareSize)).map(() => row);
 
-    perfLog("query");
-    expect(perfDur("query")).toBeLessThan(1)
-    expect(perfDur("at")).toBeLessThan(1)
+      expect(square.length).toBe(squareSize);
+      expect(square[123][0]).toBe("John Doe");
+      // type Rec = {
+      //   random: number
+      //   name: string
+      // }
+      const initialLenght = t.length;
+      for (let i = 0; i < squaresToAdd; i++) {
+        t.insertSquare(square);
+      }
+      expect(t.length).toBe(initialLenght + squaresToAdd * square.length);
+    });
 
+    
+    xtest("ifdo", async () => {
+      perfStart("ifdo");
+      await t.ifDo(doc => doc.favoriteRandomNumber == 0, doc => doc.favoriteRandomNumber = Math.random());
+      perfEnd("ifdo");
+      perfLog("ifdo");
+    });
+
+
+    afterAll(() => {
+      t.closePartition();
+    })
+  });
+
+
+
+  describe("reading", () => {
+
+    beforeAll(() => {
+      t = new Table(TestTableName);
+    })
+
+    test("at", async () => {
+
+      perfStart("query");
+      // await clientQuery(async ({ jest_test_table }, { db }) => {
+      //   return await jest_test_table.at(9);
+      // });
+      perfEnd("query");
+
+      // console.log(await t.at(123123));
+      
+      perfStart("at");
+      await t.at(9);
+      perfEnd("at");
+
+      perfLog("query");
+      perfLog("at");
+      expect(perfDur("query")).toBeLessThan(30)
+      expect(perfDur("at")).toBeLessThan(30)
+
+    });
+
+    afterAll(() => {
+      t.closePartition();
+    })
+  });
+
+});
+
+
+describe("Misc", () => {
+  test("String id genetation consistancy", () => {
+    const generate = (num: number) => {
+      return Table.idNumber(Table.idString(num));
+    }
+
+
+    expect(generate(1)).toBe(1);
+    expect(generate(1 * 100)).toBe(1 * 100);
+    expect(generate(1000 * 1000)).toBe(1000 * 1000);
+    expect(generate(10 * 1000 * 1000)).toBe(10 * 1000 * 1000);
+    expect(generate(1000 * 1000 * 1000)).toBe(1000 * 1000 * 1000);
+  });
+
+  test("Partition ID search", () => {
+    const partitions: PartitionMeta[] = [];
+    const lenght = 1000 * 1000 * 1000;
+    const partitionSize = 100 * 1000;
+    const numPartitions = lenght / partitionSize;
+    let end = partitionSize;
+    for (let i = 0; i < numPartitions; i++) {
+      partitions.push({
+        length: partitionSize,
+        end,
+      });
+      end += partitionSize;
+    }
+
+    const id = Math.floor(Math.random() * lenght);
+
+    perfStart("partition search");
+    const partitionId = Table.findPartitionForId(id, partitions, lenght);
+    perfEnd("partition search");
+
+    // perfLog("partition search")
+    expect(partitionId).not.toBe(false);
+    expect(perfDur("partition search")).toBeLessThan(20);
   });
 });

@@ -2,7 +2,7 @@
 import { rimraf } from "rimraf";
 import { DataBase, SchemeFile, TableSettings } from "./db";
 import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, renameSync } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, renameSync, perfLog, perfStart, perfEnd } from "./utils";
 
 
 
@@ -38,7 +38,9 @@ export type BooleansFileContents = {
   [key: string]: number[]
 }
 
-
+async function unpromise<Type>(value: Type | Promise<Type>): Promise<Type> {
+  return value instanceof Promise ? value : Promise.resolve(value);
+}
 
 type Callback<Type extends PlainObject, R> = (doc: TDocument<Type>) => R | Promise<R>;
 
@@ -155,6 +157,15 @@ export class Table<Type extends PlainObject> {
     this.saveScheme();
   }
 
+  async ifDo(match: Callback<Type, boolean>, predicate: Callback<Type, any>) {
+    return this.each(async doc => {
+      const matchRes = await unpromise(match(doc));
+      if (matchRes) {
+        predicate(doc);
+      }
+    });
+  }
+
   getLastIndex() {
     return this.meta.index;
   }
@@ -242,14 +253,9 @@ export class Table<Type extends PlainObject> {
     const { partitions } = this.meta;
     if (!ids) ids = Array.from(Array(partitions.length).keys())
     for (const i of ids) {
-      let breakSignal: boolean;
       this.openPartition(i);
-      const result = predicate(this.currentPartition.documents, this.currentPartition);;
-      if (result instanceof Promise) {
-        breakSignal = await result;
-      } else {
-        breakSignal = result;
-      }
+      const breakSignal = await unpromise(predicate(this.currentPartition.documents, this.currentPartition));
+
       this.closePartition();
 
       if (breakSignal === false) break;
@@ -264,8 +270,7 @@ export class Table<Type extends PlainObject> {
     let found = 0;
     const result: TDocument<Type>[] = [];
     await this.each(async doc => {
-      const predRes = predicate(doc as TDocument<Type>);
-      const toSelect = predRes instanceof Promise ? await predRes : predRes;
+      const toSelect = await unpromise(predicate(doc as TDocument<Type>))
       if (toSelect) {
         result.push(doc);
         found++;
@@ -329,6 +334,41 @@ export class Table<Type extends PlainObject> {
     return this._currentPartition;
   }
 
+  insertSquare(data: any[][]) {
+    let docs = this.currentPartition.documents;
+    let partId = this.currentPartition.id;
+    const { meta } = this;
+    for (let i = 0; i < data.length; i++) {
+      const id = meta.index++;
+      const idStr = Table.idString(id);
+      meta.partitions[partId].length++;
+      meta.partitions[partId].end = id;
+      docs[idStr] = data[i];
+      meta.length++;
+      if (this.partitionExceedsSize()) {
+        this.currentPartition.isDirty = true;
+        this.createNewPartition();
+        docs = this.currentPartition.documents;
+        partId = this.currentPartition.id;
+      }
+    }
+    this.currentPartition.isDirty = true;
+    this.closePartition();
+  }
+
+  partitionExceedsSize(): boolean {
+    const { settings } = this.scheme;
+    const { size, meta } = this.currentPartition;
+
+    if (settings.maxPartitionLenght && (meta.length > settings.maxPartitionLenght)) {
+      return true;
+    }
+    if (settings.maxPartitionSize && (size > settings.maxPartitionSize)) {
+      return true;
+    }
+    return false;
+  }
+
   // insert<Type extends PlainObject>(data: Type): Document<Type>
   async insert(data: Type) {
     const validationError = Document.validateData(data, this.scheme);
@@ -336,7 +376,6 @@ export class Table<Type extends PlainObject> {
 
     const id = this.meta.index++;
     const idStr = Table.idString(id);
-
     this.forEachField((key, type) => {
       const value = data[key];
       if (isHeavyType(type) && !!value) {
@@ -349,9 +388,8 @@ export class Table<Type extends PlainObject> {
     const { settings } = this.scheme;
 
 
-    if (!partitions.length || partitions[partitions.length - 1].length >= settings.maxPartitionLenght) {
-      if (settings.maxPartitionLenght)
-        this.createNewPartition();
+    if (this.partitionExceedsSize()) {
+      this.createNewPartition();
     }
 
     let p = this.currentPartition;
@@ -400,8 +438,9 @@ export class Table<Type extends PlainObject> {
       this.createNewPartition();
       return;
     }
-
+    
     let documents: DocumentData = rfs(fileName);
+    
     this._currentPartition = {
       documents,
       isDirty: false,
@@ -439,13 +478,7 @@ export class Table<Type extends PlainObject> {
   squarifyObject(o: PlainObject) {
     const result: any[] = [];
     this.forEachField((key, type) => {
-      // console.log(key, type);
-
       if (isHeavyType(type)) return;
-      // if (type == "boolean") {
-      //   result.push(o[key] ? 1 : 0);
-      //   return;
-      // }
       result.push(o[key]);
     });
     return result;
@@ -475,12 +508,7 @@ export class Table<Type extends PlainObject> {
     await this.forEachPartition(async docs => {
       for (const strId in docs) {
         const doc = new Document<Type>(this, strId);
-        const result = predicate(doc as TDocument<Type>);
-        if (result instanceof Promise) {
-          breakSignal = await result;
-        } else {
-          breakSignal = result
-        }
+        breakSignal = unpromise(predicate(doc as TDocument<Type>));
         if (breakSignal === false) break;
       }
       if (breakSignal === false) return false;
@@ -493,14 +521,29 @@ export class Table<Type extends PlainObject> {
     return data;
   }
 
-  findPartitionForId(id: number): number | false {
-    let start = 0;
-    for (const [partitionID, pMeta] of this.meta.partitions.entries()) {
-      if (start <= id && id <= pMeta.end) return partitionID;
-      start = pMeta.end;
+  static findPartitionForId(id: number, partitions: PartitionMeta[], tableLenght: number): number | false {
+    const ratio = id / tableLenght;
+    let startPartitionID = Math.floor(partitions.length * ratio);
+    let startIndex = 0;
+    while (startPartitionID > 0) {
+      // startPartitionID--;
+      startIndex = partitions[startPartitionID - 1].end;
+      if (startIndex <= id) {
+        break;
+      }
+      startPartitionID--;
     }
 
+    for (let i = startPartitionID; i < partitions.length; i++) {
+      const element = partitions[i];
+      if (startIndex <= id && id <= element.end) return i;
+      startIndex = element.end;
+    }
     return false;
+  }
+
+  findPartitionForId(id: number): number | false {
+    return Table.findPartitionForId(id, this.meta.partitions, this.meta.length);
   }
   /**
    * run predicate for eacn document with given ids
@@ -536,11 +579,11 @@ export class Table<Type extends PlainObject> {
   }
 
   static idString(id: number): string {
-    return String.fromCharCode(id);
+    return id + '';
   }
 
   static idNumber(id: string): number {
-    return id.charCodeAt(0)
+    return (id as unknown as number) * 1;
   }
 
 

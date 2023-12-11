@@ -177,7 +177,7 @@ export class Document<Type extends PlainObject> {
     // console.log(scheme);
     // console.log(data);
     for (const key in schemeFields) {
-      if (!data[key]) return `Key: '${key}' is missing`;
+      if (data[key] === undefined) return `Key: '${key}' is missing`;
     }
 
     for (const key in data) {

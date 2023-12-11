@@ -18,7 +18,7 @@ export const DefaultTableSettings = {
   largeObjects: false,
   manyRecords: true,
   maxPartitionSize: 1024 * 1024 * 1024,
-  maxPartitionLenght: 0,
+  maxPartitionLenght: 10 * 1000,
   dynamicData: false,
 }
 
