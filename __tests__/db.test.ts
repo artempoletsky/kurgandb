@@ -31,7 +31,8 @@ xdescribe("db", () => {
         name: payload.tableName,
         fields: {
           test: "string"
-        }
+        },
+        indices: [],
       });
     }, {
       tableName

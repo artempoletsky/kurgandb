@@ -17,7 +17,7 @@ export type TQuery = {
 };
 
 
-type QueryImplementation = (tables: Record<string, Table>, scope: PlainObject) => any;
+type QueryImplementation = (tables: Record<string, Table<any>>, scope: PlainObject) => any;
 function constructQuery(args: TQuery): QueryImplementation {
   return new Function(`{ ${args.tables.join(', ')} }`, `{ payload, db, $ }`, args.predicateBody) as QueryImplementation;
 }
@@ -37,7 +37,7 @@ const AreTablesExist: Validator = async ({ payload, args }) => {
     if (!DataBase.isTableExist(name)) {
       return `table ${name} doesn't exist`
     }
-    dict[name] = new Table(name);
+    dict[name] = DataBase.getTable(name);
   }
   payload.tablesDict = dict;
   return true;
@@ -64,7 +64,7 @@ Rules.query = [{
   payload: {},
   tables: ["string[]", AreTablesExist],
   predicateBody: "string",
-}, PrediateConstructor, RunQuery] as ValidationRule;
+}, PrediateConstructor, RunQuery] as ValidationRule<TQuery>;
 
 type TQueryPayload = {
   queryImplementation: Function
@@ -79,7 +79,7 @@ async function query({ }: TQuery, { result }: TQueryPayload) {
 export async function queryUnsafe(args: TQuery) {
   const queryImplementation: QueryImplementation = constructQuery(args);
   const tables = args.tables.reduce((res: Record<string, Table>, tableName) => {
-    res[tableName] = new Table(tableName);
+    res[tableName] = DataBase.getTable(tableName);
     return res;
   }, {});
   const queryResult = queryImplementation(tables, { payload: args.payload, db: DataBase });
@@ -116,11 +116,16 @@ const checkTableNotExists: Validator = async ({ value }) => {
 
 Rules.createTable = {
   name: ["string", checkTableNotExists],
-  fields: validateRecordFactory([...LightTypes, ...HeavyTypes])
-} as ValidationRule;
+  fields: validateRecordFactory([...LightTypes, ...HeavyTypes]),
+  indices: "string[]",
+} as ValidationRule<TCreateTable<PlainObject>>;
 
-export async function createTable({ name, fields }: TCreateTable) {
-  DataBase.createTable({ name, fields });
+export async function createTable({ name, fields, indices }: TCreateTable<PlainObject>) {
+  DataBase.createTable({
+    name,
+    fields,
+    indices,
+  });
   return {
     message: "OK"
   };
@@ -141,7 +146,7 @@ const checkTableExists: Validator = async ({ value }) => {
 
 Rules.removeTable = {
   name: ["string", checkTableExists],
-} as ValidationRule;
+} as ValidationRule<TRemoveTable>;
 
 async function removeTable({ name }: TRemoveTable) {
   DataBase.removeTable(name);

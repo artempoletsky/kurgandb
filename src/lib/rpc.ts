@@ -3,11 +3,11 @@ export type APIRequest = {
   method: string,
   args: any
 }
-export type Validator = (args:
+export type Validator<Type = any> = (args:
   {
     value: any
     method: string
-    args: any
+    args: Type
     payload: Record<string, any>
   }
 ) => Promise<InvalidFieldReason | string | true>;
@@ -18,9 +18,9 @@ type ArrayType = "number[]" | "boolean[]" | "string[]" | "stringEmpty[]" | "any[
 
 type ValidationType = PrimitiveType | ArrayType | "email" | "optionalEmail";
 
-type ValidationRecord = Record<string, Validator | ValidationType | (Validator | ValidationType)[]>;
+type ValidationRecord<Type> = Record<keyof Type, Validator<Type> | ValidationType | (Validator<Type> | ValidationType)[]>;
 
-export type ValidationRule = ValidationRecord | (ValidationRecord | Validator)[]
+export type ValidationRule<Type> = ValidationRecord<Type> | (ValidationRecord<Type> | Validator<Type>)[]
 
 export type APIValidationObject = Record<string, any>
 
@@ -46,7 +46,6 @@ export type ValiationErrorResponce = {
 };
 
 
-const noop = () => { };
 
 function invalidResponce(message: string): InvalidResult {
   return [

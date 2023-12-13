@@ -2,7 +2,9 @@ import { POST } from "./api";
 // import { clientQuery } from "./client";
 
 import http from "http";
+import { DataBase } from "./db";
 
+DataBase.loadAllTables();
 
 http.createServer(function (req, res) {
   if (req.method == "OPTIONS") {
@@ -55,6 +57,7 @@ http.createServer(function (req, res) {
 
 
 }).listen(8080);
+
 
 // clientQuery(({ users, posts }, { payload, userMethods, _ }) => {
 //   const user: any = users.find(user => userMethods.md5(user.name) == payload.name);

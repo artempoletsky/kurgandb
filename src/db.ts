@@ -1,13 +1,14 @@
 import { rimraf } from "rimraf";
 import { FieldType } from "./document";
-import { SCHEME_PATH, TableMetadata, TableScheme, isHeavyType } from "./table";
-import { mkdirSync, rfs, wfs } from "./utils";
+import { SCHEME_PATH, Table, TableMetadata, TableScheme, getMetaFilepath, isHeavyType } from "./table";
+import { PlainObject, mkdirSync, rfs, wfs } from "./utils";
 
 
-export type TCreateTable = {
+export type TCreateTable<Type> = {
   name: string
   settings?: Partial<TableSettings>
-  fields: Record<string, FieldType>
+  indices: (keyof Type)[]
+  fields: Record<keyof Type, FieldType>
 };
 
 export type SchemeFile = {
@@ -19,6 +20,7 @@ export const DefaultTableSettings = {
   manyRecords: true,
   maxPartitionSize: 1024 * 1024 * 1024,
   maxPartitionLenght: 10 * 1000,
+  maxIndexPartitionLenght: 100 * 1000,
   dynamicData: false,
 }
 
@@ -30,7 +32,33 @@ const EmptyTable: TableMetadata = {
   partitions: []
 };
 
+const Tables: Record<string, Table<any>> = {}
+
+
 export class DataBase {
+
+  static loadAllTables() {
+    let dbScheme: SchemeFile = rfs(SCHEME_PATH);
+    if (!dbScheme?.tables) throw new Error("Scheme IDocument is invalid! The 'tables' key is missing");
+    for (const tableName in dbScheme.tables) {
+      this.getTable(tableName);
+    }
+  }
+
+  static getTables() {
+    return Tables;
+  }
+
+  static getTable(name: string) {
+    if (!Tables[name]) {
+      const meta = rfs(getMetaFilepath(name));
+      let dbScheme: SchemeFile = rfs(SCHEME_PATH);
+      Tables[name] = new Table(name, dbScheme.tables[name], meta, Table.loadIndex(name, meta, dbScheme.tables[name]));
+    }
+
+    return Tables[name];
+  }
+
   static getScheme(tableName: string): TableScheme | undefined {
     const dbScheme: SchemeFile = rfs(SCHEME_PATH);
     if (!dbScheme?.tables) throw new Error("Scheme IDocument is invalid! 'tables' missing");
@@ -41,7 +69,7 @@ export class DataBase {
     return !!this.getScheme(tableName);
   }
 
-  static createTable({ name, fields, settings }: TCreateTable) {
+  static createTable<Type extends PlainObject>({ name, fields, settings, indices: unsortedIndices }: TCreateTable<Type>): Table<Type> {
     if (this.isTableExist(name)) {
       throw new Error(`Table '${name}' already exists`);
     }
@@ -50,9 +78,14 @@ export class DataBase {
     settings = {
       ...DefaultTableSettings,
       ...settings
-    } as TableSettings;
+    };
+
+    const indices: string[] = Table.arrangeSchemeIndices(fields, unsortedIndices as string[]);
 
     mkdirSync(`/data/${name}/`);
+
+    wfs(Table.getIndexFilename(name, 0), {});
+
     for (const fieldName in fields) {
       const type = fields[fieldName];
       if (isHeavyType(type)) {
@@ -60,17 +93,20 @@ export class DataBase {
       }
     }
 
-    wfs(`/data/${name}/meta.json`, EmptyTable);
+    wfs(getMetaFilepath(name), EmptyTable);
 
     const schemeFile: SchemeFile = rfs(SCHEME_PATH);
     schemeFile.tables[name] = {
       fields,
+      indices,
       settings: settings as TableSettings,
     };
 
     wfs(SCHEME_PATH, schemeFile, {
       pretty: true
     });
+
+    return this.getTable(name);
   }
 
   static removeTable(name: string) {
@@ -80,11 +116,13 @@ export class DataBase {
     const schemeFile: SchemeFile = rfs(SCHEME_PATH);
 
     delete schemeFile.tables[name];
+    delete Tables[name];
     wfs(SCHEME_PATH, schemeFile, {
       pretty: true
     });
 
     rimraf.sync(`${process.cwd()}/data/${name}/`);
   }
-
 }
+
+// DataBase.loadAllTables();
