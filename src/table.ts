@@ -19,11 +19,7 @@ export type TableScheme = {
 };
 
 
-export type TableMetadata = {
-  index: number
-  length: number
-  partitions: PartitionMeta[]
-}
+index: number
 
 export type DocumentData = Record<string, any[]>;
 export type Partition = {
@@ -33,11 +29,6 @@ export type Partition = {
   id: number
   size: number
   meta: PartitionMeta
-}
-
-export type PartitionMeta = {
-  length: number
-  end: number
 }
 
 export type BooleansFileContents = {
@@ -445,16 +436,7 @@ export class Table<Type extends PlainObject = any> {
     }
   }
 
-  protected insertDocColumn(fieldIndex: number, predicate: (idStr: string, partId: number) => any) {
-    this.forEachPartition((docs, part) => {
-      this.currentPartition.isDirty = true;
-      for (const idStr in docs) {
-        const arr = docs[idStr];
-        arr.splice(fieldIndex, 0, predicate(idStr, part.id));
-      }
-    });
-    this.closePartition();
-  }
+
 
   createIndex(field: string, save = true): void {
     const { fields, indices } = this.scheme;
@@ -524,9 +506,9 @@ export class Table<Type extends PlainObject = any> {
     }
 
     setTimeout(() => {
-      (global as any).gc();  
+      (global as any).gc();
     }, 10 * 1000);
-    
+
     console.log(Math.floor(100 * indexSize / 1024 / 1024 / 1024) / 100);
     return result;
   }
@@ -537,19 +519,6 @@ export class Table<Type extends PlainObject = any> {
 
   getIndexFilename(part: number) {
     return Table.getIndexFilename(this.name, part);
-  }
-
-  partitionExceedsSize(): boolean {
-    const { settings } = this.scheme;
-    const { size, meta } = this.currentPartition;
-
-    if (settings.maxPartitionLenght && (meta.length > settings.maxPartitionLenght)) {
-      return true;
-    }
-    if (settings.maxPartitionSize && (size > settings.maxPartitionSize)) {
-      return true;
-    }
-    return false;
   }
 
   // insert<Type extends PlainObject>(data: Type): Document<Type>
@@ -568,52 +537,6 @@ export class Table<Type extends PlainObject = any> {
     return new Document(this, idStr, this.currentPartition.id) as TDocument<Type>;
   }
 
-  createNewPartition(): void {
-    this.closePartition();
-    const meta: PartitionMeta = { length: 0, end: 0 };
-    const id = this.meta.partitions.length;
-    this.meta.partitions.push(meta);
-    const fileName = getPartitionFilePath(this.name, id);
-    wfs(fileName, {});
-    wfs(this.getIndexFilename(id), {});
-    this._currentPartition = {
-      documents: {},
-      isDirty: false,
-      fileName,
-      size: 0,
-      meta,
-      id,
-    };
-  }
-
-  openPartition(index: number): void {
-    const meta: PartitionMeta | undefined = this.meta.partitions[index];
-    if (!meta) {
-      throw new Error(`partition '${index}' doesn't exists`);
-    }
-
-    if (this._currentPartition && this._currentPartition.id == index) return;
-
-    this.closePartition();
-    const fileName = getPartitionFilePath(this.name, index);
-    const size = statSync(fileName).size;
-    const isLastPartition = index === this.meta.partitions.length - 1;
-    if (isLastPartition && size >= this.scheme.settings.maxPartitionSize) {
-      this.createNewPartition();
-      return;
-    }
-
-    let documents: DocumentData = rfs(fileName);
-
-    this._currentPartition = {
-      documents,
-      isDirty: false,
-      fileName,
-      size,
-      meta,
-      id: index,
-    };
-  }
 
 
   expandObject(arr: any[]) {
@@ -646,16 +569,6 @@ export class Table<Type extends PlainObject = any> {
     })
 
     return [lightValues, indexValues];
-  }
-
-  closePartition() {
-    const p = this._currentPartition;
-    if (!p) return;
-
-    if (p.isDirty) {
-      this.save();
-    }
-    this._currentPartition = undefined;
   }
 
   protected save() {
@@ -705,35 +618,22 @@ export class Table<Type extends PlainObject = any> {
     });
   }
 
+  protected insertDocColumn(fieldIndex: number, predicate: (idStr: string, partId: number) => any) {
+    this.forEachPartition((docs, part) => {
+      this.currentPartition.isDirty = true;
+      for (const idStr in docs) {
+        const arr = docs[idStr];
+        arr.splice(fieldIndex, 0, predicate(idStr, part.id));
+      }
+    });
+    this.closePartition();
+  }
+
   getDocumentData(id: string): any[] {
-    const data = this.currentPartition?.documents[id];
+
+    const data = this._currentPartition?.documents[id];
     if (!data) throw new Error(`wrong document id '${id}' (${Table.idNumber(id)})`);
     return data;
-  }
-
-  static findPartitionForId(id: number, partitions: PartitionMeta[], tableLenght: number): number | false {
-    const ratio = id / tableLenght;
-    let startPartitionID = Math.floor(partitions.length * ratio);
-    let startIndex = 0;
-    while (startPartitionID > 0) {
-      // startPartitionID--;
-      startIndex = partitions[startPartitionID - 1].end;
-      if (startIndex <= id) {
-        break;
-      }
-      startPartitionID--;
-    }
-
-    for (let i = startPartitionID; i < partitions.length; i++) {
-      const element = partitions[i];
-      if (startIndex <= id && id <= element.end) return i;
-      startIndex = element.end;
-    }
-    return false;
-  }
-
-  findPartitionForId(id: number): number | false {
-    return Table.findPartitionForId(id, this.meta.partitions, this.meta.length);
   }
   /**
    * run predicate for eacn document with given ids

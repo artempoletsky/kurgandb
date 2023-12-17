@@ -4,7 +4,7 @@ import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/u
 import { clientQueryUnsafe as clientQuery } from "../src/api";
 import { before } from "node:test";
 import { DataBase } from "../src/db";
-import { PartitionMeta, Table, getMetaFilepath } from "../src/table";
+import { Table, getMetaFilepath } from "../src/table";
 import { Document, FieldType } from "../src/document";
 
 
@@ -340,28 +340,5 @@ describe("Misc", () => {
     expect(generate(1000 * 1000 * 1000)).toBe(1000 * 1000 * 1000);
   });
 
-  test("Partition ID search", () => {
-    const partitions: PartitionMeta[] = [];
-    const lenght = 1000 * 1000 * 1000;
-    const partitionSize = 100 * 1000;
-    const numPartitions = lenght / partitionSize;
-    let end = partitionSize;
-    for (let i = 0; i < numPartitions; i++) {
-      partitions.push({
-        length: partitionSize,
-        end,
-      });
-      end += partitionSize;
-    }
 
-    const id = Math.floor(Math.random() * lenght);
-
-    perfStart("partition search");
-    const partitionId = Table.findPartitionForId(id, partitions, lenght);
-    perfEnd("partition search");
-
-    // perfLog("partition search")
-    expect(partitionId).not.toBe(false);
-    expect(perfDur("partition search")).toBeLessThan(20);
-  });
 });
