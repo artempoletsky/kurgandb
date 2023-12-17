@@ -9,9 +9,10 @@ const xtest = (...args: any) => { };
 
 
 describe("Fragmented dictionary", () => {
-  let numbers: FragmentedDictionary<number>;
-  let letters: FragmentedDictionary<number>;
-  let partitions: FragmentedDictionary<number>;
+  let numbers: FragmentedDictionary<number, number>;
+  let letters: FragmentedDictionary<string, number>;
+  let partitions: FragmentedDictionary<number, number>;
+
   const PART = "/data/jest_dict_partititions/";
   const LETT = "/data/jest_dict_letters/";
   const NUM = "/data/jest_dict_numbers/";
@@ -109,10 +110,34 @@ describe("Fragmented dictionary", () => {
     expect(partitions.numPartitions).toBe(4);
   });
 
+
+  test("splits partitions", () => {
+    const initial = ["b", "c", "x", "y", "z",];
+    letters.insertMany(initial, initial.map(l => Math.random()));
+
+    letters.splitPartition(0, "p");
+    let p0 = letters.openPartition(0);
+    let p1 = letters.openPartition(1);
+    expect(p0.b).toBeDefined();
+    expect(p0.c).toBeDefined();
+    expect(p0.x).toBeUndefined();
+    expect(p1.b).toBeUndefined();
+    expect(p1.c).toBeUndefined();
+    expect(p1.x).toBeDefined();
+    let m0 = letters.meta.partitions[0];
+    let m1 = letters.meta.partitions[1];
+    expect(m0.length).toBe(2);
+    expect(m0.end).toBe("c");
+    expect(m1.length).toBe(1);
+    expect(m1.end).toBe("x");
+
+    letters = FragmentedDictionary.reset(letters);
+  });
+
   test("adds items at the tail", async () => {
     numbers.insertArray([1]);
     expect(numbers.lenght).toBe(1);
-    expect(numbers.lastID).toBe(1)
+    expect(numbers.end).toBe(1)
     expect(numbers.meta.start).toBe(1)
 
     numbers.insertArray([2, 3, 4]);
@@ -122,30 +147,72 @@ describe("Fragmented dictionary", () => {
     expect(p1[4]).toBe(4);
 
     expect(numbers.numPartitions).toBe(2);
-    expect(numbers.lastID).toBe(4);
+    expect(numbers.end).toBe(4);
   });
 
 
   test("adds items at the center", async () => {
-    const initial = ["a", "b", "c", "x", "y", "z",];
+    const initial = ["b", "c", "x", "y", "z",];
     const getLetterPosition = (k: string) => (parseInt(k, 36) - 10 + 1);
 
     expect(getLetterPosition("a")).toBe(1);
     expect(getLetterPosition("c")).toBe(3);
 
+
     letters.insertMany(initial, initial.map(getLetterPosition));
+    expect(letters.start).toBe("b");
+    expect(letters.end).toBe("z");
+    expect(letters.meta.partitions[0].end).toBe("x");
+    expect(letters.meta.partitions[0].length).toBe(3);
+    expect(letters.meta.partitions[1].end).toBe("z");
+    expect(letters.meta.partitions[1].length).toBe(2);
+    expect(letters.lenght).toBe(5);
 
-    expect(letters.numPartitions).toBe(2);
-    expect(letters.openPartition(1).z).toBe(26);
-    expect(letters.openPartition(0).a).toBe(1);
-    expect(letters.meta.start).toBe("a");
-    expect(letters.lastID).toBe("z");
+    expect(letters.findPartitionForId("z")).toBe(1);
+    expect(letters.findPartitionForId("b")).toBe(0);
 
+    expect(letters.getOne("z")).toBe(26);
+    expect(letters.getOne("b")).toBe(2);
+
+
+    // expect(letters.findPartitionForId("p")).toBe(0);
     const ptk = ["p"].sort();
     letters.insertMany(ptk, ptk.map(getLetterPosition));
+    
+    
+    expect(letters.openPartition(1)).toHaveProperty("p");
+    expect(letters.numPartitions).toBe(3);
+    expect(letters.getOne("p")).toBe(16);
+
+
+    letters.insertMany({
+      a: getLetterPosition("a")
+    });
+    // console.log(letters.openPartition(0));
+    
+    expect(letters.start).toBe("a");
+    expect(letters.meta.partitions[0].end).toBe("c");
+    // console.log(letters.meta.partitions);
 
     expect(letters.numPartitions).toBe(3);
-    expect(letters.openPartition(1).p).toBe(16);
+    expect(letters.findPartitionForId("b")).toBe(0);
+
+  });
+
+
+  test("edits items", async () => {
+    letters.edit(["b", "a"], (id, value) => value * 10);
+    // console.log(letters.openPartition(0));
+    expect(letters.findPartitionForId("a")).toBe(0)
+    expect(letters.findPartitionForId("b")).toBe(0)
+    expect(letters.getOne("a")).toBe(10);
+    expect(letters.getOne("b")).toBe(20);
+  });
+
+  test("removes items", async () => {
+    letters.remove(["b", "a"]);
+    expect(letters.getOne("a")).toBe(undefined);
+    expect(letters.getOne("b")).toBe(undefined);
   });
 
   afterAll(() => {

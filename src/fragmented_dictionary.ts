@@ -3,10 +3,10 @@ import { PlainObject, existsSync, mkdirSync, renameSync, rfs, rmie, statSync, wf
 
 
 type ValueType = "array" | "value";
-type KeyType = "int" | "string";
+// type KeyType = ;
 
 export type FragmentedDictionarySettings = {
-  keyType: KeyType,
+  keyType: "int" | "string",
   maxPartitionSize: number,
   maxPartitionLenght: number,
   directory: string,
@@ -24,6 +24,8 @@ export type FragDictMeta = {
   partitions: PartitionMeta[]
 }
 
+export type PartitionIterateMap<KeyType> = Map<number, KeyType[]>;
+
 const EMPTY_DICT_META: FragDictMeta = {
   length: 0,
   start: "",
@@ -38,11 +40,26 @@ const DefaultFragmentDictionarySettings: FragmentedDictionarySettings = {
   directory: "",
 };
 
-export default class FragmentedDictionary<Type> {
+
+function maxKey<KeyType extends string | number>(i1: KeyType, i2: KeyType): KeyType {
+  return i1 > i2 ? i1 : i2;
+}
+
+function minKey<KeyType extends string | number>(i1: KeyType, i2: KeyType): KeyType {
+  return i1 < i2 ? i1 : i2;
+}
+
+export default class FragmentedDictionary<KeyType extends string | number, Type> {
   public readonly settings: FragmentedDictionarySettings;
   public meta: FragDictMeta;
 
-  static init<Type>(settings: Partial<FragmentedDictionarySettings> = {}) {
+  static reset<KeyType extends string | number, Type>(dict: FragmentedDictionary<KeyType, Type>): FragmentedDictionary<KeyType, Type> {
+    const settings = dict.settings;
+    dict.destroy();
+    return this.init(settings);
+  }
+
+  static init<KeyType extends string | number, Type>(settings: Partial<FragmentedDictionarySettings> = {}) {
     const opt = Object.assign({}, DefaultFragmentDictionarySettings, settings);
     if (!settings.directory) throw new Error(`'directory' is a required parameter!`);
     if (existsSync(opt.directory)) throw new Error(`directory '${opt.directory}' already exists`);
@@ -50,13 +67,13 @@ export default class FragmentedDictionary<Type> {
     const metaFilename = `${opt.directory}meta.json`;
     wfs(metaFilename, EMPTY_DICT_META);
     wfs(`${opt.directory}settings.json`, opt);
-    return this.open<Type>(opt.directory);
+    return this.open<KeyType, Type>(opt.directory);
   }
 
-  static open<Type>(directory: string) {
+  static open<KeyType extends string | number, Type>(directory: string) {
     const metaFilename = `${directory}meta.json`;
     const settingsFilename = `${directory}settings.json`;
-    return new FragmentedDictionary<Type>(rfs(settingsFilename), rfs(metaFilename));
+    return new FragmentedDictionary<KeyType, Type>(rfs(settingsFilename), rfs(metaFilename));
   }
 
   constructor(settings: FragmentedDictionarySettings, meta: FragDictMeta) {
@@ -73,22 +90,25 @@ export default class FragmentedDictionary<Type> {
     return this.meta.length;
   }
 
-  public get lastID(): string | number {
+  public get end(): KeyType {
     const { partitions } = this.meta;
     const { keyType } = this.settings;
-    if (!partitions.length) return keyType == "int" ? 0 : "";
-    return partitions[partitions.length - 1].end;
+    if (!partitions.length) return (keyType == "int" ? 0 : "") as KeyType;
+    return partitions[partitions.length - 1].end as KeyType;
+  }
+
+  public get start(): KeyType {
+    return this.meta.start as KeyType;
   }
 
   public get numPartitions(): number {
     return this.meta.partitions.length;
   }
 
-  findPartitionsForIds<KeyType extends string | number>(ids: KeyType[]) {
+  findPartitionsForIds(ids: KeyType[]): PartitionIterateMap<KeyType> {
     const partitionsToOpen = new Map<number, KeyType[]>();
     for (const id of ids) {
       let partId = this.findPartitionForId(id);
-      if (partId === false) continue;
       let pIds = partitionsToOpen.get(partId) || [];
       pIds.push(id);
       partitionsToOpen.set(partId, pIds);
@@ -96,23 +116,125 @@ export default class FragmentedDictionary<Type> {
     return partitionsToOpen;
   }
 
-  dividePartition(id: number) {
+  editRange(predicate: (id: KeyType, value: Type) => Type | undefined, min?: KeyType, max?: KeyType, limit = 100) {
+    if (min === undefined) {
+      min = this.start;
+    }
+    if (max === undefined) {
+      max = this.end;
+    }
 
+    let found = 0;
+    let startPart = this.findPartitionForId(min);
+    let endPart = this.findPartitionForId(max);
+
+    const { keyType } = this.settings;
+    for (let i = startPart; i <= endPart; i++) {
+      const docs = this.openPartition(i);
+      let isDirty = false;
+      for (const idStr in docs) {
+        const id = (keyType == "int" ? idStr as any * 1 : idStr) as KeyType;
+
+        if (min <= id && id <= max) {
+
+
+          const value = docs[idStr];
+          const newValue = predicate(id, value);
+          if (value !== newValue) isDirty = true;
+
+          if (newValue === undefined) {
+            delete docs[idStr];
+          } else {
+            docs[idStr] = newValue;
+          }
+          found++;
+        }
+
+        if (limit && found >= limit) break;
+      }
+      if (isDirty) {
+        isDirty = false;
+        wfs(this.getPartitionFilename(i), docs);
+      }
+
+      if (limit && found >= limit) break;
+    }
+  }
+
+  removeRange(min?: KeyType, max?: KeyType, limit = 100): KeyType[] {
+    const result: KeyType[] = [];
+    this.editRange((id, val) => {
+      result.push(id);
+      return undefined;
+    }, min, max, limit);
+    return result;
+  }
+
+  getRange(min?: KeyType, max?: KeyType, limit = 100): Record<string, Type> {
+    const result: Record<string, Type> = {};
+    this.editRange((id, val) => {
+      result[id as string] = val;
+      return val;
+    }, min, max, limit);
+
+    return result;
+  }
+
+  getOne(id: KeyType): Type | undefined {
+    const docs = this.openPartition(this.findPartitionForId(id));
+    return docs[id as string];
+  }
+
+  /**
+   * 
+   * @param partId partition to split
+   * @param key id split by
+   * @returns ID of the partition with lesser length
+   */
+  splitPartition(partId: number, key: KeyType): number {
+    const { keyType } = this.settings;
+    const docs = this.openPartition(partId);
+    const part1: Record<string, Type> = {};
+    const part2: Record<string, Type> = {};
+
+    this.createNewPartition(partId);
+    const meta1: PartitionMeta = this.meta.partitions[partId];
+    const meta2: PartitionMeta = this.meta.partitions[partId + 1];
+    meta2.length = 0;
+
+    for (const idStr in docs) {
+      const id = (keyType == "int" ? idStr as any * 1 : idStr) as KeyType;
+
+      if (id < key) {
+        meta1.length++;
+        meta1.end = maxKey(id, meta1.end);
+        part1[idStr] = docs[idStr];
+      } else {
+        meta2.length++;
+        meta2.end = maxKey(id, meta2.end);
+        part2[idStr] = docs[idStr];
+      }
+    }
+
+
+    wfs(this.getPartitionFilename(partId), part1);
+    wfs(this.getPartitionFilename(partId + 1), part2);
+    return meta1.length < meta2.length ? partId : partId + 1;
   }
 
   insertArray(arr: Type[]) {
     const { keyType } = this.settings;
     if (keyType == "string") throw new Error("'insertArray' is only supported on 'int' keyType dictionaries!");
 
-    const lastID = this.lastID as number;
+    const lastID = this.end as number;
     const ids = arr.map((val, i) => lastID + i + 1);
-    this.insertMany(ids, arr);
+    this.insertMany(ids as any, arr);
     return ids;
   }
 
   insertMany(dict: Record<string, Type>): void
-  insertMany<KeyType extends string | number>(keys: KeyType[], values: Type[]): void
-  insertMany<KeyType extends string | number>(keys: KeyType[], values: Type[], dict: Record<string, Type>): void
+  insertMany(keys: KeyType[], values: Type[]): void
+  insertMany(keys: KeyType[], values: Type[], dict: Record<string, Type>): void
   insertMany(arg1: any, arg2?: any, arg3?: any): void {
     // const reducer = (d: Record<string, Type>, k: string | number) => { d[k] = dict[k]; return d; };
     const { maxPartitionLenght, keyType, maxPartitionSize } = this.settings;
@@ -137,20 +259,21 @@ export default class FragmentedDictionary<Type> {
 
     if (!keys.length) return;
 
+    const firstKey = keys[0];
     if (this.lenght == 0) {
       // TODO: sort keys
-      this.meta.start = keys[0];
+      this.meta.start = firstKey as any;
     }
 
-    if (this.meta.start > keys[0]) {
-      this.meta.start = keys[0];
+    if (this.meta.start > firstKey) {
+      this.meta.start = firstKey as any;
     }
 
 
 
     const partitionsToOpen = this.findPartitionsForIds(keys);
     Array.from(partitionsToOpen.keys()).sort().reverse().forEach(partId => {
-      let tail = partitionsToOpen.get(partId) as (string | number)[];
+      let tail: KeyType[] = partitionsToOpen.get(partId) as KeyType[];
 
       while (tail.length > 0) {
         let currentMeta = partitions[partId];
@@ -159,17 +282,22 @@ export default class FragmentedDictionary<Type> {
         }
 
         let capacity = maxPartitionLenght - currentMeta.length;
+        let partitionExceedsSize = false;
         if (capacity <= 0) {
-          if (tail[0] > currentMeta.end)
-            partId++;
-
-          currentMeta = this.createNewPartition(partId);
+          partitionExceedsSize = true;
         } else if (maxPartitionSize) {
           const size = statSync(this.getPartitionFilename(partId)).size;
-          if (size >= maxPartitionSize) {
-            if (tail[0] > currentMeta.end)
-              partId++;
+          if (size >= maxPartitionSize)
+            partitionExceedsSize = true;
+        }
+
+        if (partitionExceedsSize) {
+          if (tail[0] > currentMeta.end) {
+            partId++;
             currentMeta = this.createNewPartition(partId);
+          } else {
+            partId = this.splitPartition(partId, tail[0]);
+            currentMeta = partitions[partId];
           }
         }
 
@@ -186,9 +314,8 @@ export default class FragmentedDictionary<Type> {
 
         const docs = this.openPartition(partId);
         for (const id of idsToInsert) {
-          // if(id == "p") debugger;
-          docs[id] = dict[id];
-          currentMeta.end = id;
+          docs[id as string] = dict[id as string];
+          currentMeta.end = maxKey(id, currentMeta.end);
           currentMeta.length++;
         }
 
@@ -202,7 +329,7 @@ export default class FragmentedDictionary<Type> {
 
   }
 
-  edit<T extends string | number>(ids: T[], predicate: (id: T, value: Type) => Type | undefined) {
+  edit(ids: KeyType[], predicate: (id: KeyType, value: Type) => Type | undefined) {
     this.findPartitionsForIds(ids).forEach((ids, partitionId) => {
       const docs = this.openPartition(partitionId);
       for (const id of ids) {
@@ -217,11 +344,11 @@ export default class FragmentedDictionary<Type> {
     });
   }
 
-  remove<T extends string | number>(ids: T[]) {
-    this.edit<T>(ids, () => undefined);
+  remove(ids: KeyType[]) {
+    this.edit(ids, () => undefined);
   }
 
-  static findPartitionForId(id: number | string, dictMeta: FragDictMeta): number {
+  static findPartitionForId<KeyType>(id: KeyType, dictMeta: FragDictMeta): number {
     const { partitions } = dictMeta;
 
     if (id <= dictMeta.start) {
@@ -262,8 +389,8 @@ export default class FragmentedDictionary<Type> {
     throw new Error(`couldn't find partition for id '${id}'`);
   }
 
-  findPartitionForId(id: number | string): number | false {
-    return FragmentedDictionary.findPartitionForId(id, this.meta);
+  findPartitionForId(id: KeyType): number {
+    return FragmentedDictionary.findPartitionForId<KeyType>(id, this.meta);
   }
 
   getPartitionFilename(id: number) {
@@ -288,7 +415,8 @@ export default class FragmentedDictionary<Type> {
   }
 
   createNewPartition(id: number): PartitionMeta {
-    const meta: PartitionMeta = { length: 0, end: 0 };
+    const { keyType } = this.settings;
+    const meta: PartitionMeta = { length: 0, end: keyType == "int" ? 0 : "" };
     const { partitions } = this.meta;
     if (partitions.length > 0)
       for (let i = partitions.length - 1; i >= id; i--) {
