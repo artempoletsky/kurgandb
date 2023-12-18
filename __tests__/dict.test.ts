@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, existsSync, wfs } from "../src/utils";
 import FragmentedDictionary, { FragDictMeta, PartitionMeta } from "../src/fragmented_dictionary";
+import SortedDictionary from "../src/sorted_dictionary";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -25,6 +26,7 @@ describe("Fragmented dictionary", () => {
 
     partitions = FragmentedDictionary.init({
       directory: PART,
+      keyType: "int"
     });
 
 
@@ -36,9 +38,9 @@ describe("Fragmented dictionary", () => {
   });
 
   test("Partition ID search", () => {
-    const partitions: PartitionMeta[] = [];
+    const partitions: PartitionMeta<number>[] = [];
     const length = 1000 * 1000 * 1000;
-    const dictMeta: FragDictMeta = {
+    const dictMeta: FragDictMeta<number> = {
       length,
       partitions,
       start: 0,
@@ -67,7 +69,7 @@ describe("Fragmented dictionary", () => {
   });
 
   test("Partition ID search 2", () => {
-    const dictMeta: FragDictMeta = {
+    const dictMeta: FragDictMeta<string> = {
       length: 9,
       partitions: [{ end: "c", length: 3 }, { end: "f", length: 3 }, { end: "z", length: 3 }],
       start: "a",
@@ -110,6 +112,18 @@ describe("Fragmented dictionary", () => {
     expect(partitions.numPartitions).toBe(4);
   });
 
+  test("inserts sorted dict", () => {
+    numbers = FragmentedDictionary.reset(numbers);
+
+    numbers.insertSortedDict(SortedDictionary.fromLenght(15));
+    expect(numbers.lenght).toBe(15);
+    expect(numbers.start).toBe(1);
+    expect(numbers.end).toBe(15);
+    expect(numbers.getOne(15)).toBe(15);
+    expect(numbers.getOne(7)).toBe(7);
+    expect(numbers.getOne(1)).toBe(1);
+
+  });
 
   test("splits partitions", () => {
     const initial = ["b", "c", "x", "y", "z",];
@@ -135,6 +149,7 @@ describe("Fragmented dictionary", () => {
   });
 
   test("adds items at the tail", async () => {
+    numbers = FragmentedDictionary.reset(numbers);
     numbers.insertArray([1]);
     expect(numbers.lenght).toBe(1);
     expect(numbers.end).toBe(1)
@@ -178,8 +193,8 @@ describe("Fragmented dictionary", () => {
     // expect(letters.findPartitionForId("p")).toBe(0);
     const ptk = ["p"].sort();
     letters.insertMany(ptk, ptk.map(getLetterPosition));
-    
-    
+
+
     expect(letters.openPartition(1)).toHaveProperty("p");
     expect(letters.numPartitions).toBe(3);
     expect(letters.getOne("p")).toBe(16);
@@ -189,7 +204,7 @@ describe("Fragmented dictionary", () => {
       a: getLetterPosition("a")
     });
     // console.log(letters.openPartition(0));
-    
+
     expect(letters.start).toBe("a");
     expect(letters.meta.partitions[0].end).toBe("c");
     // console.log(letters.meta.partitions);

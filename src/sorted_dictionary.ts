@@ -1,5 +1,6 @@
 
 import sortedIndex from "lodash.sortedindex";
+import uniq from "lodash.uniq";
 
 export default class SortedDictionary<KeyType extends string | number, Type> {
   protected dict: Record<string, Type> = {};
@@ -10,7 +11,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     this.dict = dict;
     this.keyType = keyType;
     if (keys) {
-      this._keys = keys;
+      this._keys = uniq(keys);
     }
     else {
       const strKeys = Object.keys(dict);
@@ -72,12 +73,9 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
   static fromKeys<KeyType extends string | number>(array: KeyType[]) {
     if (!array.length) throw new Error("array is empty");
     const keyType = typeof array[0] == "number" ? "int" : "string";
-    const newKeys: KeyType[] = [];
+    const newKeys: KeyType[] = uniq(array);
     const dict = array.reduce((d, k) => {
-      if (d[k as string] === undefined) {
-        d[k as string] = k;
-        newKeys.push(k);
-      }
+      d[k as string] = k;
       return d;
     }, {} as Record<string, KeyType>);
     return new SortedDictionary<KeyType, KeyType>(keyType, dict, false, newKeys);
