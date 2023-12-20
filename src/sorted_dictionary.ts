@@ -3,11 +3,11 @@ import sortedIndex from "lodash.sortedindex";
 import uniq from "lodash.uniq";
 
 export default class SortedDictionary<KeyType extends string | number, Type> {
-  protected dict: Record<string, Type> = {};
+  protected dict: Record<string | number, Type> = {};
   protected _keys: KeyType[];
   protected keyType: "string" | "int";
 
-  constructor(keyType: "string" | "int", dict: Record<string, Type> = {}, sorted = true, keys?: KeyType[]) {
+  constructor(keyType: "string" | "int", dict: Record<string | number, Type> = {}, sorted = true, keys?: KeyType[]) {
     this.dict = dict;
     this.keyType = keyType;
     if (keys) {
@@ -28,7 +28,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
   }
 
   values() {
-    return this._keys.map(k => this.dict[k as string]);
+    return this._keys.map(k => this.dict[k]);
   }
 
   keys() {
@@ -44,15 +44,15 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
   }
 
   get(index: KeyType) {
-    return this.dict[index as string];
+    return this.dict[index];
   }
 
   set(index: KeyType, value: Type) {
-    if (this.dict[index as string] === undefined) {
+    if (this.dict[index] === undefined) {
       const i = sortedIndex(this._keys, index);
       this._keys.splice(i, 0, index);
     }
-    this.dict[index as string] = value;
+    this.dict[index] = value;
   }
 
   static fromArray<Type>(array: Type[], startIndex = 1) {
@@ -75,9 +75,9 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     const keyType = typeof array[0] == "number" ? "int" : "string";
     const newKeys: KeyType[] = uniq(array);
     const dict = array.reduce((d, k) => {
-      d[k as string] = k;
+      d[k] = k;
       return d;
-    }, {} as Record<string, KeyType>);
+    }, {} as Record<KeyType, KeyType>);
     return new SortedDictionary<KeyType, KeyType>(keyType, dict, false, newKeys);
   }
 
@@ -96,22 +96,22 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
    */
   pop(index: KeyType) {
     this._keys.splice(this._keys.indexOf(index), 1);
-    const value = this.dict[index as string];
-    delete this.dict[index as string];
+    const value = this.dict[index];
+    delete this.dict[index];
     return value;
   }
 
   forEach(predicate: (val: Type, key: KeyType, index: number) => any) {
-    this._keys.forEach((key, ind) => predicate(this.dict[key as string], key, ind));
+    this._keys.forEach((key, ind) => predicate(this.dict[key], key, ind));
   }
 
   splitByIndex(index: number): SortedDictionary<KeyType, Type> {
     const keys = this._keys.slice(index);
     const dict = keys.reduce((d, k) => {
-      d[k as string] = this.dict[k as string];
-      delete this.dict[k as string];
+      d[k] = this.dict[k];
+      delete this.dict[k];
       return d;
-    }, {} as Record<string, Type>);
+    }, {} as Record<KeyType, Type>);
     this._keys = this._keys.slice(0, index);
 
     return new SortedDictionary<KeyType, Type>(this.keyType, dict, true, keys);
@@ -125,16 +125,16 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
   transform<NewType>(predicate: (key: KeyType, value: Type) => NewType): SortedDictionary<KeyType, NewType> {
     const newKeys = this.keys();
     const newDict = newKeys.reduce((d, k) => {
-      d[k as string] = predicate(k, this.dict[k as string]);
+      d[k] = predicate(k, this.dict[k]);
       return d;
-    }, {} as Record<string, NewType>);
+    }, {} as Record<KeyType, NewType>);
     return new SortedDictionary<KeyType, NewType>(this.keyType, newDict, true, newKeys);
   }
 
   toJSON() {
     return this._keys.reduce((res, key) => {
-      res[key as string] = this.dict[key as string];
+      res[key] = this.dict[key];
       return res;
-    }, {} as Record<string, Type>);
+    }, {} as Record<KeyType, Type>);
   }
 }
