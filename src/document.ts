@@ -200,7 +200,9 @@ export class Document<KeyType extends string | number, Type> {
   }
 
   public getJSONContent(key: string) {
-    return JSON.parse(this.getTextContent(key))
+    const text = this.getTextContent(key);
+    if (!text) return null;
+    return JSON.parse(text);
   }
 
   public serialize(): any[] {

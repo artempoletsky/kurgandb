@@ -28,10 +28,10 @@ xdescribe("loading index", () => {
 describe("Table", () => {
 
   type SimpleType = {
-    date: Date,
+    date: Date | string | number,
     bool: boolean,
     name: string,
-    heavy: {
+    heavy: null | {
       bar: number
     }
   }
@@ -159,6 +159,17 @@ describe("Table", () => {
     if (!foos) return;
     expect(foos[0]).toBe(1);
 
+
+    t.insert({
+      bool: true,
+      date: Date.now(),
+      heavy: null,
+      name: "bar",
+    });
+
+    const bars = t.where("name", "bar").select();
+
+    expect(bars.length).toBe(2);
   });
 
   test("renames a field", () => {
