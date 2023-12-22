@@ -32,7 +32,6 @@ xdescribe("db", () => {
         fields: {
           test: "string"
         },
-        indices: [],
       });
     }, {
       tableName

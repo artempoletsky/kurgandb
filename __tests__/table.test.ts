@@ -6,6 +6,7 @@ import { before } from "node:test";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
 import { Document, FieldType } from "../src/document";
+import FragmentedDictionary from "../src/fragmented_dictionary";
 
 
 const xdescribe = (...args: any) => { };
@@ -18,16 +19,23 @@ xdescribe("loading index", () => {
   xtest("can load index", async () => {
     // await Table.loadIndex(TestTableName, meta);
   });
-  test("getTable", ()=>{
+  test("getTable", () => {
     const t = DataBase.getTable(TestTableName);
     console.log(t.length);
   })
 });
 
-xdescribe("Table", () => {
+describe("Table", () => {
 
-
-  let t: Table<any>;
+  type SimpleType = {
+    date: Date,
+    bool: boolean,
+    name: string,
+    heavy: {
+      bar: number
+    }
+  }
+  let t: Table<number, SimpleType>;
   beforeAll(() => {
     // DataBase.createTable({
     //   name: "posts",
@@ -44,15 +52,37 @@ xdescribe("Table", () => {
     if (DataBase.isTableExist(TestTableName)) {
       DataBase.removeTable(TestTableName);
     }
-    t = DataBase.createTable({
+    t = DataBase.createTable<number, SimpleType>({
       name: TestTableName,
       fields: {
+        bool: "boolean",
+        date: "date",
         name: "string",
         // light: "json",
         heavy: "JSON",
       },
-      indices: ["name"]
+      tags: {
+        name: ["index"]
+      }
     });
+  });
+
+  test("makes objects storable", () => {
+    const storable = t.makeObjectStorable({
+      name: "foo",
+      bool: true,
+      date: new Date(),
+      heavy: {
+        bar: 123
+      }
+    });
+
+    expect(storable.name).toBe("foo");
+    expect(storable).toHaveProperty("heavy.bar");
+    expect(storable.heavy.bar).toBe(123);
+
+    expect(storable.bool).toBe(1);
+    expect(typeof storable.date).toBe("number");
   });
 
   test("adds a document", () => {
@@ -61,15 +91,21 @@ xdescribe("Table", () => {
     const idOffset = t.getLastIndex();
     const lenghtOffset = t.length;
 
-    const d1 = t.insert({
+    const i1 = t.insert({
+      date: new Date(),
+      bool: false,
       name: "foo",
       heavy: {
         bar: Math.random()
       }
     });
 
+    expect(i1).toBe(idOffset + 1);
+
     // d1.get("heavy")
-    const d2 = t.insert({
+    const i2 = t.insert({
+      date: new Date(),
+      bool: true,
       name: "bar",
       heavy: {
         bar: Math.random()
@@ -78,15 +114,55 @@ xdescribe("Table", () => {
 
 
     expect(t.length).toBe(lenghtOffset + 2);
-    expect(d1.id).toBe(idOffset + 1);
-    expect(d2.id).toBe(idOffset + 2);
+
+    expect(i2).toBe(idOffset + 2);
+
+    const d1 = t.at(i1);
+
+    expect(d1).toBeTruthy();
+    if (!d1) return;
 
     expect(d1.name).toBe("foo");
-    expect(d2.name).toBe("bar");
+    expect(t.at(i2)?.name).toBe("bar");
 
   });
-  // return
+
+  test("has tag functions", () => {
+    expect(Table.tagsHasFieldNameWithAnyTag(t.scheme.tags, "name", "index", "unique")).toBe(true);
+    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(true);
+
+    expect(t.fieldHasAllTags("name", "index", "unique")).toBe(false);
+    expect(t.fieldHasAnyTag("name", "primary")).toBe(false);
+
+  });
+
+  test("indices", () => {
+    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
+    let indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+
+    indexDict.insertOne("blablabla", [123]);
+    const arr = indexDict.getOne("blablabla");
+    expect(arr).toBeDefined();
+    if (!arr) return;
+    expect(arr[0]).toBe(123);
+    indexDict.remove(["blablabla"]);
+    expect(indexDict.getOne("blablabla")).toBe(undefined);
+
+
+    t.storeIndexValue("name", "foo123", 456);
+    indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+    expect(indexDict.getOne("foo123")).toBeDefined();
+    indexDict.remove(["foo123"]);
+
+    const foos = indexDict.getOne("foo");
+    expect(foos).toBeDefined();
+    if (!foos) return;
+    expect(foos[0]).toBe(1);
+
+  });
+
   test("renames a field", () => {
+    expect(Object.keys(t.scheme.fields).length).toBe(4);
     t.renameField("heavy", "foo");
 
     // console.log(t.scheme.fields);
@@ -102,30 +178,32 @@ xdescribe("Table", () => {
     }
 
     t.renameField("name", "bar");
-    expect(t.scheme.indices.includes("name")).toBe(false);
-    expect(t.scheme.indices.includes("bar")).toBe(true);
+    expect(t.scheme.tags).not.toHaveProperty("name");
+    expect(t.scheme.tags.bar.includes("index")).toBe(true);
+    expect(Object.keys(t.scheme.fields).length).toBe(4);
   });
 
   test("removes a field", () => {
     t.removeField("bar");
     expect(t.scheme.fields).not.toHaveProperty("bar");
-    expect(t.scheme.indices.includes("bar")).toBe(false);
+    expect(t.scheme.tags).not.toHaveProperty("bar");
+    expect(Object.keys(t.scheme.fields).length).toBe(3);
   });
 
   test("adds a field", () => {
     t.addField("random", "number", e => Math.random());
     expect(t.scheme.fields).toHaveProperty("random");
-    const d = t.at(1);
+    const d: any = t.at(1);
     expect(d.random).toBeLessThan(1);
   });
 
   afterAll(() => {
-    t.closePartition();
+    // t.closePartition();
     // DataBase.removeTable(tableName);
   });
 });
 
-describe("Rich table", () => {
+xdescribe("Rich table", () => {
   type RichType = {
     name: string
     lastTweet: string
@@ -146,6 +224,7 @@ describe("Rich table", () => {
     favoriteQuote: string
 
     favoriteRandomNumber: number
+    salary: number
   }
 
   const RichTypeFields: Record<keyof RichType, FieldType> = {
@@ -165,6 +244,7 @@ describe("Rich table", () => {
     "login": "string",
     "email": "string",
     "phoneNumber": "string",
+    "salary": "number",
   };
 
   const today = (new Date()).toJSON();
@@ -173,6 +253,7 @@ describe("Rich table", () => {
     lastActive: today,
     birthday: today,
     registrationDate: today,
+    salary: 0,
     pageSlug: "asdasdasdasd",
     login: "johndoe",
     email: "johndoe@example.com",
@@ -186,7 +267,7 @@ describe("Rich table", () => {
     blog_posts: [343434, 234823742, 439785345, 34583475345, 3453845734, 3458334535, 1231248576],
     favoriteRandomNumber: 0,
   };
-  let t: Table<RichType>;
+  let t: Table<number, RichType>;
   let row: [any[], any[]];
   xdescribe("filling", () => {
 
@@ -229,7 +310,7 @@ describe("Rich table", () => {
       t.insertSquare(square);
 
       expect(t.length).toBe(initialLenght + square.length);
-
+      t.fieldHasTag("birthday", "memory");
       t.insertSquare(square);
       t.closePartition();
       t.saveIndexPartitions();
@@ -241,6 +322,16 @@ describe("Rich table", () => {
       expect(perfDur("at")).toBeLessThan(30);
     });
 
+
+    test("table query", () => {
+      t.where("birthday", Date.now())
+        .whereRange("salary", 10, 1000)
+        .filter(doc => Math.random() < 0.5)
+        .filter(doc => doc.favoriteQuote.length < 5)
+        .update(doc => {
+          doc.name = "fooo";
+        });
+    })
 
     test("proliferate fill", () => {
       const squaresToAdd = 1 * 1;
@@ -275,7 +366,7 @@ describe("Rich table", () => {
 
 
 
-  describe("reading and modifying", () => {
+  xdescribe("reading and modifying", () => {
 
     beforeAll(() => {
       t = DataBase.getTable(TestTableName);
@@ -322,23 +413,5 @@ describe("Rich table", () => {
       t.saveIndexPartitions();
     })
   });
-
-});
-
-
-describe("Misc", () => {
-  test("String id genetation consistancy", () => {
-    const generate = (num: number) => {
-      return Table.idNumber(Table.idString(num));
-    }
-
-
-    expect(generate(1)).toBe(1);
-    expect(generate(1 * 100)).toBe(1 * 100);
-    expect(generate(1000 * 1000)).toBe(1000 * 1000);
-    expect(generate(10 * 1000 * 1000)).toBe(10 * 1000 * 1000);
-    expect(generate(1000 * 1000 * 1000)).toBe(1000 * 1000 * 1000);
-  });
-
 
 });

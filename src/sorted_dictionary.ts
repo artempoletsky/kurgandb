@@ -2,25 +2,27 @@
 import sortedIndex from "lodash.sortedindex";
 import uniq from "lodash.uniq";
 
+function sortPredicate<KeyType extends string | number>(a: KeyType, b: KeyType) { return a > b ? 1 : -1 };
+
 export default class SortedDictionary<KeyType extends string | number, Type> {
   protected dict: Record<string | number, Type> = {};
   protected _keys: KeyType[];
   protected keyType: "string" | "int";
 
-  constructor(keyType: "string" | "int", dict: Record<string | number, Type> = {}, sorted = true, keys?: KeyType[]) {
-    this.dict = dict;
+  constructor(dict: Record<string | number, Type> = {}, keyType: "string" | "int" = "string", sorted = true, keys?: KeyType[]) {
+
     this.keyType = keyType;
+    this.dict = dict;
     if (keys) {
-      this._keys = uniq(keys);
+      this._keys = keys;
     }
     else {
       const strKeys = Object.keys(dict);
       this._keys = keyType == "string" ? strKeys : strKeys.map(i => i as any * 1) as any;
-      if (!sorted) {
-        this._keys = this._keys.sort();
-      }
     }
-
+    if (!sorted) {
+      this._keys = this._keys.sort(sortPredicate);
+    }
   }
 
   public get length(): number {
@@ -31,8 +33,8 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     return this._keys.map(k => this.dict[k]);
   }
 
-  keys() {
-    return [...this._keys];
+  keys(doNotCopy = false) {
+    return doNotCopy ? this._keys : [...this._keys];
   }
 
   public get firstKey(): KeyType | undefined {
@@ -63,7 +65,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
       keys.push(key);
       return d;
     }, {} as Record<string, Type>);
-    return new SortedDictionary<number, Type>("int", dict, true, keys);
+    return new SortedDictionary<number, Type>(dict, "int", true, keys);
   }
 
   /**
@@ -78,7 +80,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
       d[k] = k;
       return d;
     }, {} as Record<KeyType, KeyType>);
-    return new SortedDictionary<KeyType, KeyType>(keyType, dict, false, newKeys);
+    return new SortedDictionary<KeyType, KeyType>(dict, keyType, false, newKeys);
   }
 
   /**
@@ -91,13 +93,22 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
 
   /**
    * Removes a value at given index and returns the deleted value
-   * @param index index to delete
+   * @param key key to delete
    * @returns deleted value
    */
-  pop(index: KeyType) {
-    this._keys.splice(this._keys.indexOf(index), 1);
-    const value = this.dict[index];
-    delete this.dict[index];
+  pop(key?: KeyType) {
+    let index;
+    if (key === undefined) {
+      index = 0;
+      key = this._keys[0];
+      if (!key) {
+        return undefined;
+      }
+    }
+    index = this._keys.indexOf(key);
+    this._keys.splice(index, 1);
+    const value = this.dict[key];
+    delete this.dict[key];
     return value;
   }
 
@@ -114,7 +125,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     }, {} as Record<KeyType, Type>);
     this._keys = this._keys.slice(0, index);
 
-    return new SortedDictionary<KeyType, Type>(this.keyType, dict, true, keys);
+    return new SortedDictionary<KeyType, Type>(dict, this.keyType, true, keys);
   }
 
   splitByKey(key: KeyType): SortedDictionary<KeyType, Type> {
@@ -128,7 +139,20 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
       d[k] = predicate(k, this.dict[k]);
       return d;
     }, {} as Record<KeyType, NewType>);
-    return new SortedDictionary<KeyType, NewType>(this.keyType, newDict, true, newKeys);
+    return new SortedDictionary<KeyType, NewType>(newDict, this.keyType, true, newKeys);
+  }
+
+  merge(dict: SortedDictionary<KeyType, Type>) {
+    this._keys.push.apply(this._keys, dict._keys);
+    this._keys = this._keys.sort(sortPredicate);
+    // console.log(this._keys);
+    Object.assign(this.dict, dict.dict);
+  }
+
+  drain(dict: SortedDictionary<KeyType, Type>) {
+    this.merge(dict);
+    dict._keys = [];
+    dict.dict = {};
   }
 
   toJSON() {

@@ -1,6 +1,6 @@
 
 import SortedDictionary from "./sorted_dictionary";
-import { existsSync, mkdirSync, renameSync, rfs, rmie, statSync, wfs } from "./utils";
+import { PlainObject, existsSync, mkdirSync, renameSync, rfs, rmie, statSync, wfs } from "./utils";
 
 
 function getEmptyKey<KeyType extends string | number>(keyType: KeyType extends string ? "string" : "int"): KeyType {
@@ -28,6 +28,7 @@ export type FragDictMeta<KeyType extends string | number> = {
 
 export type PartitionIterateMap<KeyType> = Map<number, KeyType[]>;
 
+export type WhereRanges<KeyType> = [KeyType | undefined, KeyType | undefined][];
 
 const DefaultFragmentDictionarySettings: FragmentedDictionarySettings<number> = {
   keyType: "int",
@@ -42,6 +43,10 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   public meta: FragDictMeta<KeyType>;
 
   protected emptyKey: KeyType;
+
+  static rename(oldDir: string, newDir: string) {
+    renameSync(oldDir, newDir);
+  }
 
   static reset<KeyType extends string | number, Type>(dict: FragmentedDictionary<KeyType, Type>): FragmentedDictionary<KeyType, Type> {
     const settings = dict.settings;
@@ -64,14 +69,17 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     };
 
     wfs(metaFilename, empty);
+    const optsToSave: Partial<FragmentedDictionarySettings<KeyType>> = Object.assign({}, opt);
+    delete optsToSave.directory;
     wfs(`${opt.directory}settings.json`, opt);
     return this.open<KeyType, Type>(opt.directory);
   }
 
   static open<KeyType extends string | number, Type>(directory: string) {
     const metaFilename = `${directory}meta.json`;
-    const settingsFilename = `${directory}settings.json`;
-    return new FragmentedDictionary<KeyType, Type>(rfs(settingsFilename), rfs(metaFilename));
+    const settings = rfs(`${directory}settings.json`);
+    settings.directory = directory;
+    return new FragmentedDictionary<KeyType, Type>(settings, rfs(metaFilename));
   }
 
   constructor(settings: FragmentedDictionarySettings<KeyType>, meta: FragDictMeta<KeyType>) {
@@ -125,6 +133,9 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   }
 
   editRange(predicate: (id: KeyType, value: Type) => Type | undefined, min?: KeyType, max?: KeyType, limit = 100) {
+    if (!this.lenght) {
+      return;
+    }
     if (min === undefined) {
       min = this.start;
     }
@@ -148,7 +159,10 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
           const value = docs[idStr];
           const newValue = predicate(id, value);
-          if (value !== newValue) isDirty = true;
+          if (!isDirty) {
+            if (value !== newValue) isDirty = true;
+          }
+
 
           if (newValue === undefined) {
             delete docs[idStr];
@@ -169,28 +183,53 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     }
   }
 
-  removeRange(min?: KeyType, max?: KeyType, limit = 100): KeyType[] {
+  removeRanges(ranges: WhereRanges<KeyType>, predicate?: (id: KeyType, value: Type) => boolean, limit = 0): KeyType[] {
     const result: KeyType[] = [];
-    this.editRange((id, val) => {
-      result.push(id);
-      return undefined;
-    }, min, max, limit);
+    this.editRanges(ranges, (id, val) => {
+      if (!predicate || predicate(id, val)) {
+        result.push(id);
+        return undefined;
+      }
+      return val;
+    }, limit);
     return result;
   }
 
-  getRange(min?: KeyType, max?: KeyType, limit = 100): Record<string, Type> {
-    const result: Record<string, Type> = {};
-    this.editRange((id, val) => {
-      result[id as string] = val;
-      return val;
-    }, min, max, limit);
-
-    return result;
+  setOne(id: KeyType, value: Type) {
+    this.edit([id], () => {
+      return value;
+    });
   }
 
   getOne(id: KeyType): Type | undefined {
-    const docs = this.openPartition(this.findPartitionForId(id));
-    return docs[id as string];
+    const dict = this.filterSelect([[id, id]]);
+    return dict[id];
+  }
+
+  editRanges(ranges: WhereRanges<KeyType>, predicate: (id: KeyType, value: Type) => Type | undefined, limit = 0) {
+    for (const [min, max] of ranges) {
+      this.editRange(predicate, min, max, limit);
+    }
+  }
+
+  static idsToRanges<KeyType extends string | number>(ids: KeyType[]): [KeyType, KeyType][] {
+    return ids.map(id => [id, id]);
+  }
+
+  filterSelect<NewType = Type>(ranges: WhereRanges<KeyType>, limit = 100, transform?: (id: KeyType, value: Type) => NewType | undefined) {
+    const result: Record<string | number, NewType | Type> = {};
+    this.editRanges(ranges, (id: KeyType, value: Type) => {
+      if (!transform) {
+        result[id] = value;
+      } else {
+        const newValue = transform(id, value);
+        if (newValue !== undefined) {
+          result[id] = newValue;
+        }
+      }
+      return value;
+    }, limit);
+    return result;
   }
 
   /**
@@ -216,15 +255,15 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     return meta1.length < meta2.length ? partId : partId + 1;
   }
 
-  insertArray(arr: Type[]) {
+  insertArray(arr: Type[]): KeyType[] {
     const { keyType } = this.settings;
     if (keyType == "string") throw new Error("'insertArray' is only supported on 'int' keyType dictionaries!");
 
     const lastID: number = <number>this.end;
     const dict = <SortedDictionary<KeyType, Type>>SortedDictionary.fromArray(arr, lastID + 1);
-
+    const newKeys = dict.keys();
     this.insertSortedDict(dict);
-    return dict.keys();
+    return newKeys;
   }
 
   insertSortedDict(dict: SortedDictionary<KeyType, Type>) {
@@ -285,7 +324,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
         const docs = this.openAsSortedDictionary(partId);
         for (const id of idsToInsert) {
-          docs.set(id, dict.pop(id));
+          docs.set(id, <Type>dict.pop(id));
         }
 
         currentMeta.end = docs.lastKey || this.emptyKey;
@@ -298,6 +337,10 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
 
     wfs(`${this.settings.directory}meta.json`, this.meta);
+  }
+
+  insertOne(key: KeyType, value: Type) {
+    this.insertMany([key], [value]);
   }
 
   insertMany(dict: Record<string, Type>): void
@@ -327,22 +370,11 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
     if (!keys.length) return;
 
-    this.insertSortedDict(new SortedDictionary(keyType, dict, false, keys));
+    this.insertSortedDict(new SortedDictionary(dict, keyType, false, keys));
   }
 
   edit(ids: KeyType[], predicate: (id: KeyType, value: Type) => Type | undefined) {
-    this.findPartitionsForIds(ids).forEach((ids, partitionId) => {
-      const docs = this.openPartition(partitionId);
-      for (const id of ids) {
-        const newValue = predicate(id, docs[id as string]);
-        if (newValue === undefined) {
-          delete docs[id as string];
-        } else {
-          docs[id as string] = newValue;
-        }
-      }
-      wfs(this.getPartitionFilename(partitionId), docs);
-    });
+    this.editRanges(FragmentedDictionary.idsToRanges(ids), predicate, 0);
   }
 
   remove(ids: KeyType[]) {
@@ -441,7 +473,14 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   }
 
   openAsSortedDictionary(index: number) {
-    return new SortedDictionary<KeyType, Type>(this.settings.keyType, this.openPartition(index));
+    return new SortedDictionary<KeyType, Type>(this.openPartition(index), this.settings.keyType);
   }
 
+  loadAll(): SortedDictionary<KeyType, Type> {
+    const result = new SortedDictionary<KeyType, Type>({}, this.settings.keyType);
+    for (let i = 0; i < this.numPartitions; i++) {
+      result.drain(this.openAsSortedDictionary(i));
+    }
+    return result;
+  }
 }

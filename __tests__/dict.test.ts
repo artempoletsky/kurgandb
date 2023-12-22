@@ -13,7 +13,7 @@ describe("Fragmented dictionary", () => {
   let numbers: FragmentedDictionary<number, number>;
   let letters: FragmentedDictionary<string, number>;
   let partitions: FragmentedDictionary<number, number>;
-
+  let index: FragmentedDictionary<string, number[]>;
   const PART = "/data/jest_dict_partititions/";
   const LETT = "/data/jest_dict_letters/";
   const NUM = "/data/jest_dict_numbers/";
@@ -34,6 +34,13 @@ describe("Fragmented dictionary", () => {
       directory: LETT,
       keyType: "string",
       maxPartitionLenght: 3,
+    });
+
+    index = FragmentedDictionary.init({
+      keyType: "string",
+      directory: "/data/test_array_index/",
+      maxPartitionSize: 0,
+      maxPartitionLenght: 100 * 1000,
     });
   });
 
@@ -230,7 +237,48 @@ describe("Fragmented dictionary", () => {
     expect(letters.getOne("b")).toBe(undefined);
   });
 
+  test("insert array", async () => {
+    numbers = FragmentedDictionary.reset(numbers);
+    const ids = numbers.insertArray([5, 6, 7]);
+    expect(numbers.lenght).toBe(3);
+    expect(ids[0]).toBe(1);
+    expect(ids[1]).toBe(2);
+    expect(ids[2]).toBe(3);
+    expect(numbers.getOne(1)).toBe(5);
+    expect(numbers.getOne(2)).toBe(6);
+    expect(numbers.getOne(3)).toBe(7);
+  });
+
+
+  test("insert one", async () => {
+    numbers = FragmentedDictionary.reset(numbers);
+    numbers.insertOne(123, 321);
+    expect(numbers.getOne(123)).toBe(321);
+  });
+
+  test("array dict", async () => {
+
+    index.insertOne("123", [123]);
+    index.insertOne("1234", [12312, 1421354, 54234]);
+
+    const arr = index.getOne("123");
+    expect(arr).toBeDefined();
+    if (!arr) return;
+    expect(arr[0]).toBe(123);
+
+    index.editRanges([[undefined, undefined]], (id, arr) => {
+      arr.splice(1, 0, 1000);
+      return [...arr];
+    });
+
+    // console.log(index.openPartition(0));
+
+    expect((index.getOne("123") as any)[1]).toBe(1000);
+
+  });
+
   afterAll(() => {
+    index.destroy();
     letters.destroy();
     numbers.destroy();
     partitions.destroy();

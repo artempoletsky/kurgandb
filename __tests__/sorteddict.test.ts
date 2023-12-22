@@ -11,6 +11,7 @@ describe("Sorted dictionary", () => {
     const lett1 = SortedDictionary.fromKeys<string>(["b", "c", "x", "y", "x"]);
     expect(lett1.length).toBe(4);
     expect(lett1.lastKey).toBe("y");
+    expect(lett1.get("x")).toBe("x");
   });
 
   test("splits", () => {
@@ -71,5 +72,23 @@ describe("Sorted dictionary", () => {
 
     expect(lettersReverse.get("z")).toBe(26);
 
+  });
+
+  test("drain", () => {
+    const d1 = SortedDictionary.fromLenght(20);
+    const d2 = SortedDictionary.fromArray(d1.values(), 20 + 1).transform(key => key);
+
+    expect(d2.get(21)).toBe(21);
+    expect(d2.get(40)).toBe(40);
+    expect(d2.length).toBe(20);
+
+    d1.drain(d2);
+    expect(d1.length).toBe(40);
+    expect(d1.get(35)).toBe(35);
+    expect(d1.firstKey).toBe(1);
+
+    expect(d1.lastKey).toBe(40);
+
+    expect(d2.length).toBe(0);
   });
 });

@@ -1,13 +1,14 @@
 import { rimraf } from "rimraf";
 import { FieldType } from "./document";
-import { SCHEME_PATH, Table, TableMetadata, TableScheme, getMetaFilepath, isHeavyType } from "./table";
+import { FieldTag, SCHEME_PATH, Table, TableScheme, getMetaFilepath, isHeavyType } from "./table";
 import { PlainObject, mkdirSync, rfs, wfs } from "./utils";
+import FragmentedDictionary from "./fragmented_dictionary";
 
 
 export type TCreateTable<Type> = {
   name: string
   settings?: Partial<TableSettings>
-  indices: (keyof Type)[]
+  tags?: Record<string, FieldTag[]>
   fields: Record<keyof Type, FieldType>
 };
 
@@ -18,21 +19,21 @@ export type SchemeFile = {
 export const DefaultTableSettings = {
   largeObjects: false,
   manyRecords: true,
-  maxPartitionSize: 1024 * 1024 * 1024,
-  maxPartitionLenght: 10 * 1000,
-  maxIndexPartitionLenght: 100 * 1000,
+  // maxPartitionSize: 1024 * 1024 * 1024,
+  // maxPartitionLenght: 10 * 1000,
+  // maxIndexPartitionLenght: 100 * 1000,
   dynamicData: false,
 }
 
 export type TableSettings = typeof DefaultTableSettings;
 
-const EmptyTable: TableMetadata = {
-  index: 0,
-  length: 0,
-  partitions: []
-};
+// const EmptyTable: TableMetadata = {
+//   index: 0,
+//   length: 0,
+//   partitions: []
+// };
 
-const Tables: Record<string, Table<any>> = {}
+const Tables: Record<string, Table<string | number, any>> = {}
 
 
 export class DataBase {
@@ -49,14 +50,14 @@ export class DataBase {
     return Tables;
   }
 
-  static getTable(name: string) {
+  static getTable<KeyType extends string | number, Type>(name: string): Table<KeyType, Type> {
     if (!Tables[name]) {
-      const meta = rfs(getMetaFilepath(name));
+      // const meta = rfs(getMetaFilepath(name));
       let dbScheme: SchemeFile = rfs(SCHEME_PATH);
-      Tables[name] = new Table(name, dbScheme.tables[name], meta, Table.loadIndex(name, meta, dbScheme.tables[name]));
+      Tables[name] = new Table<KeyType, Type>(name, dbScheme.tables[name]);
     }
 
-    return Tables[name];
+    return Tables[name] as any;
   }
 
   static getScheme(tableName: string): TableScheme | undefined {
@@ -69,44 +70,70 @@ export class DataBase {
     return !!this.getScheme(tableName);
   }
 
-  static createTable<Type extends PlainObject>({ name, fields, settings, indices: unsortedIndices }: TCreateTable<Type>): Table<Type> {
+  static createTable<KeyType extends string | number, Type>({ name, fields, settings: rawSettings, tags }: TCreateTable<Type>): Table<KeyType, Type> {
     if (this.isTableExist(name)) {
       throw new Error(`Table '${name}' already exists`);
     }
-    if (!settings) settings = {};
+    if (!rawSettings) rawSettings = {};
+    if (!tags) tags = {} as Record<string, FieldTag[]>;
 
-    settings = {
-      ...DefaultTableSettings,
-      ...settings
-    };
+    const settings: TableSettings = Object.assign(DefaultTableSettings, rawSettings);
 
-    const indices: string[] = Table.arrangeSchemeIndices(fields, unsortedIndices as string[]);
+
 
     mkdirSync(`/data/${name}/`);
+    mkdirSync(`/data/${name}/indices/`);
+    const mainDictDir = `/data/${name}/main/`;
+    let keyType: "int" | "string" = "int";
+    for (const fieldName in tags) {
+      const fieldTags = tags[fieldName];
+      const type = fields[<keyof Type>fieldName];
+      
+      
+      if (Table.tagsHasFieldNameWithAnyTag(tags, fieldName, "index", "unique")) {
+        Table.createIndexDictionary(name, fieldName, fieldTags, type);
+      }
+      if (Table.tagsHasFieldNameWithAnyTag(tags, fieldName, "primary")) {
+        try {
+          keyType = Table.fieldTypeToKeyType(type);
+        } catch (error) {
+          throw new Error(`can't set up field '${fieldName}' of type '${type}' as primary key for '${name}'`);
+        }
+      }
+    }
+    // mkdirSync(mainDictDir);
+    FragmentedDictionary.init({
+      keyType,
+      maxPartitionLenght: 5000,
+      directory: mainDictDir,
+    });
 
-    wfs(Table.getIndexFilename(name, 0), {});
+    mkdirSync(`/data/${name}/heavy/`);
+
+
+
 
     for (const fieldName in fields) {
       const type = fields[fieldName];
       if (isHeavyType(type)) {
-        mkdirSync(`/data/${name}/${fieldName}/`);
+        mkdirSync(`/data/${name}/heavy/${fieldName}/`);
       }
     }
 
-    wfs(getMetaFilepath(name), EmptyTable);
+    // wfs(getMetaFilepath(name), EmptyTable);
 
     const schemeFile: SchemeFile = rfs(SCHEME_PATH);
     schemeFile.tables[name] = {
       fields,
-      indices,
-      settings: settings as TableSettings,
+      tags,
+      settings
     };
 
     wfs(SCHEME_PATH, schemeFile, {
       pretty: true
     });
 
-    return this.getTable(name);
+    return this.getTable<KeyType, Type>(name);
   }
 
   static removeTable(name: string) {

@@ -1,43 +1,45 @@
 
-import { rimraf } from "rimraf";
-import { DataBase, SchemeFile, TableSettings } from "./db";
+import { SchemeFile, TableSettings } from "./db";
 import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, statSync, renameSync, perfLog, perfStart, perfEnd, unlinkSync } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
 
-import { setFlagsFromString } from 'v8';
-import { runInNewContext } from 'vm';
+import FragmentedDictionary, { FragmentedDictionarySettings, PartitionMeta } from "./fragmented_dictionary";
+import TableQuery from "./table_query";
+import SortedDictionary from "./sorted_dictionary";
 
 // setFlagsFromString('--expose_gc');
 
-
+export type FieldTag = "primary" | "unique" | "index" | "memory";
 
 
 export type TableScheme = {
   fields: Record<string, FieldType>
+  tags: Record<string, FieldTag[]>
   settings: TableSettings
-  indices: string[]
 };
 
 
-index: number
-
 export type DocumentData = Record<string, any[]>;
-export type Partition = {
+export type Partition<Type> = {
   isDirty: boolean
   documents: DocumentData
   fileName: string
   id: number
   size: number
-  meta: PartitionMeta
+  meta: PartitionMeta<Type>
 }
 
-export type BooleansFileContents = {
-  [key: string]: number[]
-}
 
-type Callback<Type extends PlainObject, R> = (doc: TDocument<Type>) => R;
+export type IndicesRecord = Record<string, FragmentedDictionary<string | number, any>>
+export type MainDict<KeyType extends string | number> = FragmentedDictionary<KeyType, any[]>
+
+export type DocCallback<KeyType extends string | number, Type, ReturnType> = (doc: TDocument<KeyType, Type>) => ReturnType;
 
 export const SCHEME_PATH = "/data/scheme.json";
+
+export type IndexFlags = {
+  isUnique: boolean,
+};
 
 export function getDefaultValueForType(type: FieldType) {
   switch (type) {
@@ -55,56 +57,111 @@ export function getMetaFilepath(tableName: string): string {
   return `/data/${tableName}/_meta.json`;
 }
 
-export function getPartitionFilePath(tableName: string, id: number): string {
-  return `/data/${tableName}/part${id}.json`;
-}
-
 export function isHeavyType(type: FieldType): boolean {
   return HeavyTypes.includes(type as HeavyType);
 }
 
-export class Table<Type extends PlainObject = any> {
-  protected meta: TableMetadata;
+export class Table<KeyType extends string | number, Type> {
+  protected mainDict: MainDict<KeyType>;
+  protected indices: IndicesRecord;
+  protected memoryFields: Record<string, SortedDictionary<KeyType, any>>;
   protected _fieldNameIndex: Record<string, number> = {};
   protected _indexFieldName: string[] = [];
+  protected customPrimaryKey: string | undefined;
 
   protected _indexType: FieldType[] = [];
   protected _indexIndexType: FieldType[] = [];
 
   public readonly scheme: TableScheme;
   public readonly name: string;
-  public readonly index: Record<string, any[]> = {};
+  public readonly primaryKey: string;
   protected _dirtyIndexPartitions: Map<number, boolean> = new Map();
 
-  constructor(name: string, scheme: TableScheme, meta: TableMetadata, index: PlainObject) {
-    this.index = index;
+  constructor(name: string, scheme: TableScheme) {
+    this.primaryKey = "id";
     this.name = name;
     this.scheme = scheme;
-    this.meta = meta;
+    this.indices = {};
+
+    for (const fieldName in scheme.tags) {
+      // const fieldTags = tags[fieldName];
+      if (this.fieldHasAnyTag(<keyof Type & string>fieldName, "index", "unique")) {
+        this.indices[fieldName] = FragmentedDictionary.open(this.getIndexDictDir(fieldName));
+      }
+      if (this.fieldHasAnyTag(<keyof Type & string>fieldName, "primary")) {
+        this.primaryKey = fieldName;
+      }
+    }
+
+    this.mainDict = FragmentedDictionary.open(`/data/${name}/main/`);
+    this.memoryFields = {};
+    this.loadMemoryIndices();
     this.updateFieldIndices();
   }
 
-  static arrangeSchemeIndices(fields: PlainObject, indices: string[]): string[] {
-    const newIndices: string[] = [];
-    for (const key in fields) {
-      if (!fields[key]) throw new Error(`Field '${key}' is missing in the fields scheme, but is marked as index`);
-      if (indices.includes(key)) newIndices.push(key);
+  static fieldTypeToKeyType(type: FieldType): "int" | "string" {
+    if (type == "JSON" || type == "json" || type == "Text") throw new Error("wrong type");
+    if (type == "password" || type == "string") return "string";
+    return "int";
+  }
+
+  static tagsHasFieldNameWithAnyTag(tags: Record<string, FieldTag[]>, fieldName: string, ...tagsToFind: FieldTag[]) {
+    if (!tags[fieldName]) return false;
+    for (const tag of tagsToFind) {
+      if (tags[fieldName].includes(tag)) {
+        return true;
+      }
     }
-    return newIndices;
+    return false;
+  }
+
+  static tagsHasFieldNameWithAllTags(tags: Record<string, FieldTag[]>, fieldName: string, ...tagsToFind: FieldTag[]) {
+    if (!tags[fieldName]) return false;
+    for (const tag of tagsToFind) {
+      if (!tags[fieldName].includes(tag)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, flags: IndexFlags, tags: FieldTag[]) => void) {
+    for (const fieldName in this.scheme.tags) {
+      const tags = this.scheme.tags[fieldName];
+      if (this.fieldHasAnyTag(<keyof Type & string>fieldName, "unique", "index")) {
+        predicate(fieldName, this.indices[fieldName], {
+          isUnique: tags.includes("unique")
+        }, tags);
+      }
+    }
+  }
+
+  fieldHasAnyTag(fieldName: string, ...tags: FieldTag[]) {
+    return Table.tagsHasFieldNameWithAnyTag(this.scheme.tags, fieldName, ...tags);
+  }
+
+  fieldHasAllTags(fieldName: string, ...tags: FieldTag[]) {
+    return Table.tagsHasFieldNameWithAllTags(this.scheme.tags, fieldName, ...tags);
+  }
+
+  loadMemoryIndices() {
+    const { tags } = this.scheme;
+    for (const fieldName in tags) {
+      const fieldTags = tags[fieldName];
+      if (fieldTags.includes("memory")) {
+        // TODO: implement
+        // this.memoryIndices[fieldName] = this.indices[fieldName].loadAll();
+      }
+    }
   }
 
   updateFieldIndices() {
     this._fieldNameIndex = {};
     this._indexFieldName = [];
     let i = 0;
-    const { indices } = this.scheme;
 
     this.forEachField((key, type) => {
       if (isHeavyType(type)) return;
-      const iOf = indices.indexOf(key);
-      if (iOf != -1) {
-        this._indexIndexType[i] = type;
-      }
 
       this._indexType[i] = type;
       this._indexFieldName[i] = key;
@@ -128,17 +185,43 @@ export class Table<Type extends PlainObject = any> {
     return this._indexIndexType;
   }
 
+  protected createQuery() {
+    return new TableQuery<KeyType, Type>(this, this.indices, this.mainDict);
+  }
+
+  whereRange(fieldName: keyof Type & string, min: any, max: any): TableQuery<KeyType, Type> {
+    return this.createQuery().whereRange(fieldName, min, max);
+  }
+
+  where(fieldName: keyof Type & string, value: any): TableQuery<KeyType, Type> {
+    return this.createQuery().where(fieldName, value);
+  }
+
+  filter(predicate: DocCallback<KeyType, Type, boolean>): TableQuery<KeyType, Type> {
+    return this.createQuery().filter(predicate);
+  }
+
   renameField(oldName: string, newName: string) {
-    const { fields } = this.scheme;
+    const { fields, tags } = this.scheme;
     // console.log(oldName, newName);
 
     if (!fields[oldName]) throw new Error(`Field '${oldName}' doesn't exist`);
     if (fields[newName]) throw new Error(`Field '${newName}' already exists`);
 
-    const { indices } = this.scheme;
-    const indexIndex = indices.indexOf(oldName);
-    if (indexIndex != -1) {
-      indices.splice(indexIndex, 1, newName);
+    if (this.fieldHasAnyTag(oldName as any, "index", "unique", "memory")) {
+      FragmentedDictionary.rename(this.getIndexDictDir(oldName), this.getIndexDictDir(newName));
+    }
+
+    const fieldTags = tags[oldName];
+    if (fieldTags) {
+      delete tags[oldName];
+      tags[newName] = fieldTags;
+    }
+
+    const indexDict = this.indices[oldName];
+    if (indexDict) {
+      delete this.indices[oldName];
+      this.indices[newName] = indexDict;
     }
 
     const newFields: Record<string, FieldType> = {};
@@ -147,8 +230,7 @@ export class Table<Type extends PlainObject = any> {
         newFields[newName] = type;
         if (isHeavyType(type)) {
           //rename the folder dedicated to the heavy field
-          const workingDir = `/data/${this.name}/`;
-          renameSync(workingDir + oldName, workingDir + newName);
+          renameSync(this.getHeavyFieldDir(oldName), this.getHeavyFieldDir(newName));
         }
       } else {
         newFields[name] = type;
@@ -159,29 +241,20 @@ export class Table<Type extends PlainObject = any> {
     this.saveScheme();
   }
 
-  ifDo(match: Callback<Type, boolean>, predicate: Callback<Type, any>) {
-    this.each(doc => {
-      const matchRes = match(doc);
-      if (matchRes) {
-        predicate(doc);
-      }
-    });
-  }
-
   getLastIndex() {
-    return this.meta.index;
+    return this.mainDict.end;
   }
 
-  forEachField(predicate: (fieldName: string, type: FieldType, index: number) => any): void {
+  forEachField(predicate: (fieldName: string & keyof Type, type: FieldType, index: number) => any): void {
     const fields = this.scheme.fields;
     let i = 0;
     for (const key in fields) {
-      predicate(key, fields[key], i++);
+      predicate(key as any, fields[key], i++);
     }
   }
 
   public get length(): number {
-    return this.meta.length;
+    return this.mainDict.lenght;
   }
 
 
@@ -194,19 +267,56 @@ export class Table<Type extends PlainObject = any> {
     this.updateFieldIndices();
   }
 
+  printField(fieldName: string) {
+    return `field '${this.name}[${this.primaryKey}].${fieldName}'`;
+  }
+
+  static createIndexDictionary(tableName: string, fieldName: string, tags: FieldTag[], type: FieldType) {
+    const directory = `/data/${tableName}/indices/${fieldName}/`;
+
+    if (isHeavyType(type)) throw new Error(`Can't create an index of heavy type field ${fieldName}`);
+    if (type == "json") throw new Error(`Can't create an index of json type field ${fieldName}`);
+
+    let keyType = this.fieldTypeToKeyType(type);
+
+    let settings: Record<string, any> = {
+      maxPartitionLenght: 10 * 1000,
+      maxPartitionSize: 0,
+    };
+
+    FragmentedDictionary.init({
+      directory,
+      keyType,
+      ...settings,
+    });
+
+  }
+
+  removeIndex(name: string) {
+    if (!this.indices[name]) throw new Error(`${this.printField(name)} is not an index field!`);
+
+    this.indices[name].destroy();
+    delete this.indices[name];
+    delete this.scheme.tags[name];
+
+    this.saveScheme();
+  }
+
   removeField(name: string) {
-    const { fields, indices } = this.scheme;
+    const { fields, tags } = this.scheme;
     const type = fields[name];
-    if (!type) throw new Error(`Field ${name} doesn't exist`);
-    const iOfIndex = indices.indexOf(name);
+    if (!type) throw new Error(`${this.printField(name)} doesn't exist`);
+
+
+    if (name == this.primaryKey) throw new Error(`Can't remove the primary key ${this.printField(name)}! Create a new table instead.`);
     const isHeavy = isHeavyType(type);
 
-    if (iOfIndex != -1) {
-      this.removeIndexColumn(iOfIndex);
-      this.scheme.indices.splice(iOfIndex, 1);
-      this.saveIndexPartitions();
-    } else if (isHeavy)
-      rimraf.sync(`${process.cwd()}/data/${this.name}/${name}`);
+    if (this.fieldHasAnyTag(name as any, "index", "unique")) {
+      this.removeIndex(name);
+    }
+
+    if (isHeavy)
+      rmie(this.getHeavyFieldDir(name));
     else {
       this.removeDocColumn(this._fieldNameIndex[name]);
     }
@@ -215,129 +325,47 @@ export class Table<Type extends PlainObject = any> {
     this.saveScheme();
   }
 
-  getCurrentPartitionID(): number | undefined {
-    return this._currentPartition?.id;
-  }
 
-  markCurrentPartitionDirty(): void {
-    if (!this._currentPartition) throw new Error("Partitions is closed");
-    this._currentPartition.isDirty = true;
-  }
-
-  markIndexPartitionDirty(id: number): void {
-    this._dirtyIndexPartitions.set(id, true);
-  }
-
-  addField(name: string, type: FieldType, predicate?: Callback<Type, any>) {
+  addField(name: string, type: FieldType, predicate?: DocCallback<KeyType, Type, any>) {
     if (this.scheme.fields[name]) {
       throw new Error(`field '${name}' already exists`);
     }
 
-    const filesDir = `/data/${this.name}/${name}/`;
+    const filesDir = this.getHeavyFieldDir(name);
 
     if (isHeavyType(type) && !existsSync(filesDir)) {
       mkdirSync(filesDir);
     }
-    if (!predicate) {
-      predicate = () => getDefaultValueForType(type);
-    }
 
-    this.insertDocColumn(this._indexFieldName.length, (idStr, partId) => (predicate as Function)(new Document(this, idStr, partId) as TDocument<Type>));
+    const definedPredicate = predicate || (() => getDefaultValueForType(type));
+
+    this.insertDocColumn(this._indexFieldName.length, (id, arr) => {
+      return definedPredicate(new Document(arr, id, this, this.indices) as TDocument<KeyType, Type>);
+    });
 
     this.scheme.fields[name] = type;
     this.saveScheme();
   }
 
-  protected forEachPartition(predicate: (docs: DocumentData, current: Partition) => any, ids?: number[]) {
-    const { partitions } = this.meta;
-    if (!ids) ids = Array.from(Array(partitions.length).keys())
-    for (const i of ids) {
-      this.openPartition(i);
-      const breakSignal = predicate(this.currentPartition.documents, this.currentPartition);
-
-      this.closePartition();
-
-      if (breakSignal === false) break;
-    }
-  }
-
-  // select(predicate: Callback<Type, any>): Promise<TDocument<Type>[]>
-  select(predicate: Callback<Type, boolean>, options?: { offset?: number, limit?: number }): TDocument<Type>[] {
-    if (!options) options = {};
-    options = {
-      ...{
-        offset: 0,
-        limit: 100
-      },
-      ...options
-    }
-    const { offset, limit } = options as { offset: number, limit: number };
-
-    let found = 0;
-    const result: TDocument<Type>[] = [];
-    this.each(doc => {
-      const toSelect = predicate(doc as TDocument<Type>)
-      if (toSelect) {
-        result.push(doc);
-        found++;
-        if (limit && (limit + offset) <= found) {
-          return false;
-        }
-      }
-    });
-    return result;
-  }
-
-  remove(predicate: Callback<Type, boolean>) {
-    this.each(doc => {
-      if (predicate(doc)) {
-        this.removeDocumentFromCurrentPartition(doc);
-      }
-    });
-  }
-
-  removeDocumentFromCurrentPartition(doc: Document<Type>) {
-    const partition = this.currentPartition;
-    if (!partition) return;
-    delete partition.documents[doc.getStringID()];
-    this.meta.partitions[partition.id].length--;
-    partition.isDirty = true;
-  }
-
-  find(predicate: Callback<Type, boolean>) {
-    const found = this.select(predicate, {
-      limit: 1
-    });
-    return found[0] || null;
-  }
-
   clear() {
     if (!this.scheme.settings.dynamicData) throw new Error(`${this.name} is not a dynamic table`);;
-    return this.remove(() => true);
+    return this.filter(() => true).delete(0);
   }
 
-  removeByID(...ids: number[]) {
-    this.ids(ids, doc => {
-      this.removeDocumentFromCurrentPartition(doc);
-    })
+  getIndexDictDir(fieldName: string) {
+    return `/data/${this.name}/indices/${fieldName}/`;
+  }
+
+  getMainDictDir() {
+    return `/data/${this.name}/main/`;
+  }
+
+  getHeavyFieldDir(fieldName: string) {
+    return `/data/${this.name}/heavy/${fieldName}/`;
   }
 
   getHeavyFieldFilepath(id: number | string, type: HeavyType, fieldName: string): string {
-    return `/data/${this.name}/${fieldName}/${id}.${type == "Text" ? "txt" : "json"}`;
-  }
-
-  private _currentPartition: Partition | undefined;
-  protected openLastPartition() {
-    const { partitions } = this.meta;
-    if (!partitions.length) {
-      this.createNewPartition();
-    } else {
-      this.openPartition(partitions.length - 1);
-    }
-  }
-  protected get currentPartition(): Partition {
-    if (!this._currentPartition) throw new Error("current partition is undefined!");
-    return this._currentPartition;
+    return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "Text" ? "txt" : "json"}`;
   }
 
   /**
@@ -346,195 +374,83 @@ export class Table<Type extends PlainObject = any> {
    * @param predicate - filing indices function
    * @returns last inserted id string
    */
-  insertSquare(data: [any[], any[]][]): string {
-    this.openLastPartition();
-    let docs = this.currentPartition.documents;
-    let partId = this.currentPartition.id;
-    const { meta } = this;
-    if (!data.length) throw new Error("data is empty!");
-
-    let idStr: string = "";
-    for (let i = 0; i < data.length; i++) {
-      const id = ++meta.index;
-      idStr = Table.idString(id);
-      meta.partitions[partId].length++;
-      meta.partitions[partId].end = id;
-      docs[idStr] = data[i][0];
-      this.index[idStr] = data[i][1];
-      this._dirtyIndexPartitions.set(partId, true);
-
-      meta.length++;
-      if (this.partitionExceedsSize()) {
-        this.currentPartition.isDirty = true;
-        this.createNewPartition();
-        docs = this.currentPartition.documents;
-        partId = this.currentPartition.id;
-      }
-    }
-
-    this.save();
-    this.saveIndexPartitions();
-    return idStr; // we throw an error if data is empty so it can't be undefined or empty
+  insertSquare(data: any[][]): string[] | number[] {
+    return this.mainDict.insertArray(data) as string[] | number[]; //TODO: take the last id from the table instead of the dict
   }
 
   protected removeDocColumn(fieldIndex: number): void
-  protected removeDocColumn(fieldIndex: number, returnAsIndex: boolean): PlainObject
-  protected removeDocColumn(fieldIndex: number, returnAsIndex: boolean = false) {
-    const index: PlainObject = {};
-    this.forEachPartition(docs => {
-      this.currentPartition.isDirty = true;
-      for (const idStr in docs) {
-        const arr = docs[idStr];
-        if (returnAsIndex) {
-          index[idStr] = arr[fieldIndex];
-        }
-        arr.splice(fieldIndex, 1);
+  protected removeDocColumn(fieldIndex: number, returnAsDict: true): PlainObject
+  protected removeDocColumn(fieldIndex: number, returnAsDict: boolean = false) {
+    const result: Record<string | number, any> = {};
+    this.mainDict.editRanges([[undefined, undefined]], (id, arr) => {
+      const newArr = [...arr];
+      if (returnAsDict) {
+        result[id] = newArr[fieldIndex];
       }
-    });
-    this.closePartition();
-    if (returnAsIndex) return index;
+      newArr.splice(fieldIndex, 1);
+      return newArr;
+    }, 0);
+
+    if (returnAsDict) return result;
   }
 
+  storeIndexValue(fieldName: string, value: string | number, id: KeyType) {
+    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
 
-  protected markAllIndexParitionsDirty() {
-    const { partitions } = this.meta;
-    for (let i = 0; i < partitions.length; i++) {
-      this._dirtyIndexPartitions.set(i, true);
-    }
-  }
-  /**
-   * doesn't save index
-   * @param fieldIndex 
-   * @param returnAsIndex 
-   * @returns 
-   */
-  protected removeIndexColumn(fieldIndex: number): void
-  protected removeIndexColumn(fieldIndex: number, returnAsIndex: boolean): PlainObject
-  protected removeIndexColumn(fieldIndex: number, returnAsIndex: boolean = false) {
-    const result: PlainObject = {};
-    this.markAllIndexParitionsDirty();
-    for (const idStr in this.index) {
-      const arr = this.index[idStr];
-      if (returnAsIndex) {
-        result[idStr] = arr[fieldIndex];
+    const indexDict = this.indices[fieldName];
+    if (isUnique) {
+      indexDict.insertOne(value, id);
+    } else {
+      const arr: KeyType[] | undefined = indexDict.getOne(value);
+      if (!arr) {
+        indexDict.insertOne(value, [id]);
+      } else {
+        arr.push(id);
+        indexDict.setOne(value, arr);
       }
-      arr.splice(fieldIndex, 1);
     }
-    if (returnAsIndex) return result;
-  }
-
-  /**
-   * doesn't save index
-   * @param fieldIndex 
-   * @param predicate 
-   */
-  protected insertIndexColumn(fieldIndex: number, predicate: (idStr: string) => any) {
-    this.markAllIndexParitionsDirty();
-    for (const idStr in this.index) {
-      const arr = this.index[idStr];
-      arr.splice(fieldIndex, 0, predicate(idStr));
-    }
-  }
-
-
-
-  createIndex(field: string, save = true): void {
-    const { fields, indices } = this.scheme;
-    if (!fields[field]) throw new Error(`Field '${field}' doen't exist`);
-    const iOfIndex = indices.indexOf(field);
-    if (iOfIndex != -1) throw new Error(`Field '${field}' is already an index`);
-    const type = fields[field];
-    if (isHeavyType(type)) {
-      throw new Error(`Can't make heavy field '${field}' as index`);
-    }
-
-    const index: PlainObject = this.removeDocColumn(this._fieldNameIndex[field], true);
-
-    this.insertIndexColumn(indices.length, id => index[id]);
-    this.scheme.indices.push(field);
-
-    this.updateFieldIndices();
-    if (save) {
-      this.saveIndexPartitions();
-      this.saveScheme();
-    }
-  }
-
-  removeIndex(field: string, save = true) {
-    const { fields, indices } = this.scheme;
-
-    if (!fields[field]) throw new Error(`Field '${field}' doen't exist`);
-    const iOfIndex = indices.indexOf(field);
-    if (iOfIndex == -1) throw new Error(`Index '${field}' doen't exist`);
-
-    const indexData = this.removeIndexColumn(iOfIndex, true);
-    indices.splice(iOfIndex, 1);
-    this.updateFieldIndices();
-    this.insertDocColumn(this._fieldNameIndex[field], id => indexData[id]);
-
-    if (save) {
-      this.saveIndexPartitions();
-      this.saveScheme();
-    }
-  }
-
-  static loadIndex(name: string, meta: TableMetadata, scheme: TableScheme) {
-    if (!global.gc) throw new Error("Garbage collector is turned off. Run with --expose-gc");
-    // const gc = runInNewContext('gc'); // nocommit
-    // const gc = global.gc;
-    const result: PlainObject = {};
-    const { partitions } = meta;
-    const { indices, fields } = scheme;
-    let indexSize = 0;
-    const types = indices.map(name => fields[name]);
-    for (let i = 0; i < partitions.length; i++) {
-      // await loadPartition(i);
-      const fileName = Table.getIndexFilename(name, i);
-      indexSize += statSync(fileName).size;
-      // const part = rfs(fileName);
-      // for (const id in part) {
-      //   result[id] = part[id].map((value: any, i: number) => Document.retrieveValueOfType(value, types[i]));
-      //   delete part[id];
-      // }
-      if (i % 150 == 0) {
-        console.log("gc start");
-        global.gc();
-        console.log("gc end");
-      }
-
-      Object.assign(result, rfs(fileName));
-    }
-
-    setTimeout(() => {
-      (global as any).gc();
-    }, 10 * 1000);
-
-    console.log(Math.floor(100 * indexSize / 1024 / 1024 / 1024) / 100);
-    return result;
-  }
-
-  static getIndexFilename(tableName: string, part: number) {
-    return `/data/${tableName}/index_${part}.json`;
-  }
-
-  getIndexFilename(part: number) {
-    return Table.getIndexFilename(this.name, part);
   }
 
   // insert<Type extends PlainObject>(data: Type): Document<Type>
-  insert(data: Type) {
+  insert(data: PlainObject & Type): KeyType {
     const validationError = Document.validateData(data, this.scheme);
     if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
-    const idStr = this.insertSquare([this.flattenObject(data)]);
+    const storable = this.makeObjectStorable(data);
+
+    this.forEachIndex((fieldName, indexDict, { isUnique }) => {
+      const value = storable[fieldName];
+      if (!(typeof value == "string" || typeof value == "number"))
+        throw new Error(`trying to set non (string | number) value as index ${this.printField(fieldName)}=${value}`);
+
+      const exists = indexDict.getOne(value);
+      if (isUnique && exists) throw new Error(`Unique value ${value} for ${this.printField(fieldName)} already exists`);
+    });
+
+
+    let id: KeyType;
+    if (this.primaryKey == "id") {
+      id = this.mainDict.insertArray([this.flattenObject(storable)])[0];
+    } else {
+      id = <KeyType>storable[this.primaryKey];
+      delete storable[this.primaryKey];
+      this.mainDict.insertOne(id, this.flattenObject(storable));
+    }
 
     this.forEachField((key, type) => {
-      const value = data[key];
+      const value = storable[key];
       if (isHeavyType(type) && !!value) {
-        wfs(this.getHeavyFieldFilepath(idStr, type as HeavyType, key), value);
+        wfs(this.getHeavyFieldFilepath(id, type as HeavyType, key), value);
       }
     });
-    return new Document(this, idStr, this.currentPartition.id) as TDocument<Type>;
+
+
+    this.forEachIndex((fieldName) => {
+      const value = <string | number>storable[fieldName];
+      this.storeIndexValue(fieldName, value, id);
+    });
+
+    return id;
   }
 
 
@@ -554,137 +470,43 @@ export class Table<Type extends PlainObject = any> {
     return result;
   }
 
-  flattenObject(o: PlainObject): [any[], any[]] {
+  makeObjectStorable(o: Type & PlainObject): PlainObject {
+    const result: PlainObject = {};
+    this.forEachField((key, type) => {
+      result[key] = Document.storeValueOfType(o[key], type as any);
+    });
+    return result;
+  }
+
+  flattenObject(o: PlainObject): any[] {
     const lightValues: any[] = [];
-    const indexValues: any[] = [];
 
     this._indexFieldName.forEach((key, i) => {
-      const type = this._indexType[i];
-      lightValues.push(Document.storeValueOfType(o[key], type));
+      lightValues.push(o[key]);
     });
 
-    this.scheme.indices.forEach((key, i) => {
-      const type = this._indexIndexType[i];
-      indexValues.push(Document.storeValueOfType(o[key], type));
-    })
-
-    return [lightValues, indexValues];
+    return lightValues;
   }
 
-  protected save() {
-    const p = this._currentPartition;
-    if (!p) throw new Error("no current partition");
-    wfs(p.fileName, p.documents);
-    wfs(getMetaFilepath(this.name), this.meta);
-    p.isDirty = false;
+  protected insertDocColumn(fieldIndex: number, predicate: (id: string | number, arr: any[]) => any) {
+    this.mainDict.editRanges([[undefined, undefined]], (id, arr) => {
+      const newArr = [...arr];
+      newArr.splice(fieldIndex, 0, predicate(id, newArr));
+      return newArr;
+    }, 0);
   }
 
-  public saveIndexPartitions() {
-    let partId = 0;
-    let indexPart: PlainObject = {};
-    let { partitions } = this.meta;
-    for (let id = 0; id < this.meta.length; id++) {
-      if (!this._dirtyIndexPartitions.get(partId)) { //skip the partition if it's not dirty
-        id = partitions[partId].end + 1;
-        partId++;
-        continue;
-      }
-
-      if (this.index[id]) // if id is valid save the data
-        indexPart[id] = this.index[id];
-
-      if (id >= this.meta.partitions[partId].end) {
-        wfs(this.getIndexFilename(partId), indexPart);
-        partId++;
-        indexPart = {};
-      }
-    }
-    if (partId < partitions.length) {
-      wfs(this.getIndexFilename(partId), indexPart);
-    }
-
-    this._dirtyIndexPartitions.clear();
+  at(id: KeyType): Type | null
+  at<ReturnType>(id: KeyType, predicate: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
+  at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
+    return this.where(this.primaryKey as any, id).select(1, predicate)[0] || null;
   }
-
-  each(predicate: Callback<Type, any>) {
-    let breakSignal: any;
-    this.forEachPartition((docs, part) => {
-      for (const strId in docs) {
-        const doc = new Document<Type>(this, strId, part.id);
-        breakSignal = predicate(doc as TDocument<Type>);
-        if (breakSignal === false) break;
-      }
-      if (breakSignal === false) return false;
-    });
-  }
-
-  protected insertDocColumn(fieldIndex: number, predicate: (idStr: string, partId: number) => any) {
-    this.forEachPartition((docs, part) => {
-      this.currentPartition.isDirty = true;
-      for (const idStr in docs) {
-        const arr = docs[idStr];
-        arr.splice(fieldIndex, 0, predicate(idStr, part.id));
-      }
-    });
-    this.closePartition();
-  }
-
-  getDocumentData(id: string): any[] {
-
-    const data = this._currentPartition?.documents[id];
-    if (!data) throw new Error(`wrong document id '${id}' (${Table.idNumber(id)})`);
-    return data;
-  }
-  /**
-   * run predicate for eacn document with given ids
-   * @param ids 
-   * @param predicate 
-   */
-  ids(ids: number[], predicate: Callback<Type, any>) {
-    const partitionsToOpen = new Map<number, number[]>();
-    for (const id of ids) {
-      let partId = this.findPartitionForId(id);
-      if (partId === false) continue;
-      let pIds = partitionsToOpen.get(partId) || [];
-      pIds.push(id);
-      partitionsToOpen.set(partId, pIds);
-    }
-
-    for (const [pID, ids] of partitionsToOpen) {
-      this.openPartition(pID);
-      for (const id of ids) {
-        if (!this.getDocumentData(id + "")) throw new Error("asdasds");
-
-        predicate(new Document<Type>(this, Table.idString(id), pID) as TDocument<Type>);
-      }
-      this.closePartition();
-    }
-  }
-
-  at(id: number) {
-    const docs: TDocument<Type>[] = [];
-    if (this.findPartitionForId(id) === false) {
-      return null;
-    }
-    this.ids([id], doc => docs.push(doc));
-    return docs[0] || null;
-  }
-
-  static idString(id: number): string {
-    return id + '';
-  }
-
-  static idNumber(id: string): number {
-    return (id as unknown as number) * 1;
-  }
-
-
 
   toJSON() {
     if (this.scheme.settings.manyRecords) {
       throw new Error("You probably don't want to download a whole table");
     }
-    return (this.select(() => true)).map(doc => doc.toJSON());
+    return this.filter(() => true).select(0);
   }
 
   getFieldsOfType(...types: FieldType[]): string[] {

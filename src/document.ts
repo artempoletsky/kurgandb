@@ -1,5 +1,5 @@
 import fs from "fs";
-import { TableScheme, Table, isHeavyType } from "./table";
+import { TableScheme, Table, isHeavyType, IndicesRecord, MainDict } from "./table";
 import { PlainObject, rfs, existsSync, wfs } from "./utils";
 
 export const LightTypes = ["string", "number", "date", "boolean", "json"] as const; //store their data in main json
@@ -12,56 +12,37 @@ export type HeavyType = typeof HeavyTypes[number];
 export type SpecialType = typeof SpecialTypes[number];
 export type FieldType = typeof AllTypes[number]
 
-// export interface IDocument extends Record<string, any> {
-//   toJSON(): PlainObject
-//   serialize(): PlainObject
-//   get<Type>(fieldName: string): Type
-//   get(fieldName: string): any
-//   getStringID(): string
-//   set(fieldName: string, value: any): void
-//   pick(...fields: string[]): PlainObject
-//   without(...fields: string[]): PlainObject
-//   light(): PlainObject
-//   id: number
-// }
 
+export type TDocument<KeyType extends string | number, Type> = Document<KeyType, Type> & Type;
 
-export type TDocument<Type extends PlainObject> = Document<Type> & Type;
-
-export class Document<Type extends PlainObject> {
-  protected _id: number;
-  protected _stringID: string;
-  protected _partitionID: number;
-  protected _table: Table<Type>;
+export class Document<KeyType extends string | number, Type> {
+  protected _id: string | number;
+  protected _indices: IndicesRecord;
   protected _data: any[] = [];
   protected _dates: Record<string, Date> = {};
 
-  getStringID(): string {
-    return this._stringID;
-  }
+  protected _table: Table<KeyType, Type>;
 
-  public get id(): number {
+
+  public get id(): string | number {
     return this._id;
   }
 
-  partitionIsClosed(): boolean {
-    return this._partitionID === undefined || this._table.getCurrentPartitionID() != this._partitionID;
-  }
+  constructor(data: any[], id: string | number, table: Table<KeyType, Type>, indices: IndicesRecord) {
+    this._indices = indices;
 
-  constructor(table: Table<Type>, idStr: string, partitionId: number) {
     this._table = table;
-    this._id = Table.idNumber(idStr);
-    this._partitionID = partitionId;
-    this._stringID = idStr;
-    if (this._partitionID !== undefined)
-      this._data = table.getDocumentData(idStr);
 
-    let proxy = new Proxy<Document<Type>>(this, {
-      set: (target: any, key: string, value: any) => {
+    this._id = id;
+
+    this._data = data;
+
+    let proxy = new Proxy<Document<KeyType, Type>>(this, {
+      set: (target: any, key: string & keyof Type, value: any) => {
         this.set(key, value);
         return true;
       },
-      get: (target: any, key: string) => {
+      get: (target: any, key: string & keyof Type) => {
         if (typeof target[key] == "function") {
           return target[key];
         }
@@ -78,20 +59,45 @@ export class Document<Type extends PlainObject> {
     return proxy;
   }
 
-  set(fieldName: string, value: any): void {
-    const { indices, fields } = this._table.scheme;
+  set(fieldName: keyof Type & string, value: any): void {
+    const { fields, tags } = this._table.scheme;
     const table = this._table;
     const type = fields[fieldName];
     if (!type) {
       throw new Error(`There is no '${fieldName}' field in '${table.name}'`);
     }
 
-    const iOfIndex = indices.indexOf(fieldName);
-    if (iOfIndex != -1) {
-      table.index[iOfIndex] = Document.retrieveValueOfType(value, type);
-      table.markIndexPartitionDirty(this._partitionID);
-      return;
+    let newValue: any = Document.storeValueOfType(value, type as any);
+    if (type == "date") {
+      this._dates[fieldName] = new Date(value);
     }
+
+    const index = this._indices[fieldName];
+    const docID = this._id;
+    if (index) {
+      const currentValue = this.get(fieldName);
+      if (currentValue === newValue) {
+        return;
+      }
+
+      if (table.fieldHasAnyTag(fieldName, "unique")) {
+        if (index.getOne(newValue)) throw new Error(`attempting to create a duplicate on the unique ${this.fieldPrint(fieldName, newValue)}`);
+        index.remove(currentValue);
+        index.insertOne(newValue, docID);
+      } else {
+        const currentArr: any[] | undefined = index.getOne(currentValue);
+        const newArr: any[] = index.getOne(newValue) || [];
+        if (currentArr) {
+          currentArr.splice(currentArr.indexOf(docID), 1);
+          if (!currentArr.length) {
+            index.remove(currentValue);
+          }
+        }
+        newArr.push(docID);
+        index.insertOne(newValue, newArr);
+      }
+    }
+
 
     if (isHeavyType(type)) {
       if (type == "Text") {
@@ -102,39 +108,35 @@ export class Document<Type extends PlainObject> {
       return;
     }
 
-    if (this.partitionIsClosed()) throw new Error(this.partitionClosedErrorMessage(fieldName));
 
-    let newValue = value;
-    if (type == "boolean") {
-      newValue = value ? 1 : 0;
-    } else if (type == "date") {
-      this._dates[fieldName] = new Date(value);
-    }
 
     const indexField = table.fieldNameIndex[fieldName];
 
     this._data[indexField] = newValue;
-    table.markCurrentPartitionDirty();
   }
 
   protected partitionClosedErrorMessage(fieldName: string) {
     return `Partition is closed! ${this.idPrint()}.${fieldName}`;
   }
 
+  protected fieldPrint(fieldName: keyof Type & string, value: any) {
+    return `field: ${fieldName}='${value}' in ${this.idPrint()}`;
+  }
+
   protected idPrint() {
     return `${this._table.name}['${this._id}']`;
   }
 
-  get(fieldName: string): any {
+  get(fieldName: string & keyof Type): any {
     const table = this._table;
-    const { fields, indices } = this._table.scheme;
+    const { fields } = this._table.scheme;
     const type = fields[fieldName];
     if (!type) return;
 
-    const iOfIndex = indices.indexOf(fieldName);
-    if (iOfIndex != -1) {
-      return table.index[this._id][iOfIndex];
-    }
+    // const iOfIndex = indices.indexOf(fieldName);
+    // if (iOfIndex != -1) {
+    //   return table.index[this._id][iOfIndex];
+    // }
 
     const fieldIndex = table.fieldNameIndex[fieldName];
 
@@ -147,7 +149,6 @@ export class Document<Type extends PlainObject> {
       }
     }
 
-    if (this._partitionID === undefined) throw new Error(this.partitionClosedErrorMessage(fieldName));
 
     if (type == "date") {
       if (this._dates[fieldName]) return this._dates[fieldName];
@@ -163,19 +164,32 @@ export class Document<Type extends PlainObject> {
       return !!value;
     }
     if (type == "date" && typeof value == "string") {
-      return Date.now();
+      return new Date(value);
       // return new Date(value);
     }
     return value;
   }
 
 
-  static storeValueOfType(value: any, type: FieldType) {
+
+  static storeValueOfType(value: Date | string | number, type: "date"): number
+  static storeValueOfType(value: boolean | number, type: "boolean"): number
+  static storeValueOfType(value: string, type: "string"): string
+  static storeValueOfType(value: string, type: "Text"): string
+  static storeValueOfType(value: string, type: "password"): string
+  static storeValueOfType<JSONType extends PlainObject | any[] | null>(value: JSONType, type: "json"): JSONType
+  static storeValueOfType<JSONType extends PlainObject | any[] | null>(value: JSONType, type: "JSON"): JSONType
+  static storeValueOfType(value: any, type: FieldType): string | number | PlainObject | any[] | undefined | null {
     if (type == "boolean") {
       return value ? 1 : 0;
     }
-    if (type == "date" && value instanceof Date) {
-      return value.toJSON();
+    if (type == "date") {
+      if (value instanceof Date) {
+        return value.getTime();
+      }
+      if (typeof value == "string") {
+        return (new Date(value)).getTime();
+      }
     }
     return value;
   }
@@ -221,7 +235,7 @@ export class Document<Type extends PlainObject> {
     return result as Type;
   }
 
-  static validateData(data: PlainObject, scheme: TableScheme): false | string {
+  static validateData<Type>(data: Type & PlainObject, scheme: TableScheme): false | string {
     const schemeFields = scheme.fields;
     // console.log(scheme);
     // console.log(data);
