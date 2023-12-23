@@ -254,7 +254,7 @@ export class Table<KeyType extends string | number, Type> {
   }
 
   public get length(): number {
-    return this.mainDict.lenght;
+    return this.mainDict.length;
   }
 
 
@@ -404,6 +404,24 @@ export class Table<KeyType extends string | number, Type> {
       const arr: KeyType[] = indexDict.getOne(value) || [];
       arr.push(id);
       indexDict.setOne(value, arr);
+    }
+  }
+
+  unstoreIndexValue(fieldName: string, value: string | number, id: KeyType) {
+    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
+
+    const indexDict = this.indices[fieldName];
+    if (isUnique) {
+      indexDict.remove([value]);
+    } else {
+      const arr: KeyType[] = indexDict.getOne(value) || [];
+      // arr.push(id);
+      arr.splice(arr.indexOf(id), 1);
+      if (arr.length) {
+        indexDict.setOne(value, arr);
+      } else {
+        indexDict.remove([value]);
+      }
     }
   }
 
