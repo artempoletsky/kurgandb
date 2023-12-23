@@ -252,14 +252,14 @@ describe("Fragmented dictionary", () => {
 
   test("insert one", async () => {
     numbers = FragmentedDictionary.reset(numbers);
-    numbers.insertOne(123, 321);
+    numbers.setOne(123, 321);
     expect(numbers.getOne(123)).toBe(321);
   });
 
   test("array dict", async () => {
 
-    index.insertOne("123", [123]);
-    index.insertOne("1234", [12312, 1421354, 54234]);
+    index.setOne("123", [123]);
+    index.setOne("1234", [12312, 1421354, 54234]);
 
     const arr = index.getOne("123");
     expect(arr).toBeDefined();

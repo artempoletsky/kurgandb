@@ -140,7 +140,7 @@ describe("Table", () => {
     expect(t.fieldHasAnyTag("name", "index")).toBe(true);
     let indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
 
-    indexDict.insertOne("blablabla", [123]);
+    indexDict.setOne("blablabla", [123]);
     const arr = indexDict.getOne("blablabla");
     expect(arr).toBeDefined();
     if (!arr) return;

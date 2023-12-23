@@ -196,9 +196,17 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   }
 
   setOne(id: KeyType, value: Type) {
-    this.edit([id], () => {
-      return value;
-    });
+    if (!this.lenght) {
+      return this.insertMany([id], [value]);
+    }
+
+    let partID = this.findPartitionForId(id);
+    if (this.partitionExceedsSize(partID)) {
+      partID = this.splitPartition(partID, id);
+    }
+    const partition = this.openAsSortedDictionary(partID);
+    partition.set(id, value);
+    wfs(this.getPartitionFilename(partID), partition);
   }
 
   getOne(id: KeyType): Type | undefined {
@@ -339,9 +347,6 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     wfs(`${this.settings.directory}meta.json`, this.meta);
   }
 
-  insertOne(key: KeyType, value: Type) {
-    this.insertMany([key], [value]);
-  }
 
   insertMany(dict: Record<string, Type>): void
   insertMany(keys: KeyType[], values: Type[]): void

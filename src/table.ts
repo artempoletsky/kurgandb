@@ -399,15 +399,11 @@ export class Table<KeyType extends string | number, Type> {
 
     const indexDict = this.indices[fieldName];
     if (isUnique) {
-      indexDict.insertOne(value, id);
+      indexDict.setOne(value, id);
     } else {
-      const arr: KeyType[] | undefined = indexDict.getOne(value);
-      if (!arr) {
-        indexDict.insertOne(value, [id]);
-      } else {
-        arr.push(id);
-        indexDict.setOne(value, arr);
-      }
+      const arr: KeyType[] = indexDict.getOne(value) || [];
+      arr.push(id);
+      indexDict.setOne(value, arr);
     }
   }
 
@@ -434,7 +430,7 @@ export class Table<KeyType extends string | number, Type> {
     } else {
       id = <KeyType>storable[this.primaryKey];
       delete storable[this.primaryKey];
-      this.mainDict.insertOne(id, this.flattenObject(storable));
+      this.mainDict.setOne(id, this.flattenObject(storable));
     }
 
     this.forEachField((key, type) => {
