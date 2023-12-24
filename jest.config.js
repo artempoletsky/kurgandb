@@ -14,10 +14,10 @@ const customJestConfig = {
 let currentFile = false;
 const files = fs.readdirSync('./__tests__');
 
-// currentFile = 'db.test.ts';
-// currentFile = 'dict.test.ts';
 // currentFile = 'sorteddict.test.ts';
-// currentFile = 'table.test.ts';
+// currentFile = 'dict.test.ts';
+currentFile = 'table.test.ts';
+// currentFile = 'db.test.ts';
 
 if (currentFile) {
   customJestConfig.testPathIgnorePatterns = files.filter(f => f != currentFile).map(f => "<rootDir>/__tests__/" + f);

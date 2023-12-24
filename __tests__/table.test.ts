@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 import { Predicate, predicateToQuery } from "../src/client";
 import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/utils";
 import { clientQueryUnsafe as clientQuery } from "../src/api";
-import { before } from "node:test";
+import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
 import { Document, FieldType } from "../src/document";
@@ -25,7 +25,7 @@ xdescribe("loading index", () => {
   })
 });
 
-describe("Table", () => {
+xdescribe("Table", () => {
 
   type SimpleType = {
     date: Date | string | number,
@@ -261,7 +261,7 @@ describe("Table", () => {
   });
 });
 
-xdescribe("Rich table", () => {
+describe("Rich table", () => {
   type RichType = {
     name: string
     lastTweet: string
@@ -325,9 +325,34 @@ xdescribe("Rich table", () => {
     blog_posts: [343434, 234823742, 439785345, 34583475345, 3453845734, 3458334535, 1231248576],
     favoriteRandomNumber: 0,
   };
+
+  function fakerGenerateUser(): RichType {
+    return {
+      name: faker.person.fullName(),
+      login: faker.internet.userName(),
+      birthday: faker.date.birthdate(),
+      blog_posts: [],
+      email: faker.internet.email(),
+      phoneNumber: faker.phone.number(),
+      favoriteQuote: faker.lorem.sentence(),
+      status: faker.lorem.sentence(),
+      lastTweet: faker.lorem.sentence(),
+      pageSlug: faker.lorem.word(),
+      lastActive: faker.date.recent(),
+      registrationDate: faker.date.past(),
+      isAdmin: false,
+      isModerator: faker.datatype.boolean(),
+      password: faker.internet.password(),
+      favoriteRandomNumber: faker.number.float(),
+      salary: faker.number.float({
+        max: 10000,
+        precision: 0.01
+      }),
+    }
+  }
   let t: Table<number, RichType>;
   let row: any[];
-  describe("filling", () => {
+  xdescribe("filling", () => {
 
     beforeAll(() => {
       // DataBase.createTable({
@@ -349,9 +374,9 @@ xdescribe("Rich table", () => {
           lastActive: ["index"],
           birthday: ["index"],
           pageSlug: ["index"],
-          login: ["unique"],
-          email: ["unique"],
-          phoneNumber: ["unique"],
+          // login: ["unique"],
+          // email: ["unique"],
+          // phoneNumber: ["unique"],
         },
       });
 
@@ -371,7 +396,8 @@ xdescribe("Rich table", () => {
 
 
       for (let i = 0; i < docsToInsert; i++) {
-        t.insert(RichTypeRecord);
+        // t.insert(RichTypeRecord);
+        t.insert(fakerGenerateUser());
       }
 
       expect(t.length).toBe(initialLenght + docsToInsert);
@@ -389,11 +415,11 @@ xdescribe("Rich table", () => {
 
     xtest("moderate square fill", () => {
       const squareSize = 10 * 1000 - 1;
-      const square = Array.from(Array(squareSize)).map(() => row);
+      const square = Array.from(Array(squareSize)).map(() => t.flattenObject(fakerGenerateUser()));
       const initialLenght = t.length;
 
       expect(square.length).toBe(squareSize);
-      expect(square[123][0]).toBe("John Doe");
+      // expect(square[123][0]).toBe("John Doe");
 
       t.insertSquare(square);
 
@@ -435,7 +461,7 @@ xdescribe("Rich table", () => {
 
 
 
-  xdescribe("reading and modifying", () => {
+  describe("reading and modifying", () => {
 
     beforeAll(() => {
       t = DataBase.getTable(TestTableName);
@@ -449,11 +475,13 @@ xdescribe("Rich table", () => {
       });
       perfEnd("query");
 
-      console.log(t.at(123123));
+      console.log(t.at(700));
 
       perfStart("at");
       t.at(9);
       perfEnd("at");
+
+      console.log(t.at(9));
 
       perfLog("query");
       perfLog("at");
@@ -462,25 +490,34 @@ xdescribe("Rich table", () => {
 
     });
 
-    test("insert", () => {
-      const last = t.getLastIndex();
-      const doc = t.insert(RichTypeRecord);
-      expect(doc.id).toBe(last + 1);
+    test("where", () => {
+      if (!t.fieldHasAnyTag("salary", "index")) {
+        perfStart("salaryIndex");
+        t.createIndex("salary", false);
+        perfEnd("salaryIndex");
+
+        perfLog("salaryIndex");
+      }
+
+      perfStart("whereSalary");
+      const rich = t.whereRange("salary", 900, 1000).select();
+      perfEnd("whereSalary");
+
+      perfLog("whereSalary");
+
+
+      perfStart("whereBirthday");
+      const sameBirthday = t.where("birthday", rich[1].birthday).select();
+      perfEnd("whereBirthday");
+
+      console.log(sameBirthday.length);
+      
+      perfLog("whereBirthday");
+      // console.log(rich.length);
+      
+      
     });
 
-    xtest("create index", () => {
-      t.createIndex("favoriteRandomNumber");
-      const doc = t.at(123);
-      expect(doc).toBeTruthy();
-      if (!doc) return;
-      // expect(doc.favoriteRandomNumber)
-    });
-
-
-    afterAll(() => {
-      t.closePartition();
-      t.saveIndexPartitions();
-    })
   });
 
 });

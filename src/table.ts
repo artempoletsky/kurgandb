@@ -400,19 +400,13 @@ export class Table<KeyType extends string | number, Type> {
     return result as Type;
   }
 
-  // /**
-  //  * 
-  //  * @param data - data to insert
-  //  * @param predicate - filing indices function
-  //  * @returns last inserted id string
-  //  */
+  // // /**
+  // //  * 
+  // //  * @param data - data to insert
+  // //  * @param predicate - filing indices function
+  // //  * @returns last inserted id string
+  // //  */
   // insertSquare(data: any[][]): string[] | number[] {
-  //   for (const row of data) {
-  //     this.forEachIndex(name => {
-  //       const value = 
-  //       this.storeIndexValue(name, )
-  //     })
-  //   }
   //   return this.mainDict.insertArray(data) as string[] | number[]; //TODO: take the last id from the table instead of the dict
   // }
 
@@ -567,9 +561,17 @@ export class Table<KeyType extends string | number, Type> {
   }
 
   at(id: KeyType): Type | null
-  at<ReturnType>(id: KeyType, predicate: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
+  at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
   at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
     return this.where(this.primaryKey as any, id).select(1, predicate)[0] || null;
+  }
+
+  atIndex(index: number): Type | null
+  atIndex<ReturnType = Type>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
+  atIndex<ReturnType>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>) {
+    const id = this.mainDict.keyAtIndex(index);
+    if (id === undefined) return null;
+    return this.at(id, predicate);
   }
 
   toJSON() {

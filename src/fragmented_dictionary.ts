@@ -613,4 +613,29 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     }
     return result;
   }
+
+  keyAtIndex(index: number): KeyType | undefined {
+    if (index < 0 || index >= this.length) return undefined;
+    const { partitions } = this.meta;
+
+    let totalLength = 0;
+    let i: number;
+    for (i = 0; i < partitions.length; i++) {
+      const { length } = partitions[i];
+      totalLength += length;
+      if (length && totalLength > index) {
+        totalLength -= length;
+        break;
+      }
+    }
+
+    const partition = this.openAsSortedDictionary(i);
+    return partition.keyAtIndex(index - totalLength);
+  }
+
+  atindex(index: number): Type | undefined {
+    const key = this.keyAtIndex(index);
+    if (key === undefined) return undefined;
+    return this.getOne(key);
+  }
 }

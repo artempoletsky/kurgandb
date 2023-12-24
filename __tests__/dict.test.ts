@@ -171,7 +171,7 @@ describe("Fragmented dictionary", () => {
 
   });
 
-  test("creates partitions", async () => {
+  test("creates partitions", () => {
     expect(partitions.numPartitions).toBe(0);
     expect(existsSync(PART + "part0.json")).toBe(false);
     partitions.createNewPartition(0);
@@ -233,7 +233,7 @@ describe("Fragmented dictionary", () => {
     letters = FragmentedDictionary.reset(letters);
   });
 
-  test("adds items at the tail", async () => {
+  test("adds items at the tail", () => {
     numbers = FragmentedDictionary.reset(numbers);
     numbers.insertArray([1]);
     expect(numbers.length).toBe(1);
@@ -251,7 +251,7 @@ describe("Fragmented dictionary", () => {
   });
 
 
-  test("adds items at the center", async () => {
+  test("adds items at the center", () => {
     const initial = ["b", "c", "x", "y", "z",];
     const getLetterPosition = (k: string) => (parseInt(k, 36) - 10 + 1);
 
@@ -299,7 +299,7 @@ describe("Fragmented dictionary", () => {
   });
 
 
-  test("edits items", async () => {
+  test("edits items", () => {
     letters.edit(["b", "a"], (id, value) => value * 10);
     // console.log(letters.openPartition(0));
     expect(letters.findPartitionForId("a")).toBe(0)
@@ -308,13 +308,13 @@ describe("Fragmented dictionary", () => {
     expect(letters.getOne("b")).toBe(20);
   });
 
-  test("removes items", async () => {
+  test("removes items", () => {
     letters.remove(["b", "a"]);
     expect(letters.getOne("a")).toBe(undefined);
     expect(letters.getOne("b")).toBe(undefined);
   });
 
-  test("insert array", async () => {
+  test("insert array", () => {
     numbers = FragmentedDictionary.reset(numbers);
     const ids = numbers.insertArray([5, 6, 7]);
     expect(numbers.length).toBe(3);
@@ -327,13 +327,13 @@ describe("Fragmented dictionary", () => {
   });
 
 
-  test("insert one", async () => {
+  test("insert one", () => {
     numbers = FragmentedDictionary.reset(numbers);
     numbers.setOne(123, 321);
     expect(numbers.getOne(123)).toBe(321);
   });
 
-  test("array dict", async () => {
+  test("array dict", () => {
 
     index.setOne("123", [123]);
     index.setOne("1234", [12312, 1421354, 54234]);
@@ -356,7 +356,7 @@ describe("Fragmented dictionary", () => {
   });
 
 
-  test("meta start end consistency", async () => {
+  test("meta start end consistency", () => {
     numbers = FragmentedDictionary.reset(numbers);
     numbers.insertSortedDict(SortedDictionary.fromLenght(40));
 
@@ -369,6 +369,25 @@ describe("Fragmented dictionary", () => {
 
     expect(numbers.start).toBe(4);
     expect(numbers.length).toBe(32);
+  });
+
+  test("at index", () => {
+    letters = FragmentedDictionary.reset(letters);
+    const lettersInverted = SortedDictionary.fromLenght(26).transform(id => (id + 9).toString(36));
+    letters.insertSortedDict(SortedDictionary.fromKeys(lettersInverted.values()).transform(letter => parseInt(letter, 36) - 9));
+
+    expect(letters.length).toBe(26);
+    // console.log(letters.loadAll().toJSON());
+
+    expect(letters.atindex(0)).toBe(1);
+    expect(letters.atindex(17)).toBe(18);
+    expect(letters.atindex(19)).toBe(20);
+    expect(letters.atindex(4)).toBe(5);
+    expect(letters.atindex(12)).toBe(13);
+
+    expect(letters.atindex(25)).toBe(26);
+    expect(letters.atindex(26)).toBe(undefined);
+    expect(letters.atindex(-1)).toBe(undefined);
   });
 
   afterAll(() => {

@@ -33,6 +33,17 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     return this._keys.map(k => this.dict[k]);
   }
 
+
+  keyAtIndex(index: number) {
+    return this._keys[index];
+  }
+
+  atIndex(index: number) {
+    const key = this._keys[index];
+    if (!key) return undefined;
+    return this.get(key);
+  }
+
   keys(doNotCopy = false) {
     return doNotCopy ? this._keys : [...this._keys];
   }

@@ -91,4 +91,13 @@ describe("Sorted dictionary", () => {
 
     expect(d2.length).toBe(0);
   });
+
+  test("at index", () => {
+    const d = SortedDictionary.fromLenght(20);
+
+    expect(d.atIndex(12)).toBe(13);
+    expect(d.atIndex(0)).toBe(1);
+    expect(d.atIndex(19)).toBe(20);
+    expect(d.atIndex(20)).toBe(undefined);
+  });
 });
