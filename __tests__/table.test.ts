@@ -149,7 +149,7 @@ describe("Table", () => {
     expect(indexDict.getOne("blablabla")).toBe(undefined);
 
 
-    t.storeIndexValue("name", "foo123", 456);
+    t.storeIndexValue("name", 456, "foo123");
     indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
     expect(indexDict.getOne("foo123")).toBeDefined();
     indexDict.remove(["foo123"]);
@@ -170,6 +170,53 @@ describe("Table", () => {
     const bars = t.where("name", "bar").select();
 
     expect(bars.length).toBe(2);
+  });
+
+  test("filters", () => {
+    const bars = t.filter(doc => doc.name == "bar").select();
+    expect(bars.length).toBe(2);
+  });
+
+  test("removes and creates index", () => {
+    t.removeIndex("name");
+    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
+
+    let bars = t.where("name", "bar").select();
+
+    expect(bars.length).toBe(2);
+
+    expect(() => {
+      t.createIndex("name", true);
+    }).toThrow("Attempting to create a duplicate in the unique field 'jest_test_table[id].name'");
+    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
+
+    t.createIndex("name", false);
+    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
+
+    bars = t.where("name", "bar").select();
+
+    expect(bars.length).toBe(2);
+
+    const lastBarID = t.insert({
+      ...t.createDefaultObject(),
+      name: "bar"
+    });
+
+    bars = t.where("name", "bar").select();
+    expect(bars.length).toBe(3);
+
+    t.where("id", lastBarID).delete();
+
+    bars = t.where("name", "bar").select();
+    expect(bars.length).toBe(2);
+
+    const indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+
+    const arr = indexDict.getOne("bar");
+    expect(arr).toBeDefined();
+    if (!arr) return;
+    expect(arr.length).toBe(2);
+    expect(arr.indexOf(lastBarID)).toBe(-1);
   });
 
   test("renames a field", () => {
@@ -279,8 +326,8 @@ xdescribe("Rich table", () => {
     favoriteRandomNumber: 0,
   };
   let t: Table<number, RichType>;
-  let row: [any[], any[]];
-  xdescribe("filling", () => {
+  let row: any[];
+  describe("filling", () => {
 
     beforeAll(() => {
       // DataBase.createTable({
@@ -298,7 +345,14 @@ xdescribe("Rich table", () => {
       t = DataBase.createTable({
         name: TestTableName,
         fields: RichTypeFields,
-        indices: ["lastActive", "birthday", "pageSlug", "login", "email", "phoneNumber"]
+        tags: {
+          lastActive: ["index"],
+          birthday: ["index"],
+          pageSlug: ["index"],
+          login: ["unique"],
+          email: ["unique"],
+          phoneNumber: ["unique"],
+        },
       });
 
       row = t.flattenObject(RichTypeRecord);
@@ -309,22 +363,21 @@ xdescribe("Rich table", () => {
       expect(invalidReason).toBe(false)
     });
 
-
-    test("moderate fill", () => {
-      const squareSize = 10 * 1000 - 1;
-      const square = Array.from(Array(squareSize)).map(() => row);
+    test("moderate insert fill", () => {
+      const docsToInsert = 10 * 1000;
       const initialLenght = t.length;
 
-      expect(square.length).toBe(squareSize);
-      expect(square[123][0][0]).toBe("John Doe");
 
-      t.insertSquare(square);
 
-      expect(t.length).toBe(initialLenght + square.length);
-      t.fieldHasTag("birthday", "memory");
-      t.insertSquare(square);
-      t.closePartition();
-      t.saveIndexPartitions();
+
+      for (let i = 0; i < docsToInsert; i++) {
+        t.insert(RichTypeRecord);
+      }
+
+      expect(t.length).toBe(initialLenght + docsToInsert);
+
+
+
 
       perfStart("at");
       t.at(123);
@@ -334,17 +387,30 @@ xdescribe("Rich table", () => {
     });
 
 
-    test("table query", () => {
-      t.where("birthday", Date.now())
-        .whereRange("salary", 10, 1000)
-        .filter(doc => Math.random() < 0.5)
-        .filter(doc => doc.favoriteQuote.length < 5)
-        .update(doc => {
-          doc.name = "fooo";
-        });
-    })
+    xtest("moderate square fill", () => {
+      const squareSize = 10 * 1000 - 1;
+      const square = Array.from(Array(squareSize)).map(() => row);
+      const initialLenght = t.length;
 
-    test("proliferate fill", () => {
+      expect(square.length).toBe(squareSize);
+      expect(square[123][0]).toBe("John Doe");
+
+      t.insertSquare(square);
+
+      expect(t.length).toBe(initialLenght + square.length);
+      t.insertSquare(square);
+
+
+
+      perfStart("at");
+      t.at(123);
+      perfEnd("at");
+      perfLog("at");
+      expect(perfDur("at")).toBeLessThan(30);
+    });
+
+
+    xtest("proliferate fill", () => {
       const squaresToAdd = 1 * 1;
 
       const squareSize = 10 * 1000 * 1000;
@@ -362,16 +428,8 @@ xdescribe("Rich table", () => {
     });
 
 
-    xtest("ifdo", () => {
-      perfStart("ifdo");
-      t.ifDo(doc => doc.favoriteRandomNumber == 0, doc => doc.favoriteRandomNumber = Math.random());
-      perfEnd("ifdo");
-      perfLog("ifdo");
-    });
-
-
     afterAll(() => {
-      t.closePartition();
+      // t.closePartition();
     })
   });
 

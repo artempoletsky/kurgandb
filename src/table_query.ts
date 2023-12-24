@@ -30,7 +30,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     // Document.retrieveValueOfType()
     const type = this.table.scheme.fields[fieldName];
     const mappedRanges = ranges.map<[string | number | undefined, string | number | undefined]>(([min, max]) => {
-      return [Document.storeValueOfType(min as any, type), Document.storeValueOfType(max as any, type)];
+      return [Document.storeValueOfType(min as any, type as any), Document.storeValueOfType(max as any, type as any)];
     });
     if (this.table.primaryKey == fieldName || this.table.fieldHasAnyTag(fieldName, "index", "unique")) {
       this.whereFilter = { fieldName, ranges: mappedRanges };
@@ -69,7 +69,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
   exec(limit: number, operation: "select", predicate?: Function): any[]
   exec(limit: number, operation: "delete", predicate?: undefined): string[] | number[]
   exec(limit = 100, operation: "select" | "update" | "delete", predicate?: Function) {
-    const execfn = (id: string | number, value: any[]) => {
+    const execfn = (id: KeyType, value: any[]) => {
       const doc = new Document(value, id, this.table, this.indices) as TDocument<KeyType, Type>;
       for (let i = 0; i < this.filters.length; i++) {
         let filter = this.filters[i];
@@ -85,6 +85,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
         }
       }
       if (operation == "delete") {
+        this.table.removeIdFromIndex(id, value);
         return true;
       } else if (operation == "select") {
         if (predicate) {
@@ -137,7 +138,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
       this.mainDict.editRanges([[undefined, undefined]], execfn, limit);
       return;
     } else {
-      return this.mainDict.removeRanges([[undefined, undefined]],)
+      return this.mainDict.removeRanges([[undefined, undefined]], execfn, limit);
     }
 
   }

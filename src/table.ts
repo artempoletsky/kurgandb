@@ -189,12 +189,16 @@ export class Table<KeyType extends string | number, Type> {
     return new TableQuery<KeyType, Type>(this, this.indices, this.mainDict);
   }
 
-  whereRange(fieldName: keyof Type & string, min: any, max: any): TableQuery<KeyType, Type> {
-    return this.createQuery().whereRange(fieldName, min, max);
+  whereRange(fieldName: (keyof Type | "id") & string, min: any, max: any): TableQuery<KeyType, Type> {
+    return this.createQuery().whereRange(fieldName as any, min, max);
   }
 
-  where(fieldName: keyof Type & string, value: any): TableQuery<KeyType, Type> {
-    return this.createQuery().where(fieldName, value);
+  whereRanges(fieldName: (keyof Type | "id") & string, ranges: any): TableQuery<KeyType, Type> {
+    return this.createQuery().whereRanges(fieldName as any, ranges);
+  }
+
+  where(fieldName: (keyof Type | "id") & string, value: any): TableQuery<KeyType, Type> {
+    return this.createQuery().where(fieldName as any, value);
   }
 
   filter(predicate: DocCallback<KeyType, Type, boolean>): TableQuery<KeyType, Type> {
@@ -284,12 +288,32 @@ export class Table<KeyType extends string | number, Type> {
       maxPartitionSize: 0,
     };
 
-    FragmentedDictionary.init({
+    return FragmentedDictionary.init({
       directory,
       keyType,
       ...settings,
     });
 
+  }
+
+  createIndex(name: string & keyof Type, unique: boolean) {
+    if (this.indices[name]) throw new Error(`${this.printField(name)} is already an index!`);
+    const type = this.scheme.fields[name];
+
+    const tags: FieldTag[] = unique ? ["unique"] : ["index"];
+    this.indices[name] = Table.createIndexDictionary(this.name, name, tags, type);
+    this.scheme.tags[name] = tags;
+
+    this.filter(doc => {
+      try {
+        this.storeIndexValue(name, doc.id, doc.get(name));
+      } catch (error) {
+        this.removeIndex(name);
+        throw error;
+      }
+      return false;
+    }).select(0);
+    this.saveScheme();
   }
 
   removeIndex(name: string) {
@@ -311,7 +335,7 @@ export class Table<KeyType extends string | number, Type> {
     if (name == this.primaryKey) throw new Error(`Can't remove the primary key ${this.printField(name)}! Create a new table instead.`);
     const isHeavy = isHeavyType(type);
 
-    if (this.fieldHasAnyTag(name as any, "index", "unique")) {
+    if (this.fieldHasAnyTag(name, "index", "unique")) {
       this.removeIndex(name);
     }
 
@@ -340,7 +364,7 @@ export class Table<KeyType extends string | number, Type> {
     const definedPredicate = predicate || (() => getDefaultValueForType(type));
 
     this.insertDocColumn(this._indexFieldName.length, (id, arr) => {
-      return definedPredicate(new Document(arr, id, this, this.indices) as TDocument<KeyType, Type>);
+      return definedPredicate(new Document<KeyType, Type>(arr, id, this, this.indices) as TDocument<KeyType, Type>);
     });
 
     this.scheme.fields[name] = type;
@@ -368,15 +392,29 @@ export class Table<KeyType extends string | number, Type> {
     return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "Text" ? "txt" : "json"}`;
   }
 
-  /**
-   * 
-   * @param data - data to insert
-   * @param predicate - filing indices function
-   * @returns last inserted id string
-   */
-  insertSquare(data: any[][]): string[] | number[] {
-    return this.mainDict.insertArray(data) as string[] | number[]; //TODO: take the last id from the table instead of the dict
+  createDefaultObject(): Type {
+    const result: PlainObject = {};
+    this.forEachField((fieldName, type) => {
+      result[fieldName] = getDefaultValueForType(type);
+    });
+    return result as Type;
   }
+
+  // /**
+  //  * 
+  //  * @param data - data to insert
+  //  * @param predicate - filing indices function
+  //  * @returns last inserted id string
+  //  */
+  // insertSquare(data: any[][]): string[] | number[] {
+  //   for (const row of data) {
+  //     this.forEachIndex(name => {
+  //       const value = 
+  //       this.storeIndexValue(name, )
+  //     })
+  //   }
+  //   return this.mainDict.insertArray(data) as string[] | number[]; //TODO: take the last id from the table instead of the dict
+  // }
 
   protected removeDocColumn(fieldIndex: number): void
   protected removeDocColumn(fieldIndex: number, returnAsDict: true): PlainObject
@@ -394,33 +432,51 @@ export class Table<KeyType extends string | number, Type> {
     if (returnAsDict) return result;
   }
 
-  storeIndexValue(fieldName: string, value: string | number, id: KeyType) {
-    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
-
-    const indexDict = this.indices[fieldName];
-    if (isUnique) {
-      indexDict.setOne(value, id);
-    } else {
-      const arr: KeyType[] = indexDict.getOne(value) || [];
-      arr.push(id);
-      indexDict.setOne(value, arr);
-    }
+  removeIdFromIndex(docID: KeyType, data: any[]) {
+    this.forEachIndex((fieldName) => {
+      const value = data[this._fieldNameIndex[fieldName]];
+      this.unstoreIndexValue(fieldName, docID, value);
+    });
   }
 
-  unstoreIndexValue(fieldName: string, value: string | number, id: KeyType) {
+  storeIndexValue(fieldName: string, docID: KeyType, value: string | number) {
+    this.changeIndexValue(fieldName, docID, undefined, value);
+  }
+
+  unstoreIndexValue(fieldName: string, docID: KeyType, value: string | number) {
+    this.changeIndexValue(fieldName, docID, value, undefined);
+  }
+
+  changeIndexValue(fieldName: string, docID: KeyType, oldValue: undefined | string | number, newValue: undefined | string | number) {
+    if (oldValue == newValue) return;
     const isUnique = this.fieldHasAnyTag(fieldName, "unique");
 
     const indexDict = this.indices[fieldName];
     if (isUnique) {
-      indexDict.remove([value]);
+      if (newValue !== undefined && indexDict.getOne(newValue)) throw new Error(`Attempting to create a duplicate in the unique ${this.printField(fieldName)}`);
+
+      if (oldValue !== undefined) {
+        indexDict.remove([oldValue]);
+      }
+      if (newValue !== undefined) {
+        indexDict.setOne(newValue, docID);
+      }
     } else {
-      const arr: KeyType[] = indexDict.getOne(value) || [];
-      // arr.push(id);
-      arr.splice(arr.indexOf(id), 1);
-      if (arr.length) {
-        indexDict.setOne(value, arr);
-      } else {
-        indexDict.remove([value]);
+      if (oldValue !== undefined) {
+        const arr: KeyType[] = indexDict.getOne(oldValue) || [];
+        // arr.push(id);
+        arr.splice(arr.indexOf(docID), 1);
+        if (arr.length) {
+          indexDict.setOne(oldValue, arr);
+        } else {
+          indexDict.remove([oldValue]);
+        }
+      }
+
+      if (newValue !== undefined) {
+        const arr: KeyType[] = indexDict.getOne(newValue) || [];
+        arr.push(docID);
+        indexDict.setOne(newValue, arr);
       }
     }
   }
@@ -461,7 +517,7 @@ export class Table<KeyType extends string | number, Type> {
 
     this.forEachIndex((fieldName) => {
       const value = <string | number>storable[fieldName];
-      this.storeIndexValue(fieldName, value, id);
+      this.storeIndexValue(fieldName, id, value);
     });
 
     return id;
@@ -502,7 +558,7 @@ export class Table<KeyType extends string | number, Type> {
     return lightValues;
   }
 
-  protected insertDocColumn(fieldIndex: number, predicate: (id: string | number, arr: any[]) => any) {
+  protected insertDocColumn(fieldIndex: number, predicate: (id: KeyType, arr: any[]) => any) {
     this.mainDict.editRanges([[undefined, undefined]], (id, arr) => {
       const newArr = [...arr];
       newArr.splice(fieldIndex, 0, predicate(id, newArr));

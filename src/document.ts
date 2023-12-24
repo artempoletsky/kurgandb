@@ -16,7 +16,7 @@ export type FieldType = typeof AllTypes[number]
 export type TDocument<KeyType extends string | number, Type> = Document<KeyType, Type> & Type;
 
 export class Document<KeyType extends string | number, Type> {
-  protected _id: string | number;
+  protected _id: KeyType;
   protected _indices: IndicesRecord;
   protected _data: any[] = [];
   protected _dates: Record<string, Date> = {};
@@ -24,11 +24,11 @@ export class Document<KeyType extends string | number, Type> {
   protected _table: Table<KeyType, Type>;
 
 
-  public get id(): string | number {
+  public get id(): KeyType {
     return this._id;
   }
 
-  constructor(data: any[], id: string | number, table: Table<KeyType, Type>, indices: IndicesRecord) {
+  constructor(data: any[], id: KeyType, table: Table<KeyType, Type>, indices: IndicesRecord) {
     this._indices = indices;
 
     this._table = table;
@@ -66,37 +66,17 @@ export class Document<KeyType extends string | number, Type> {
     if (!type) {
       throw new Error(`There is no '${fieldName}' field in '${table.name}'`);
     }
-
     let newValue: any = Document.storeValueOfType(value, type as any);
+
+    const indexField = table.fieldNameIndex[fieldName];
+    const currentValue = this._data[indexField];
+    table.changeIndexValue(fieldName, this._id, currentValue, newValue);
+
+    
     if (type == "date") {
       this._dates[fieldName] = new Date(value);
     }
 
-    const index = this._indices[fieldName];
-    const docID = this._id;
-    if (index) {
-      const currentValue = this.get(fieldName);
-      if (currentValue === newValue) {
-        return;
-      }
-
-      if (table.fieldHasAnyTag(fieldName, "unique")) {
-        if (index.getOne(newValue)) throw new Error(`attempting to create a duplicate on the unique ${this.fieldPrint(fieldName, newValue)}`);
-        index.remove(currentValue);
-        index.insertOne(newValue, docID);
-      } else {
-        const currentArr: any[] | undefined = index.getOne(currentValue);
-        const newArr: any[] = index.getOne(newValue) || [];
-        if (currentArr) {
-          currentArr.splice(currentArr.indexOf(docID), 1);
-          if (!currentArr.length) {
-            index.remove(currentValue);
-          }
-        }
-        newArr.push(docID);
-        index.insertOne(newValue, newArr);
-      }
-    }
 
 
     if (isHeavyType(type)) {
@@ -110,7 +90,7 @@ export class Document<KeyType extends string | number, Type> {
 
 
 
-    const indexField = table.fieldNameIndex[fieldName];
+
 
     this._data[indexField] = newValue;
   }
@@ -179,6 +159,7 @@ export class Document<KeyType extends string | number, Type> {
   static storeValueOfType(value: string, type: "password"): string
   static storeValueOfType<JSONType extends PlainObject | any[] | null>(value: JSONType, type: "json"): JSONType
   static storeValueOfType<JSONType extends PlainObject | any[] | null>(value: JSONType, type: "JSON"): JSONType
+  static storeValueOfType(value: any, type: FieldType): any
   static storeValueOfType(value: any, type: FieldType): string | number | PlainObject | any[] | undefined | null {
     if (type == "boolean") {
       return value ? 1 : 0;
