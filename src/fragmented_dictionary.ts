@@ -1,7 +1,7 @@
 
 import SortedDictionary from "./sorted_dictionary";
-import { PlainObject, existsSync, mkdirSync, renameSync, rfs, rmie, statSync, wfs } from "./utils";
-
+import { PlainObject, mkdirSync, renameSync, existsSync, rmie } from "./utils";
+import vfs from "./virtual_fs";
 
 function getEmptyKey<KeyType extends string | number>(keyType: KeyType extends string ? "string" : "int"): KeyType {
   return keyType == "string" ? "" : 0 as any;
@@ -51,7 +51,8 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   protected emptyKey: KeyType;
 
   static rename(oldDir: string, newDir: string) {
-    renameSync(oldDir, newDir);
+    // renameSync(oldDir, newDir);
+    vfs.renameDir(oldDir, newDir);
   }
 
   static reset<KeyType extends string | number, Type>(dict: FragmentedDictionary<KeyType, Type>): FragmentedDictionary<KeyType, Type> {
@@ -75,17 +76,18 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       partitions: []
     };
 
-    wfs(getMetaFilepath(opt.directory), empty);
+    vfs.writeFile(getMetaFilepath(opt.directory), empty);
+
     const optsToSave: Partial<FragmentedDictionarySettings<KeyType>> = Object.assign({}, opt);
     delete optsToSave.directory;
-    wfs(`${opt.directory}settings.json`, opt);
+    vfs.writeFile(`${opt.directory}settings.json`, opt);
     return this.open<KeyType, Type>(opt.directory);
   }
 
   static open<KeyType extends string | number, Type>(directory: string) {
-    const settings = rfs(`${directory}settings.json`);
+    const settings = vfs.readFile(`${directory}settings.json`);
     settings.directory = directory;
-    return new FragmentedDictionary<KeyType, Type>(settings, rfs(getMetaFilepath(directory)));
+    return new FragmentedDictionary<KeyType, Type>(settings, vfs.readFile(getMetaFilepath(directory)));
   }
 
   constructor(settings: FragmentedDictionarySettings<KeyType>, meta: FragDictMeta<KeyType>) {
@@ -233,7 +235,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       }
       if (isDirty) {
         isDirty = false;
-        wfs(this.getPartitionFilename(i), docs);
+        vfs.writeFile(this.getPartitionFilename(i), docs);
       }
 
       if (limit && found >= limit) break;
@@ -268,7 +270,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     let metaIsDirty = partition.get(id) === undefined && value !== undefined;
     partition.set(id, value);
 
-    wfs(this.getPartitionFilename(partID), partition);
+    vfs.writeFile(this.getPartitionFilename(partID), partition);
     if (metaIsDirty) {
       const meta = this.meta.partitions[partID];
       meta.start = partition.firstKey || this.emptyKey;
@@ -327,8 +329,8 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     meta2.length = part2.length;
     meta2.end = part2.lastKey || this.emptyKey;
 
-    wfs(this.getPartitionFilename(partId), part1);
-    wfs(this.getPartitionFilename(partId + 1), part2);
+    vfs.writeFile(this.getPartitionFilename(partId), part1);
+    vfs.writeFile(this.getPartitionFilename(partId + 1), part2);
     return meta1.length < meta2.length ? partId : partId + 1;
   }
 
@@ -360,7 +362,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     this.meta.start = _start || this.emptyKey;
     this.meta.end = _end;
 
-    wfs(getMetaFilepath(this.settings.directory), this.meta);
+    vfs.writeFile(getMetaFilepath(this.settings.directory), this.meta);
   }
 
   insertSortedDict(dict: SortedDictionary<KeyType, Type>) {
@@ -369,7 +371,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       return;
     }
 
-    const { maxPartitionLenght, maxPartitionSize } = this.settings;
+    const { maxPartitionLenght } = this.settings;
     const { partitions } = this.meta;
     const partitionsToOpen = this.findPartitionsForIds(dict.keys());
 
@@ -384,17 +386,8 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
           currentMeta = this.createNewPartition(partId);
         }
 
-        let capacity = maxPartitionLenght - currentMeta.length;
-        let partitionExceedsSize = false;
-        if (capacity <= 0) {
-          partitionExceedsSize = true;
-        } else if (maxPartitionSize) {
-          const size = statSync(this.getPartitionFilename(partId)).size;
-          if (size >= maxPartitionSize)
-            partitionExceedsSize = true;
-        }
 
-        if (partitionExceedsSize) {
+        if (this.partitionExceedsSize(partId)) {
           if (tail[0] > currentMeta.end) {
             partId++;
             currentMeta = this.createNewPartition(partId);
@@ -403,6 +396,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
             currentMeta = partitions[partId];
           }
         }
+        let capacity = maxPartitionLenght - currentMeta.length;
 
         let idsToInsert: KeyType[];
         if (tail.length > capacity) {
@@ -425,7 +419,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
         currentMeta.length = docs.length;
         // console.log(docs.toJSON());
 
-        wfs(this.getPartitionFilename(partId), docs);
+        vfs.writeFile(this.getPartitionFilename(partId), docs);
       }
     });
 
@@ -560,12 +554,12 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     // const { size, meta } = this.currentPartition;
     const length = this.meta.partitions[id].length;
 
-    if (maxPartitionLenght && (length > maxPartitionLenght)) {
+    if (maxPartitionLenght && (length >= maxPartitionLenght)) {
       return true;
     }
 
     if (!maxPartitionSize) return false;
-    const size = statSync(this.getPartitionFilename(id)).size;
+    const size = vfs.openFile(this.getPartitionFilename(id)).size();
     if (size > maxPartitionSize) {
       return true;
     }
@@ -584,12 +578,12 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     const { partitions } = this.meta;
     if (partitions.length > 0)
       for (let i = partitions.length - 1; i >= id; i--) {
-        renameSync(this.getPartitionFilename(i), this.getPartitionFilename(i + 1));
+        vfs.renameFile(this.getPartitionFilename(i), this.getPartitionFilename(i + 1));
       }
-    // const id = this.meta.partitions.length;
+
     this.meta.partitions.splice(id, 0, meta);
-    const fileName = this.getPartitionFilename(id);
-    wfs(fileName, {});
+
+    vfs.writeFile(this.getPartitionFilename(id), {});
     return meta;
   }
 
@@ -599,7 +593,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       throw new Error(`partition '${index}' doesn't exists`);
     }
 
-    return rfs(this.getPartitionFilename(index));
+    return vfs.readFile(this.getPartitionFilename(index));
   }
 
   openAsSortedDictionary(index: number) {

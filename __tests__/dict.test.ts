@@ -1,7 +1,9 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, existsSync, wfs } from "../src/utils";
+import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, existsSync, wfs, rmie } from "../src/utils";
 import FragmentedDictionary, { FragDictMeta, PartitionMeta } from "../src/fragmented_dictionary";
 import SortedDictionary from "../src/sorted_dictionary";
+import vfs, { allIsSaved } from "../src/virtual_fs";
+import { rimraf } from "rimraf";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -17,6 +19,7 @@ describe("Fragmented dictionary", () => {
   const PART = "/data/jest_dict_partititions/";
   const LETT = "/data/jest_dict_letters/";
   const NUM = "/data/jest_dict_numbers/";
+  const IND = "/data/test_array_index/";
   beforeAll(() => {
     numbers = FragmentedDictionary.init({
       directory: NUM,
@@ -38,7 +41,7 @@ describe("Fragmented dictionary", () => {
 
     index = FragmentedDictionary.init({
       keyType: "string",
-      directory: "/data/test_array_index/",
+      directory: IND,
       maxPartitionSize: 0,
       maxPartitionLenght: 100 * 1000,
     });
@@ -171,33 +174,50 @@ describe("Fragmented dictionary", () => {
 
   });
 
-  test("creates partitions", () => {
+  test("creates partitions", async () => {
     expect(partitions.numPartitions).toBe(0);
-    expect(existsSync(PART + "part0.json")).toBe(false);
-    partitions.createNewPartition(0);
-    expect(existsSync(PART + "part0.json")).toBe(true);
+    expect(vfs.openFile(PART + "part0.json").exists).toBe(false);
 
-    expect(existsSync(PART + "part1.json")).toBe(false);
+    partitions.createNewPartition(0);
+
+    expect(vfs.openFile(PART + "part0.json").exists).toBe(true);
+    expect(vfs.openFile(PART + "part1.json").exists).toBe(false);
+
     partitions.createNewPartition(1);
-    expect(existsSync(PART + "part1.json")).toBe(true);
+
+    expect(vfs.openFile(PART + "part1.json").exists).toBe(true);
     expect(partitions.numPartitions).toBe(2);
 
-    wfs(PART + "part1.json", { hello_test: "test" });
+    vfs.writeFile(PART + "part1.json", { hello_test: "test" });
     expect(partitions.openPartition(1).hello_test).toBe("test");
 
     partitions.createNewPartition(0);
-    expect(existsSync(PART + "part2.json")).toBe(true);
+
+    expect(vfs.openFile(PART + "part2.json").exists).toBe(true);
+
     expect(partitions.numPartitions).toBe(3);
     expect(partitions.openPartition(1).hello_test).toBe(undefined);
     expect(partitions.openPartition(2).hello_test).toBe("test");
 
     partitions.createNewPartition(partitions.numPartitions);
+
+    await allIsSaved();
     expect(existsSync(PART + "part3.json")).toBe(true);
     expect(existsSync(PART + "part4.json")).toBe(false);
     expect(partitions.numPartitions).toBe(4);
   });
 
-  test("inserts sorted dict", () => {
+  test("inserts sorted dict", async () => {
+    numbers = FragmentedDictionary.reset(numbers);
+    expect(numbers.length).toBe(0);
+    expect(numbers.start).toBe(0);
+    expect(numbers.end).toBe(0);
+
+    numbers.insertSortedDict(SortedDictionary.fromLenght(3));
+    expect(numbers.length).toBe(3);
+    expect(numbers.start).toBe(1);
+    expect(numbers.end).toBe(3);
+
     numbers = FragmentedDictionary.reset(numbers);
 
     numbers.insertSortedDict(SortedDictionary.fromLenght(15));
@@ -210,7 +230,7 @@ describe("Fragmented dictionary", () => {
 
   });
 
-  test("splits partitions", () => {
+  test("splits partitions", async () => {
     const initial = ["b", "c", "x", "y", "z",];
     letters.insertMany(initial, initial.map(l => Math.random()));
 
@@ -230,7 +250,7 @@ describe("Fragmented dictionary", () => {
     expect(m1.length).toBe(1);
     expect(m1.end).toBe("x");
 
-    letters = FragmentedDictionary.reset(letters);
+    await allIsSaved();
   });
 
   test("adds items at the tail", () => {
@@ -252,6 +272,8 @@ describe("Fragmented dictionary", () => {
 
 
   test("adds items at the center", () => {
+    letters = FragmentedDictionary.reset(letters);
+
     const initial = ["b", "c", "x", "y", "z",];
     const getLetterPosition = (k: string) => (parseInt(k, 36) - 10 + 1);
 
@@ -277,6 +299,7 @@ describe("Fragmented dictionary", () => {
 
     // expect(letters.findPartitionForId("p")).toBe(0);
     const ptk = ["p"].sort();
+
     letters.insertMany(ptk, ptk.map(getLetterPosition));
 
 
@@ -390,10 +413,11 @@ describe("Fragmented dictionary", () => {
     expect(letters.atindex(-1)).toBe(undefined);
   });
 
-  afterAll(() => {
-    index.destroy();
-    letters.destroy();
-    numbers.destroy();
-    partitions.destroy();
+  afterAll(async () => {
+    await allIsSaved();
+    rmie(PART);
+    rmie(LETT);
+    rmie(NUM);
+    rmie(IND);
   })
 });

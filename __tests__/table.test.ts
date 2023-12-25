@@ -7,6 +7,7 @@ import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
 import { Document, FieldType } from "../src/document";
 import FragmentedDictionary from "../src/fragmented_dictionary";
+import { allIsSaved } from "../src/virtual_fs";
 
 
 const xdescribe = (...args: any) => { };
@@ -25,7 +26,7 @@ xdescribe("loading index", () => {
   })
 });
 
-xdescribe("Table", () => {
+describe("Table", () => {
 
   type SimpleType = {
     date: Date | string | number,
@@ -227,13 +228,11 @@ xdescribe("Table", () => {
     expect(t).not.toHaveProperty("scheme.fields.heavy");
     expect(t).toHaveProperty("scheme.fields.foo");
 
-    try {
+    expect(() => {
       t.renameField("name", "foo");
-    } catch (error: any) {
-      expect(error.message).toBe(`Field 'foo' already exists`);
-    } finally {
-      expect(t).toHaveProperty("scheme.fields.name");
-    }
+    }).toThrow(`Field 'foo' already exists`);
+
+    expect(t).toHaveProperty("scheme.fields.name");
 
     t.renameField("name", "bar");
     expect(t.scheme.tags).not.toHaveProperty("name");
@@ -255,7 +254,8 @@ xdescribe("Table", () => {
     expect(d.random).toBeLessThan(1);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await allIsSaved();
     // t.closePartition();
     // DataBase.removeTable(tableName);
   });
@@ -352,7 +352,7 @@ describe("Rich table", () => {
   }
   let t: Table<number, RichType>;
   let row: any[];
-  xdescribe("filling", () => {
+  describe("filling", () => {
 
     beforeAll(() => {
       // DataBase.createTable({
@@ -511,11 +511,11 @@ describe("Rich table", () => {
       perfEnd("whereBirthday");
 
       console.log(sameBirthday.length);
-      
+
       perfLog("whereBirthday");
       // console.log(rich.length);
-      
-      
+
+
     });
 
   });
