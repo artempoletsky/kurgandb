@@ -81,13 +81,13 @@ function fakerGenerateUser(): RichType {
 
 
 const TestTableName = "jest_test_table";
-xdescribe("foo", () => {
+describe("foo", () => {
   test("foo", () => {
     expect(1).toBe(1);
   });
 });
 
-describe("Rich table", () => {
+xdescribe("Rich table", () => {
 
 
   const today = (new Date()).toJSON();

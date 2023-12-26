@@ -597,11 +597,12 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     const removedIds: KeyType[] = [];
 
     const { start, end } = this;
+    let found = 0;
     for (const [umin, umax] of ranges) {
       const min = umin === undefined || umin < start ? start : umin;
       const max = umax === undefined || umax > end ? end : umax;
 
-      let found = 0;
+
       let startPart = this.findPartitionForId(min);
       let endPart = min == max ? startPart : this.findPartitionForId(max);
 

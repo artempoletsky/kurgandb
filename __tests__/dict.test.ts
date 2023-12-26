@@ -440,6 +440,28 @@ describe("Fragmented dictionary", () => {
     expect(five.length).toBe(5);
   });
 
+
+  test("limit 2", () => {
+    fillNumbers(100);
+    const tenRes = numbers.iterateRanges([[undefined, undefined]], (val, id) => val % 2 == 0, undefined, (val) => val, 10);
+
+    const ten = Object.values(tenRes[0]);
+    expect(ten.length).toBe(10);
+    expect(ten[0]).toBe(2);
+    expect(ten[9]).toBe(20);
+
+    const fiveRes = numbers.iterateRanges([[6, undefined]], (val, id) => val % 2 == 0, undefined, (val) => val, 5);
+    const five = Object.values(fiveRes[0]);
+    expect(five.length).toBe(5);
+    expect(five[0]).toBe(6);
+    expect(five[1]).toBe(8);
+    expect(five[4]).toBe(14);
+
+    const sevenRes = numbers.iterateRanges(FragmentedDictionary.idsToRanges([1, 2, 30, 4, 25, 90, 6, 7, 8]), undefined, undefined, val => val, 7);
+    const seven = Object.values(sevenRes[0]);
+    expect(seven.length).toBe(7)
+  });
+
   afterAll(async () => {
     await allIsSaved();
     rmie(PART);

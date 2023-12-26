@@ -18,6 +18,7 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'sorteddict.test.ts';
 // currentFile = 'dict.test.ts';
 // currentFile = 'table.test.ts';
+// currentFile = 'table_stress.test.ts';
 // currentFile = 'db.test.ts';
 
 if (currentFile) {
