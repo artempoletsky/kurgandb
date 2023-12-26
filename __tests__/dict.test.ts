@@ -176,34 +176,37 @@ describe("Fragmented dictionary", () => {
 
   test("creates partitions", async () => {
     expect(partitions.numPartitions).toBe(0);
-    expect(vfs.openFile(PART + "part0.json").exists).toBe(false);
+    expect(vfs.openFile(PART + "part0_dict.json").exists).toBe(false);
 
     partitions.createNewPartition(0);
 
-    expect(vfs.openFile(PART + "part0.json").exists).toBe(true);
-    expect(vfs.openFile(PART + "part1.json").exists).toBe(false);
+    expect(vfs.openFile(PART + "part0_dict.json").exists).toBe(true);
+    expect(vfs.openFile(PART + "part0_keys.json").exists).toBe(true);
+    expect(vfs.openFile(PART + "part1_dict.json").exists).toBe(false);
 
     partitions.createNewPartition(1);
 
-    expect(vfs.openFile(PART + "part1.json").exists).toBe(true);
+    expect(vfs.openFile(PART + "part1_dict.json").exists).toBe(true);
     expect(partitions.numPartitions).toBe(2);
 
-    vfs.writeFile(PART + "part1.json", { hello_test: "test" });
-    expect(partitions.openPartition(1).hello_test).toBe("test");
+    vfs.writeFile(PART + "part1_dict.json", { 1123: "test" });
+    vfs.writeFile(PART + "part1_keys.json", [1123]);
+    expect(partitions.openPartition(1).get(1123)).toBe("test");
 
     partitions.createNewPartition(0);
 
-    expect(vfs.openFile(PART + "part2.json").exists).toBe(true);
+    expect(vfs.openFile(PART + "part2_dict.json").exists).toBe(true);
 
     expect(partitions.numPartitions).toBe(3);
-    expect(partitions.openPartition(1).hello_test).toBe(undefined);
-    expect(partitions.openPartition(2).hello_test).toBe("test");
+    expect(partitions.openPartition(1).get(1123)).toBe(undefined);
+    expect(partitions.openPartition(2).get(1123)).toBe("test");
 
     partitions.createNewPartition(partitions.numPartitions);
 
     await allIsSaved();
-    expect(existsSync(PART + "part3.json")).toBe(true);
-    expect(existsSync(PART + "part4.json")).toBe(false);
+    expect(existsSync(PART + "part3_dict.json")).toBe(true);
+    expect(existsSync(PART + "part3_keys.json")).toBe(true);
+    expect(existsSync(PART + "part4_dict.json")).toBe(false);
     expect(partitions.numPartitions).toBe(4);
   });
 
@@ -237,12 +240,17 @@ describe("Fragmented dictionary", () => {
     letters.splitPartition(0, "p");
     let p0 = letters.openPartition(0);
     let p1 = letters.openPartition(1);
-    expect(p0.b).toBeDefined();
-    expect(p0.c).toBeDefined();
-    expect(p0.x).toBeUndefined();
-    expect(p1.b).toBeUndefined();
-    expect(p1.c).toBeUndefined();
-    expect(p1.x).toBeDefined();
+    let p3 = letters.openPartition(2);
+
+    expect(p0.get("b")).toBeDefined();
+    expect(p0.get("c")).toBeDefined();
+
+    expect(p1.get("x")).toBeDefined();
+
+    expect(p3.get("y")).toBeDefined();
+    expect(p3.get("z")).toBeDefined();
+
+
     let m0 = letters.meta.partitions[0];
     let m1 = letters.meta.partitions[1];
     expect(m0.length).toBe(2);
@@ -264,7 +272,7 @@ describe("Fragmented dictionary", () => {
     expect(numbers.length).toBe(4);
 
     let p1 = numbers.openPartition(1);
-    expect(p1[4]).toBe(4);
+    expect(p1.get(4)).toBe(4);
 
     expect(numbers.numPartitions).toBe(2);
     expect(numbers.end).toBe(4);
@@ -303,7 +311,7 @@ describe("Fragmented dictionary", () => {
     letters.insertMany(ptk, ptk.map(getLetterPosition));
 
 
-    expect(letters.openPartition(1)).toHaveProperty("p");
+    expect(letters.openPartition(1).get("p")).toBeDefined();
     expect(letters.numPartitions).toBe(3);
     expect(letters.getOne("p")).toBe(16);
 
@@ -323,7 +331,7 @@ describe("Fragmented dictionary", () => {
 
 
   test("edits items", () => {
-    letters.edit(["b", "a"], (id, value) => value * 10);
+    letters.edit(["b", "a"], (value) => value * 10);
     // console.log(letters.openPartition(0));
     expect(letters.findPartitionForId("a")).toBe(0)
     expect(letters.findPartitionForId("b")).toBe(0)
@@ -367,7 +375,7 @@ describe("Fragmented dictionary", () => {
     if (!arr) return;
     expect(arr[0]).toBe(123);
 
-    index.editRanges([[undefined, undefined]], (id, arr) => {
+    index.editRanges([[undefined, undefined]], arr => {
       arr.splice(1, 0, 1000);
       return [...arr];
     });
@@ -411,6 +419,25 @@ describe("Fragmented dictionary", () => {
     expect(letters.atindex(25)).toBe(26);
     expect(letters.atindex(26)).toBe(undefined);
     expect(letters.atindex(-1)).toBe(undefined);
+  });
+
+
+  function fillNumbers(length: number) {
+    numbers = FragmentedDictionary.reset(numbers);
+    numbers.insertSortedDict(SortedDictionary.fromLenght(length));
+  }
+
+  test("limit", () => {
+    fillNumbers(100);
+    const ten = Object.values(numbers.filterSelect([[1, 50]], 0));
+    expect(ten.length).toBe(50);
+
+    const three = Object.values(numbers.filterSelect([[undefined, undefined]], 3));
+    expect(three.length).toBe(3);
+
+    const five = Object.values(numbers.filterSelect([[undefined, undefined]], 5, val => val % 2 == 0 ? val : undefined));
+
+    expect(five.length).toBe(5);
   });
 
   afterAll(async () => {

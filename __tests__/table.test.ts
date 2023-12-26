@@ -13,7 +13,7 @@ import { allIsSaved } from "../src/virtual_fs";
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
-const TestTableName = "jest_test_table";
+const TestTableName = "jest_test_table_0";
 
 xdescribe("loading index", () => {
   const meta = rfs(getMetaFilepath(TestTableName));
@@ -188,7 +188,7 @@ describe("Table", () => {
 
     expect(() => {
       t.createIndex("name", true);
-    }).toThrow("Attempting to create a duplicate in the unique field 'jest_test_table[id].name'");
+    }).toThrow(`Attempting to create a duplicate in the unique field '${TestTableName}[id].name'`);
     expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
 
     t.createIndex("name", false);
@@ -218,6 +218,23 @@ describe("Table", () => {
     if (!arr) return;
     expect(arr.length).toBe(2);
     expect(arr.indexOf(lastBarID)).toBe(-1);
+  });
+
+  test("limit", () => {
+    // t.removeIndex("name");
+    for (let i = 0; i < 4; i++) {
+      t.insert({
+        bool: false,
+        date: Date.now(),
+        heavy: null,
+        name: "John"
+      });
+    }
+
+    let johns = t.where("name", "John").select();
+    expect(johns.length).toBeGreaterThan(2);
+    johns = t.where("name", "John").select(2);
+    expect(johns.length).toBe(2);
   });
 
   test("renames a field", () => {
@@ -254,9 +271,11 @@ describe("Table", () => {
     expect(d.random).toBeLessThan(1);
   });
 
+
+
   afterAll(async () => {
     await allIsSaved();
     // t.closePartition();
-    // DataBase.removeTable(tableName);
+    DataBase.removeTable(TestTableName);
   });
 });

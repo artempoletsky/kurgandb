@@ -144,10 +144,10 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     return this.splitByIndex(index);
   }
 
-  transform<NewType>(predicate: (key: KeyType, value: Type) => NewType): SortedDictionary<KeyType, NewType> {
+  transform<NewType>(predicate: (value: Type, key: KeyType) => NewType): SortedDictionary<KeyType, NewType> {
     const newKeys = this.keys();
     const newDict = newKeys.reduce((d, k) => {
-      d[k] = predicate(k, this.dict[k]);
+      d[k] = predicate(this.dict[k], k);
       return d;
     }, {} as Record<KeyType, NewType>);
     return new SortedDictionary<KeyType, NewType>(newDict, this.keyType, true, newKeys);
@@ -171,5 +171,24 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
       res[key] = this.dict[key];
       return res;
     }, {} as Record<KeyType, Type>);
+  }
+
+  raw() {
+    return this.dict;
+  }
+
+  [Symbol.iterator](): Iterator<[Type, KeyType, number]> {
+    let i = 0;
+    const keys = this._keys;
+    const dict = this.dict;
+    return {
+      next() {
+        const key = keys[i];
+        if (!key) return { value: undefined, done: true };
+
+        const value = dict[key];
+        return { value: [value, key, i++], done: false };
+      },
+    };
   }
 }

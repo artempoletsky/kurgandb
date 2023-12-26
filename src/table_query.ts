@@ -65,34 +65,60 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return this;
   }
 
-  exec(limit: number, operation: "update", predicate: Function): void
-  exec(limit: number, operation: "select", predicate?: Function): any[]
-  exec(limit: number, operation: "delete", predicate?: undefined): string[] | number[]
-  exec(limit = 100, operation: "select" | "update" | "delete", predicate?: Function) {
-    const execfn = (id: KeyType, value: any[]) => {
-      const doc = new Document(value, id, this.table, this.indices) as TDocument<KeyType, Type>;
+  getFilterFunction() {
+    if (!this.filter.length) return undefined;
+    return (data: any[], id: KeyType) => {
+      const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
       for (let i = 0; i < this.filters.length; i++) {
         let filter = this.filters[i];
 
         if (!filter(doc)) {
-          if (operation == "update") {
-            return value;
-          } else if (operation == "delete") {
-            return false;
-          } else {
-            return undefined;
-          }
+          return false;
         }
       }
-      if (operation == "delete") {
-        this.table.removeIdFromIndex(id, value);
-        return true;
-      } else if (operation == "select") {
-        if (predicate) {
-          return predicate(doc);
-        }
-        return doc.toJSON();
+      return true;
+    }
+  }
+
+  getQueryRanges(): WhereRanges<KeyType> {
+    if (!this.whereFilter) return [[undefined, undefined]];
+
+    const { fieldName } = this.whereFilter;
+    let ids: KeyType[];
+    if (fieldName == this.table.primaryKey) {
+      return this.whereFilter.ranges as WhereRanges<KeyType>;
+    }
+
+    const rec = this.indices[fieldName].filterSelect(this.whereFilter.ranges, 0);
+
+    if (this.table.fieldHasAnyTag(fieldName, "unique")) {
+      ids = Object.values(rec);
+    } else {
+      ids = uniq(flatten(Object.values(rec)));
+    }
+
+    return ids.map(id => [id, id]);
+  }
+
+  select(limit?: number): Type[]
+  select<ReturnType>(limit: number, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[]
+  select<ReturnType = Type>(limit = 100, predicate?: DocCallback<KeyType, Type, ReturnType>): (ReturnType | Type)[] {
+    const select = (data: any[], id: KeyType) => {
+      const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
+      if (predicate) {
+        return predicate(doc);
       }
+      return doc.toJSON();
+    }
+
+    const res = this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), undefined, select, limit);
+    return Object.values(res[0]);
+  }
+
+  update(limit = 0, predicate: DocCallback<KeyType, Type, void>): void {
+
+    const update = (data: any[], id: KeyType) => {
+      const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
       if (!predicate) {
         throw new Error("Update predicate is undefined");
       }
@@ -100,60 +126,14 @@ export default class TableQuery<KeyType extends string | number, Type> {
       return doc.serialize();
     }
 
-    if (this.whereFilter) {
-      const { fieldName, ranges } = this.whereFilter;
-      let ids: KeyType[];
-      if (fieldName == this.table.primaryKey) {
-        if (operation == "select") {
-          return Object.values(this.mainDict.filterSelect(ranges as any, limit, execfn));
-        } else if (operation == "update") {
-          this.mainDict.editRanges(ranges as any, execfn, limit);
-          return;
-        } else {
-          return this.mainDict.removeRanges(ranges as any, execfn, limit);
-        }
-      } else {
-        const rec = this.indices[fieldName].filterSelect(ranges, 0);
-
-        if (this.table.fieldHasAnyTag(fieldName, "unique")) {
-          ids = Object.values(rec);
-        } else {
-          ids = uniq(flatten(Object.values(rec)));
-        }
-
-        if (operation == "select") {
-          return Object.values(this.mainDict.filterSelect(ids.map(id => [id, id]), limit, execfn));
-        } else if (operation == "update") {
-          this.mainDict.editRanges(ids.map(id => [id, id]), execfn, limit);
-          return;
-        } else {
-          return this.mainDict.removeRanges(ids.map(id => [id, id]), execfn, limit);
-        }
-      }
-    }
-
-    if (operation == "select") {
-      return Object.values(this.mainDict.filterSelect([[undefined, undefined]], limit, execfn));
-    } else if (operation == "update") {
-      this.mainDict.editRanges([[undefined, undefined]], execfn, limit);
-      return;
-    } else {
-      return this.mainDict.removeRanges([[undefined, undefined]], execfn, limit);
-    }
-
-  }
-
-  select(limit?: number): Type[]
-  select<ReturnType>(limit: number, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[]
-  select<ReturnType = Type>(limit = 100, predicate?: DocCallback<KeyType, Type, ReturnType>): (ReturnType | Type)[] {
-    return this.exec(limit, "select", predicate);
-  }
-
-  update(limit = 0, predicate: DocCallback<KeyType, Type, void>): void {
-    this.exec(limit, "update", predicate);
+    this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), update, undefined, limit);
   }
 
   delete(limit = 0) {
-    return this.exec(limit, "delete");
+    const res = this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), (data: any[], id: KeyType) => {
+      this.table.removeIdFromIndex(id, data);
+      return undefined;
+    }, undefined, limit);
+    return res[1];
   }
 }

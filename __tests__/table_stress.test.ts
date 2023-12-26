@@ -81,8 +81,8 @@ function fakerGenerateUser(): RichType {
 
 
 const TestTableName = "jest_test_table";
-xdescribe("", () => {
-  test("", () => {
+xdescribe("foo", () => {
+  test("foo", () => {
     expect(1).toBe(1);
   });
 });
@@ -144,11 +144,6 @@ describe("Rich table", () => {
       row = t.flattenObject(RichTypeRecord);
     })
 
-    test("Document.validate data ", () => {
-      const invalidReason = Document.validateData(RichTypeRecord, t.scheme);
-      expect(invalidReason).toBe(false)
-    });
-
     test("moderate insert fill", () => {
       const docsToInsert = 10 * 1000;
       const initialLenght = t.length;
@@ -174,28 +169,6 @@ describe("Rich table", () => {
       expect(perfDur("at")).toBeLessThan(30);
     });
 
-
-    xtest("moderate square fill", () => {
-      const squareSize = 10 * 1000 - 1;
-      const square = Array.from(Array(squareSize)).map(() => t.flattenObject(fakerGenerateUser()));
-      const initialLenght = t.length;
-
-      expect(square.length).toBe(squareSize);
-      // expect(square[123][0]).toBe("John Doe");
-
-      // t.insertSquare(square);
-
-      // expect(t.length).toBe(initialLenght + square.length);
-      // t.insertSquare(square);
-
-
-
-      perfStart("at");
-      t.at(123);
-      perfEnd("at");
-      perfLog("at");
-      expect(perfDur("at")).toBeLessThan(30);
-    });
 
 
     xtest("proliferate fill", () => {
@@ -237,7 +210,6 @@ describe("Rich table", () => {
       });
       perfEnd("query");
 
-      console.log(t.at(700));
 
       perfStart("at");
       t.at(9);

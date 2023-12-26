@@ -414,7 +414,7 @@ export class Table<KeyType extends string | number, Type> {
   protected removeDocColumn(fieldIndex: number, returnAsDict: true): PlainObject
   protected removeDocColumn(fieldIndex: number, returnAsDict: boolean = false) {
     const result: Record<string | number, any> = {};
-    this.mainDict.editRanges([[undefined, undefined]], (id, arr) => {
+    this.mainDict.editRanges([[undefined, undefined]], (arr, id) => {
       const newArr = [...arr];
       if (returnAsDict) {
         result[id] = newArr[fieldIndex];
@@ -578,7 +578,7 @@ export class Table<KeyType extends string | number, Type> {
   }
 
   protected insertDocColumn(fieldIndex: number, predicate: (id: KeyType, arr: any[]) => any) {
-    this.mainDict.editRanges([[undefined, undefined]], (id, arr) => {
+    this.mainDict.editRanges([[undefined, undefined]], (arr, id) => {
       const newArr = [...arr];
       newArr.splice(fieldIndex, 0, predicate(id, newArr));
       return newArr;

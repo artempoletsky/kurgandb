@@ -76,7 +76,7 @@ describe("Sorted dictionary", () => {
 
   test("drain", () => {
     const d1 = SortedDictionary.fromLenght(20);
-    const d2 = SortedDictionary.fromArray(d1.values(), 20 + 1).transform(key => key);
+    const d2 = SortedDictionary.fromArray(d1.values(), 20 + 1).transform((value, key) => key);
 
     expect(d2.get(21)).toBe(21);
     expect(d2.get(40)).toBe(40);
@@ -99,5 +99,20 @@ describe("Sorted dictionary", () => {
     expect(d.atIndex(0)).toBe(1);
     expect(d.atIndex(19)).toBe(20);
     expect(d.atIndex(20)).toBe(undefined);
+  });
+
+  test("supports for of", () => {
+    const d = SortedDictionary.fromLenght(20).transform(v => v + 1);
+
+    const triples: [number, number, number][] = []
+    for (const [value, key, i] of d) {
+      expect(value).toBe(key + 1);
+      expect(key).toBe(i + 1);
+      triples.push([value, key, i]);
+    }
+
+    expect(triples.length).toBe(20);
+
+
   });
 });
