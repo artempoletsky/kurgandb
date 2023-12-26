@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npx nodemon",
     "build": "rimraf ./build && tsc",
-    "start": "npm run build && node --trace-gc --expose-gc build/src/index.js",
+    "start": "npm run build && node --inspect build/src/index.js",
     "test": "jest"
   },
   "keywords": [],

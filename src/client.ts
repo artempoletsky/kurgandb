@@ -52,7 +52,7 @@ function parseBraceArgument(argStr: string): string[] | null {
 }
 
 
-export type Predicate = (tables: Record<string, Table<any>>, scope: {
+export type Predicate = (tables: Record<string, Table<string | number, any>>, scope: {
   payload: PlainObject
   db: typeof DataBase
   $: Record<string, Function>

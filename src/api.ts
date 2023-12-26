@@ -1,11 +1,12 @@
 
 import { Predicate, predicateToQuery } from "./client";
-import { DataBase, TCreateTable } from "./db";
+import { AllTablesDict, DataBase, TCreateTable } from "./db";
 import { HeavyTypes, LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
 import { Table } from "./table";
 
 import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie } from "./utils";
+import { allIsSaved } from "./virtual_fs";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
@@ -17,7 +18,7 @@ export type TQuery = {
 };
 
 
-type QueryImplementation = (tables: Record<string, Table<any>>, scope: PlainObject) => any;
+type QueryImplementation = (tables: AllTablesDict, scope: PlainObject) => any;
 function constructQuery(args: TQuery): QueryImplementation {
   return new Function(`{ ${args.tables.join(', ')} }`, `{ payload, db, $ }`, args.predicateBody) as QueryImplementation;
 }
@@ -32,7 +33,7 @@ const PrediateConstructor: Validator = async ({ payload, args }) => {
 }
 
 const AreTablesExist: Validator = async ({ payload, args }) => {
-  let dict: Record<string, Table> = {};
+  let dict: AllTablesDict = {};
   for (const name of args.tables) {
     if (!DataBase.isTableExist(name)) {
       return `table ${name} doesn't exist`
@@ -53,10 +54,7 @@ const RunQuery: Validator = async ({ payload, args }) => {
     return `query has failed with error: ${error}`;
   }
 
-  for (const key in tablesDict) {
-    const table = tablesDict[key];
-    table.closePartition();
-  }
+  await allIsSaved();
   return true;
 }
 
@@ -68,7 +66,7 @@ Rules.query = [{
 
 type TQueryPayload = {
   queryImplementation: Function
-  tablesDict: Record<string, Table>
+  tablesDict: AllTablesDict
   result: any
 }
 
@@ -78,10 +76,10 @@ async function query({ }: TQuery, { result }: TQueryPayload) {
 
 export async function queryUnsafe(args: TQuery) {
   const queryImplementation: QueryImplementation = constructQuery(args);
-  const tables = args.tables.reduce((res: Record<string, Table>, tableName) => {
+  const tables = args.tables.reduce((res, tableName) => {
     res[tableName] = DataBase.getTable(tableName);
     return res;
-  }, {});
+  }, {} as AllTablesDict);
   const queryResult = queryImplementation(tables, { payload: args.payload, db: DataBase });
   return queryResult;
 }
@@ -117,14 +115,14 @@ const checkTableNotExists: Validator = async ({ value }) => {
 Rules.createTable = {
   name: ["string", checkTableNotExists],
   fields: validateRecordFactory([...LightTypes, ...HeavyTypes]),
-  indices: "string[]",
+  tags: "any",
 } as ValidationRule<TCreateTable<PlainObject>>;
 
-export async function createTable({ name, fields, indices }: TCreateTable<PlainObject>) {
+export async function createTable({ name, fields, tags }: TCreateTable<PlainObject>) {
   DataBase.createTable({
     name,
     fields,
-    indices,
+    tags,
   });
   return {
     message: "OK"

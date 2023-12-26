@@ -95,6 +95,11 @@ export function perfLog(name?: string) {
   }
 }
 
+export function perfEndLog(name: string) {
+  perfEnd(name);
+  perfLog(name);
+}
+
 export function perfDur(name: string): number {
   return Math.floor(-PerfMeasuerements[name] * 100) / 100;
 }

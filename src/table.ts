@@ -475,46 +475,71 @@ export class Table<KeyType extends string | number, Type> {
     }
   }
 
-  // insert<Type extends PlainObject>(data: Type): Document<Type>
-  insert(data: PlainObject & Type): KeyType {
-    const validationError = Document.validateData(data, this.scheme);
-    if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
-    const storable = this.makeObjectStorable(data);
+  canInsertUnique<IndexKeyType extends string | number>(fieldName: string, values: IndexKeyType[], throwError: boolean = false): boolean {
+    const indexDict = this.indices[fieldName];
+    if (!indexDict) throw new Error(`${this.printField(fieldName)} is not an index`);
+    const found = indexDict.filterSelect(values.map(v => [v, v]), 1);
+    if (found.length == 0) {
+      return true;
+    }
+    if (throwError) throw new Error(`Unique value ${found[0]} for ${this.printField(fieldName)} already exists`);
+    return false;
+  }
 
-    this.forEachIndex((fieldName, indexDict, { isUnique }) => {
-      const value = storable[fieldName];
-      if (!(typeof value == "string" || typeof value == "number"))
-        throw new Error(`trying to set non (string | number) value as index ${this.printField(fieldName)}=${value}`);
+  insertMany(data: (PlainObject & Type)[]): KeyType[] {
+    const storable: PlainObject[] = [];
 
-      const exists = indexDict.getOne(value);
-      if (isUnique && exists) throw new Error(`Unique value ${value} for ${this.printField(fieldName)} already exists`);
-    });
+    for (const obj of data) {
+      const validationError = Document.validateData(obj, this.scheme);
+      if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
-
-    let id: KeyType;
-    if (this.primaryKey == "id") {
-      id = this.mainDict.insertArray([this.flattenObject(storable)])[0];
-    } else {
-      id = <KeyType>storable[this.primaryKey];
-      delete storable[this.primaryKey];
-      this.mainDict.setOne(id, this.flattenObject(storable));
+      storable.push(this.makeObjectStorable(obj));
     }
 
-    this.forEachField((key, type) => {
-      const value = storable[key];
-      if (isHeavyType(type) && !!value) {
-        wfs(this.getHeavyFieldFilepath(id, type as HeavyType, key), value);
+    this.forEachIndex((fieldName, indexDict, { isUnique }) => {
+      if (isUnique) {
+        const col = storable.map(o => o[fieldName]);
+        this.canInsertUnique(fieldName, col, true);
       }
     });
 
+    let ids: KeyType[];
+    const values = storable.map(o => this.flattenObject(o));
+    if (this.primaryKey == "id") {
+      ids = this.mainDict.insertArray(values);
+    } else {
+      ids = storable.map(o => {
+        const val = <KeyType>o[this.primaryKey];
+        delete o[this.primaryKey];
+        return val;
+      });
+      this.mainDict.insertMany(ids, values);
+    }
 
-    this.forEachIndex((fieldName) => {
-      const value = <string | number>storable[fieldName];
-      this.storeIndexValue(fieldName, id, value);
+    this.forEachField((key, type) => {
+      if (isHeavyType(type)) {
+        for (let i = 0; i < storable.length; i++) {
+          const value = storable[i][key];
+          if (value) {
+            wfs(this.getHeavyFieldFilepath(ids[i], type as HeavyType, key), value);
+          }
+        }
+      }
     });
 
-    return id;
+    this.forEachIndex((fieldName) => {
+      for (let i = 0; i < storable.length; i++) {
+        this.storeIndexValue(fieldName, ids[i], storable[i][fieldName]);
+      }
+    });
+
+    return ids;
+  }
+
+  // insert<Type extends PlainObject>(data: Type): Document<Type>
+  insert(data: PlainObject & Type): KeyType {
+    return this.insertMany([data])[0];
   }
 
 

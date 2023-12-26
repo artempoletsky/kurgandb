@@ -27,13 +27,14 @@ export const DefaultTableSettings = {
 
 export type TableSettings = typeof DefaultTableSettings;
 
+export type AllTablesDict = Record<string, Table<any, any>>;
 // const EmptyTable: TableMetadata = {
 //   index: 0,
 //   length: 0,
 //   partitions: []
 // };
 
-const Tables: Record<string, Table<string | number, any>> = {}
+const Tables: AllTablesDict = {}
 
 
 export class DataBase {
@@ -88,8 +89,8 @@ export class DataBase {
     for (const fieldName in tags) {
       const fieldTags = tags[fieldName];
       const type = fields[<keyof Type>fieldName];
-      
-      
+
+
       if (Table.tagsHasFieldNameWithAnyTag(tags, fieldName, "index", "unique")) {
         Table.createIndexDictionary(name, fieldName, fieldTags, type);
       }
