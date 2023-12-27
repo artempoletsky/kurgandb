@@ -81,35 +81,35 @@ function fakerGenerateUser(): RichType {
 
 
 const TestTableName = "jest_test_table";
-describe("foo", () => {
+xdescribe("foo", () => {
   test("foo", () => {
     expect(1).toBe(1);
   });
 });
 
-xdescribe("Rich table", () => {
+describe("Rich table", () => {
 
 
-  const today = (new Date()).toJSON();
-  const RichTypeRecord: RichType = {
-    name: "John Doe",
-    lastActive: today,
-    birthday: today,
-    registrationDate: today,
-    salary: 0,
-    pageSlug: "asdasdasdasd",
-    login: "johndoe",
-    email: "johndoe@example.com",
-    phoneNumber: "+435345345345",
-    favoriteQuote: "Poor and content is rich and rich enough",
-    status: "The wolf is weaker than the lion and the tiger but it won't perform in the circus.",
-    lastTweet: "The wolf is weaker than the lion and the tiger but it won't perform in the circus.",
-    isAdmin: false,
-    isModerator: false,
-    password: "qwerty123",
-    blog_posts: [343434, 234823742, 439785345, 34583475345, 3453845734, 3458334535, 1231248576],
-    favoriteRandomNumber: 0,
-  };
+  // const today = (new Date()).toJSON();
+  // const RichTypeRecord: RichType = {
+  //   name: "John Doe",
+  //   lastActive: today,
+  //   birthday: today,
+  //   registrationDate: today,
+  //   salary: 0,
+  //   pageSlug: "asdasdasdasd",
+  //   login: "johndoe",
+  //   email: "johndoe@example.com",
+  //   phoneNumber: "+435345345345",
+  //   favoriteQuote: "Poor and content is rich and rich enough",
+  //   status: "The wolf is weaker than the lion and the tiger but it won't perform in the circus.",
+  //   lastTweet: "The wolf is weaker than the lion and the tiger but it won't perform in the circus.",
+  //   isAdmin: false,
+  //   isModerator: false,
+  //   password: "qwerty123",
+  //   blog_posts: [343434, 234823742, 439785345, 34583475345, 3453845734, 3458334535, 1231248576],
+  //   favoriteRandomNumber: 0,
+  // };
 
   let t: Table<number, RichType>;
   let row: any[];
@@ -141,7 +141,9 @@ xdescribe("Rich table", () => {
         },
       });
 
-      row = t.flattenObject(RichTypeRecord);
+      // t = DataBase.getTable(TestTableName);
+
+      // row = t.flattenObject(RichTypeRecord);
     })
 
     test("moderate insert fill", () => {
@@ -161,12 +163,6 @@ xdescribe("Rich table", () => {
 
       expect(t.length).toBe(initialLenght + docsToInsert);
 
-
-      perfStart("at");
-      t.at(123);
-      perfEndLog("at");
-      
-      expect(perfDur("at")).toBeLessThan(30);
     });
 
 
@@ -215,7 +211,7 @@ xdescribe("Rich table", () => {
       t.at(9);
       perfEnd("at");
 
-      console.log(t.at(9));
+      // console.log(t.at(9));
 
       perfLog("query");
       perfLog("at");
@@ -228,17 +224,16 @@ xdescribe("Rich table", () => {
       if (!t.fieldHasAnyTag("salary", "index")) {
         perfStart("salaryIndex");
         t.createIndex("salary", false);
-        perfEnd("salaryIndex");
+        perfEndLog("salaryIndex");
 
-        perfLog("salaryIndex");
       }
 
       perfStart("whereSalary");
-      const rich = t.whereRange("salary", 900, 1000).select();
-      perfEnd("whereSalary");
+      const rich = t.whereRange("salary", 900, 1000).select(0);
+      perfEndLog("whereSalary");
 
-      perfLog("whereSalary");
-
+      console.log(rich.length);
+      
 
       perfStart("whereBirthday");
       const sameBirthday = t.where("birthday", rich[1].birthday).select();

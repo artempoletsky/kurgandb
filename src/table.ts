@@ -1,7 +1,7 @@
 
 import { SchemeFile, TableSettings } from "./db";
 import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie, perfStart, perfEndLog } from "./utils";
 
 import FragmentedDictionary, { FragmentedDictionarySettings, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery from "./table_query";
@@ -295,25 +295,45 @@ export class Table<KeyType extends string | number, Type> {
     });
 
   }
+  protected throwAlreadyIndex(fieldName: string) {
+    throw new Error(`${this.printField(fieldName)} is already an index!`);
+  }
 
-  createIndex(name: string & keyof Type, unique: boolean) {
-    if (this.indices[name]) throw new Error(`${this.printField(name)} is already an index!`);
-    const type = this.scheme.fields[name];
+  createIndex(fieldName: string & keyof Type, unique: boolean) {
+    if (this.indices[fieldName]) this.throwAlreadyIndex(fieldName);
+    const type = this.scheme.fields[fieldName];
 
     const tags: FieldTag[] = unique ? ["unique"] : ["index"];
-    this.indices[name] = Table.createIndexDictionary(this.name, name, tags, type);
-    this.scheme.tags[name] = tags;
+    this.indices[fieldName] = Table.createIndexDictionary(this.name, fieldName, tags, type);
+    this.scheme.tags[fieldName] = tags;
 
-    this.filter(doc => {
-      try {
-        this.storeIndexValue(name, doc.id, doc.get(name));
-      } catch (error) {
-        this.removeIndex(name);
-        throw error;
-      }
-      return false;
-    }).select(0);
+    const indexData: Map<string | number, KeyType[]> = new Map();
+    // const ids: KeyType[] = [];
+    // const col: string[] | number[] = [];
+    const fIndex = this._fieldNameIndex[fieldName];
+    this.mainDict.iterateRanges([[undefined, undefined]], undefined, undefined, (arr, id) => {
+      this.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
+      return undefined;
+    }, 0);
     this.saveScheme();
+    this.insertColumnToIndex(fieldName, indexData);
+  }
+
+  protected fillIndexData
+    <ColType extends string | number>(
+      indexData: Map<ColType, KeyType[]>,
+      value: ColType, id: KeyType, throwUnique?: string) {
+    const toPush = indexData.get(value);
+
+    if (throwUnique && toPush) {
+      this.throwValueNotUnique(throwUnique, value);
+    }
+
+    if (!toPush) {
+      indexData.set(value, [id]);
+    } else {
+      toPush.push(id);
+    }
   }
 
   removeIndex(name: string) {
@@ -476,30 +496,37 @@ export class Table<KeyType extends string | number, Type> {
   }
 
 
-  canInsertUnique<IndexKeyType extends string | number>(fieldName: string, values: IndexKeyType[], throwError: boolean = false): boolean {
+  canInsertUnique<ColumnType extends string | number>(fieldName: string, column: ColumnType[], throwError: boolean = false): boolean {
     const indexDict = this.indices[fieldName];
     if (!indexDict) throw new Error(`${this.printField(fieldName)} is not an index`);
-    const found = indexDict.filterSelect(values.map(v => [v, v]), 1);
+    const found = indexDict.filterSelect(column.map(v => [v, v]), 1);
     if (found.length == 0) {
       return true;
     }
-    if (throwError) throw new Error(`Unique value ${found[0]} for ${this.printField(fieldName)} already exists`);
+    if (throwError) this.throwValueNotUnique(fieldName, found[0]);
     return false;
   }
 
-  insertMany(data: (PlainObject & Type)[]): KeyType[] {
+  protected throwValueNotUnique(fieldName: string, value: any) {
+    throw new Error(`Unique value ${value} for ${this.printField(fieldName)} already exists`);
+  }
+
+  public insertMany(data: (PlainObject & Type)[]): KeyType[] {
     const storable: PlainObject[] = [];
 
+    perfStart("make storable");
     for (const obj of data) {
       const validationError = Document.validateData(obj, this.scheme);
       if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
       storable.push(this.makeObjectStorable(obj));
     }
+    perfEndLog("make storable");
 
+    const indexColumns: Record<string, any[]> = {};
     this.forEachIndex((fieldName, indexDict, { isUnique }) => {
+      const col = indexColumns[fieldName] = storable.map(o => o[fieldName]);
       if (isUnique) {
-        const col = storable.map(o => o[fieldName]);
         this.canInsertUnique(fieldName, col, true);
       }
     });
@@ -509,6 +536,8 @@ export class Table<KeyType extends string | number, Type> {
     if (this.primaryKey == "id") {
       ids = this.mainDict.insertArray(values);
     } else {
+
+      // TODO: validate ids
       ids = storable.map(o => {
         const val = <KeyType>o[this.primaryKey];
         delete o[this.primaryKey];
@@ -528,17 +557,44 @@ export class Table<KeyType extends string | number, Type> {
       }
     });
 
+    perfStart("indicies update");
     this.forEachIndex((fieldName) => {
-      for (let i = 0; i < storable.length; i++) {
-        this.storeIndexValue(fieldName, ids[i], storable[i][fieldName]);
+      const indexData: Map<string | number, KeyType[]> = new Map();
+      for (let i = 0; i < ids.length; i++) {
+        this.fillIndexData(indexData, indexColumns[fieldName][i], ids[i]);
       }
+      this.insertColumnToIndex(fieldName, indexData);
     });
-
+    perfEndLog("indicies update");
     return ids;
   }
 
+  protected throwFieldNotIndex(fieldName: string) {
+    throw new Error(`${this.printField(fieldName)} is not an index!`);
+  }
+
+  insertColumnToIndex<ColType extends string | number>(fieldName: string, indexData: Map<ColType, KeyType[]>) {
+    const column = Array.from(indexData.keys());
+    const indexDict: FragmentedDictionary<ColType, any> = this.indices[fieldName] as any;
+    if (!indexDict) this.throwFieldNotIndex(fieldName);
+    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
+    if (isUnique) {
+      const ids = Array.from(indexData.values()).map(arr => arr[0]);
+      indexDict.insertMany(column, ids);
+    } else {
+
+      indexDict.iterateRanges(Array.from(indexData.keys()).map(v => [v, v]), undefined, (arr, id) => {
+        const toPush = indexData.get(id);
+        indexData.delete(id);
+        return arr.concat.apply(arr, toPush);
+      }, undefined, 0);
+
+      indexDict.insertMany(Array.from(indexData.keys()), Array.from(indexData.values()));
+    }
+  }
+
   // insert<Type extends PlainObject>(data: Type): Document<Type>
-  insert(data: PlainObject & Type): KeyType {
+  public insert(data: PlainObject & Type): KeyType {
     return this.insertMany([data])[0];
   }
 
@@ -587,13 +643,13 @@ export class Table<KeyType extends string | number, Type> {
 
   at(id: KeyType): Type | null
   at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
-  at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
+  public at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
     return this.where(this.primaryKey as any, id).select(1, predicate)[0] || null;
   }
 
   atIndex(index: number): Type | null
   atIndex<ReturnType = Type>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
-  atIndex<ReturnType>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>) {
+  public atIndex<ReturnType>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>) {
     const id = this.mainDict.keyAtIndex(index);
     if (id === undefined) return null;
     return this.at(id, predicate);
