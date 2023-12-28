@@ -462,6 +462,26 @@ describe("Fragmented dictionary", () => {
     expect(seven.length).toBe(7)
   });
 
+  test("select 0", () => {
+    // numbers.setOne(0.011231, 123123);
+    // numbers.setOne(0, -123);
+    // numbers.setOne(0.02123123, 123123);
+    debugger;
+    numbers.insertMany([0.011231, 0, 0.02123123], [123, -123, 123123]);
+    // expect(numbers.meta.partitions[0].length).toBe(3);
+    // expect(numbers.meta.partitions[0].start).toBe(0);
+    // expect(numbers.meta.partitions[0].end).toBe(0.02);
+    expect(numbers.start).toBe(0);
+
+    const firstPart = numbers.openPartition(0);
+    expect(firstPart.get(0)).toBe(-123);
+    const zero1 = numbers.iterateRanges([[0, 0]], undefined, undefined, val => val, 0)[0];
+    expect(zero1[0]).toBe(-123);
+    const zero2 = numbers.filterSelect([[0, 0]], 0, undefined);
+    expect(zero2[0]).toBe(-123);
+
+  });
+
   afterAll(async () => {
     await allIsSaved();
     rmie(PART);

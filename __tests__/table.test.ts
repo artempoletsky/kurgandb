@@ -188,7 +188,8 @@ describe("Table", () => {
 
     expect(() => {
       t.createIndex("name", true);
-    }).toThrow(`Attempting to create a duplicate in the unique field '${TestTableName}[id].name'`);
+    }).toThrow(`Unique value bar for field '${TestTableName}[id].name' already exists`);
+
     expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
 
     t.createIndex("name", false);
@@ -269,6 +270,42 @@ describe("Table", () => {
     expect(t.scheme.fields).toHaveProperty("random");
     const d: any = t.at(1);
     expect(d.random).toBeLessThan(1);
+  });
+
+  type SimpleFloat = {
+    float: number
+  };
+  let t2: Table<number, SimpleFloat>;
+  test("reset db", async () => {
+    await allIsSaved();
+    DataBase.removeTable(TestTableName);
+
+    t2 = DataBase.createTable<number, SimpleFloat>({
+      fields: {
+        float: "number",
+      },
+      tags: {
+        float: ["index"],
+      },
+      name: TestTableName
+    });
+    await allIsSaved();
+  });
+
+  test("0 index insert", () => {
+    for (let i = 0; i < 100; i++) {
+      const rand = Math.random();
+      t2.insert({
+        float: rand < 0.5 ? 0 : rand
+      });
+    }
+
+    
+
+    const zeros = t2.where("float", 0).select();
+
+    expect(zeros.length).toBeGreaterThan(0);
+
   });
 
 

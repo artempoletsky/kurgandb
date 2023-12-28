@@ -17,6 +17,7 @@
     "@babel/preset-env": "^7.23.5",
     "@babel/preset-typescript": "^7.23.3",
     "@faker-js/faker": "^8.3.1",
+    "@types/jest": "^29.5.11",
     "@types/lodash.debounce": "^4.0.9",
     "@types/lodash.flatten": "^4.4.9",
     "@types/lodash.sortedindex": "^4.1.9",

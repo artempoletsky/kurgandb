@@ -62,8 +62,15 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
 
   set(index: KeyType, value: Type) {
     if (this.dict[index] === undefined) {
-      const i = sortedIndex(this._keys, index);
-      this._keys.splice(i, 0, index);
+      // if (this.keyType == "int" && typeof index != "number") throw new Error("wrong index type");
+      const keys = this._keys;
+      // if (!keys.length || index > keys[keys.length - 1]) {
+      //   keys.push(index);
+      // } else {
+      const i = sortedIndex(keys, index);
+      keys.splice(i, 0, index);
+      // }
+
     }
     this.dict[index] = value;
   }
@@ -184,7 +191,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     return {
       next() {
         const key = keys[i];
-        if (!key) return { value: undefined, done: true };
+        if (i >= keys.length) return { value: undefined, done: true };
 
         const value = dict[key];
         return { value: [value, key, i++], done: false };

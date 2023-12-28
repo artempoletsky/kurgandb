@@ -27,7 +27,6 @@ export default class TableQuery<KeyType extends string | number, Type> {
   }
 
   whereRanges<ValueType extends string | number | Date | boolean>(fieldName: keyof Type & string, ranges: [ValueType | undefined, ValueType | undefined][]): TableQuery<KeyType, Type> {
-    // Document.retrieveValueOfType()
     const type = this.table.scheme.fields[fieldName];
     const mappedRanges = ranges.map<[string | number | undefined, string | number | undefined]>(([min, max]) => {
       return [Document.storeValueOfType(min as any, type as any), Document.storeValueOfType(max as any, type as any)];
@@ -88,7 +87,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     if (fieldName == this.table.primaryKey) {
       return this.whereFilter.ranges as WhereRanges<KeyType>;
     }
-
+    if (this.whereFilter.fieldName == "float") debugger;
     const rec = this.indices[fieldName].filterSelect(this.whereFilter.ranges, 0);
 
     if (this.table.fieldHasAnyTag(fieldName, "unique")) {
@@ -110,7 +109,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
       }
       return doc.toJSON();
     }
-
+    if (this.whereFilter?.ranges[0][0] === 0) debugger;
     const res = this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), undefined, select, limit);
     return Object.values(res[0]);
   }

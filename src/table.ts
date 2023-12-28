@@ -312,11 +312,19 @@ export class Table<KeyType extends string | number, Type> {
     // const col: string[] | number[] = [];
     const fIndex = this._fieldNameIndex[fieldName];
     this.mainDict.iterateRanges([[undefined, undefined]], undefined, undefined, (arr, id) => {
-      this.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
+      try {
+        this.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
+      } catch (error) {
+        this.removeIndex(fieldName);
+        throw error;
+      }
+
       return undefined;
     }, 0);
-    this.saveScheme();
+
     this.insertColumnToIndex(fieldName, indexData);
+
+    this.saveScheme();
   }
 
   protected fillIndexData
@@ -514,14 +522,14 @@ export class Table<KeyType extends string | number, Type> {
   public insertMany(data: (PlainObject & Type)[]): KeyType[] {
     const storable: PlainObject[] = [];
 
-    perfStart("make storable");
+    // perfStart("make storable");
     for (const obj of data) {
       const validationError = Document.validateData(obj, this.scheme);
       if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
       storable.push(this.makeObjectStorable(obj));
     }
-    perfEndLog("make storable");
+    // perfEndLog("make storable");
 
     const indexColumns: Record<string, any[]> = {};
     this.forEachIndex((fieldName, indexDict, { isUnique }) => {
@@ -557,7 +565,7 @@ export class Table<KeyType extends string | number, Type> {
       }
     });
 
-    perfStart("indicies update");
+    // perfStart("indicies update");
     this.forEachIndex((fieldName) => {
       const indexData: Map<string | number, KeyType[]> = new Map();
       for (let i = 0; i < ids.length; i++) {
@@ -565,7 +573,7 @@ export class Table<KeyType extends string | number, Type> {
       }
       this.insertColumnToIndex(fieldName, indexData);
     });
-    perfEndLog("indicies update");
+    // perfEndLog("indicies update");
     return ids;
   }
 

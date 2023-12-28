@@ -115,4 +115,17 @@ describe("Sorted dictionary", () => {
 
 
   });
+
+  test("for of with 0", () => {
+    const d = new SortedDictionary<number, number>({}, "int");
+    d.set(0, 123);
+
+    const res: number[] = [];
+    for (const [val] of d) {
+      res.push(val);
+    }
+
+    expect(res.length).toBe(1);
+    expect(res[0]).toBe(123);
+  });
 });
