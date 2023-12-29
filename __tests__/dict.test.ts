@@ -443,30 +443,40 @@ describe("Fragmented dictionary", () => {
 
   test("limit 2", () => {
     fillNumbers(100);
-    const tenRes = numbers.iterateRanges([[undefined, undefined]], (val, id) => val % 2 == 0, undefined, (val) => val, 10);
+    const tenRes = numbers.iterateRanges({
+      filter: val => val % 2 == 0,
+      select: val => val,
+      limit: 10,
+    });
 
     const ten = Object.values(tenRes[0]);
     expect(ten.length).toBe(10);
     expect(ten[0]).toBe(2);
     expect(ten[9]).toBe(20);
 
-    const fiveRes = numbers.iterateRanges([[6, undefined]], (val, id) => val % 2 == 0, undefined, (val) => val, 5);
+    const fiveRes = numbers.iterateRanges({
+      ranges: [[6, undefined]],
+      filter: val => val % 2 == 0,
+      select: val => val,
+      limit: 5,
+    })
     const five = Object.values(fiveRes[0]);
     expect(five.length).toBe(5);
     expect(five[0]).toBe(6);
     expect(five[1]).toBe(8);
     expect(five[4]).toBe(14);
 
-    const sevenRes = numbers.iterateRanges(FragmentedDictionary.idsToRanges([1, 2, 30, 4, 25, 90, 6, 7, 8]), undefined, undefined, val => val, 7);
+    const sevenRes = numbers.iterateRanges({
+      ranges: FragmentedDictionary.idsToRanges([1, 2, 30, 4, 25, 90, 6, 7, 8]),
+      select: val => val,
+      limit: 7,
+    });
+
     const seven = Object.values(sevenRes[0]);
     expect(seven.length).toBe(7)
   });
 
   test("select 0", () => {
-    // numbers.setOne(0.011231, 123123);
-    // numbers.setOne(0, -123);
-    // numbers.setOne(0.02123123, 123123);
-    debugger;
     numbers.insertMany([0.011231, 0, 0.02123123], [123, -123, 123123]);
     // expect(numbers.meta.partitions[0].length).toBe(3);
     // expect(numbers.meta.partitions[0].start).toBe(0);
@@ -475,11 +485,41 @@ describe("Fragmented dictionary", () => {
 
     const firstPart = numbers.openPartition(0);
     expect(firstPart.get(0)).toBe(-123);
-    const zero1 = numbers.iterateRanges([[0, 0]], undefined, undefined, val => val, 0)[0];
+    const zero1 = numbers.iterateRanges({
+      ranges: [[0, 0]],
+      select: val => val
+    })[0];
     expect(zero1[0]).toBe(-123);
-    const zero2 = numbers.filterSelect([[0, 0]], 0, undefined);
-    expect(zero2[0]).toBe(-123);
+  });
 
+  test("id matches ranges", () => {
+    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 1]], false)).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 1]], true)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 10]], false)).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(5, [[1, 10]], false)).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(10, [[1, 10]], false)).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(0, [[1, 10]], false)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10]], false)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10]], false)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10], [11, 11]], false)).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(12, [[1, 10], [11, 11]], false)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(12, [[1, 10], [11, 11]], true)).toBe(true);
+  });
+
+  test("partition matches ranges", () => {
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 0, end: 0, length: 0 }, [[0, 0]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 0, end: 0, length: 1 }, [[0, 0]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 0, end: 0, length: 1 }, [[0, 0]], true)).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 1, end: 10, length: 10 }, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 1, end: 5, length: 10 }, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 4, end: 5, length: 2 }, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 4, end: 5, length: 2 }, [[5, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 4, end: 5, length: 2 }, [[6, 10]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 11, end: 12, length: 2 }, [[6, 10]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [12, 12]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [13, 13]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [13, 13]], true)).toBe(true);
   });
 
   afterAll(async () => {

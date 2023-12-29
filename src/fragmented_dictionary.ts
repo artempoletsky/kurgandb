@@ -37,6 +37,16 @@ export type PartitionIterateMap<KeyType> = Map<number, KeyType[]>;
 
 export type WhereRanges<KeyType> = [KeyType | undefined, KeyType | undefined][];
 
+export type IterateRangesOptions<KeyType extends string | number, Type, ReturnType = Type> = {
+  ranges?: WhereRanges<KeyType>
+  filter?: (value: Type, id: KeyType) => boolean
+  update?: (value: Type, id: KeyType) => Type | undefined
+  select?: (value: Type, id: KeyType) => ReturnType
+  limit?: number
+  offset?: number
+  invertRanges?: boolean
+};
+
 const DefaultFragmentDictionarySettings: FragmentedDictionarySettings<number> = {
   keyType: "int",
   maxPartitionLenght: 10 * 1000,
@@ -163,19 +173,29 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     return min || this.emptyKey;
   }
 
+  /**
+   * @deprecated
+   */
   editRange(predicate: (value: Type, id: KeyType) => Type | undefined, min?: KeyType, max?: KeyType, limit = 100) {
     this.editRanges([[min, max]], predicate, limit);
   }
 
+  /**
+   * @deprecated
+   */
   removeRanges(ranges: WhereRanges<KeyType>, predicate?: (value: Type, id: KeyType) => boolean, limit = 0): KeyType[] {
     const result: KeyType[] = [];
-    this.editRanges(ranges, (val, id) => {
-      if (!predicate || predicate(val, id)) {
-        result.push(id);
-        return undefined;
-      }
-      return val;
-    }, limit);
+    this.iterateRanges({
+      ranges,
+      update: (val, id) => {
+        if (!predicate || predicate(val, id)) {
+          result.push(id);
+          return undefined;
+        }
+        return val;
+      },
+      limit,
+    });
     return result;
   }
 
@@ -203,22 +223,39 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   }
 
   getOne(id: KeyType): Type | undefined {
-    const dict = this.filterSelect([[id, id]]);
+    const dict = this.iterateRanges({
+      ranges: [[id, id]],
+      limit: 1,
+      select: val => val
+    })[0];
     return dict[id];
   }
 
+  /**
+   * @deprecated 
+   */
   editRanges(ranges: WhereRanges<KeyType>, predicate: (value: Type, id: KeyType) => Type | undefined, limit = 0) {
-    this.iterateRanges(ranges, undefined, predicate, undefined, limit);
+    this.iterateRanges({
+      ranges,
+      update: predicate,
+      limit,
+    });
   }
 
   static idsToRanges<KeyType extends string | number>(ids: KeyType[]): [KeyType, KeyType][] {
     return ids.map(id => [id, id]);
   }
 
+  /**
+   * @deprecated
+   */
   filterSelect<NewType = Type>(ranges: WhereRanges<KeyType>, limit = 100, transform?: (value: Type, id: KeyType) => NewType | undefined) {
-    const filter = !transform ? undefined : (val: Type, id: KeyType) => transform(val, id) !== undefined;
-    const select: any = transform ? transform : (val: Type, id: KeyType) => val;
-    const result = this.iterateRanges(ranges, filter, undefined, select, limit);
+    const result = this.iterateRanges<NewType>({
+      ranges,
+      limit,
+      filter: !transform ? undefined : (val: Type, id: KeyType) => transform(val, id) !== undefined,
+      select: (transform ? transform : (val: Type) => val) as any,
+    });
     return result[0];
   }
 
@@ -365,7 +402,10 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   }
 
   remove(ids: KeyType[]) {
-    this.iterateRanges(ids.map(id => [id, id]), undefined, () => undefined, undefined, 0);
+    this.iterateRanges({
+      ranges: ids.map(id => [id, id]),
+      update: () => undefined,
+    });
   }
 
   static findPartitionForId<KeyType extends string | number>(id: KeyType, dictMeta: FragDictMeta<KeyType>): number {
@@ -513,7 +553,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     return meta;
   }
 
-  readDictFile(index: number): Record<string, Type> {
+  readDictFile(index: number): Record<KeyType, Type> {
     return vfs.readFile(this.getPartitionDictFilename(index))
   }
 
@@ -564,70 +604,120 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     return this.getOne(key);
   }
 
+  static partitionMatchesRanges
+    <KeyType extends string | number>(
+      { start, end, length }: PartitionMeta<KeyType>,
+      ranges: KeyType[][],
+      invert = false
+    ): boolean {
 
-  iterateRanges<ReturnType = Type>(
-    ranges: WhereRanges<KeyType>,
-    filter?: (value: Type, id: KeyType) => boolean,
-    update?: (value: Type, id: KeyType) => Type | undefined,
-    select?: (value: Type, id: KeyType) => ReturnType,
-    limit = 0
-  ): [Record<KeyType, ReturnType>, KeyType[]] {
+    if (!length) return false;
+
+    for (const [min, max] of ranges) {
+      if (max < start) continue;
+      if (min > end) continue;
+      return !invert;
+    }
+    return invert;
+  }
+
+  static idMatchesRanges
+    <KeyType extends string | number>(
+      id: KeyType,
+      ranges: KeyType[][],
+      invert = false
+    ): boolean {
+    for (const [min, max] of ranges) {
+      if (id < min) continue;
+      if (id > max) continue;
+      return !invert;
+    }
+    return invert;
+  }
+
+
+  iterateRanges<ReturnType = Type>(options: IterateRangesOptions<KeyType, Type, ReturnType>): [Record<KeyType, ReturnType>, KeyType[]] {
 
     if (!this.length) {
       return [{} as any, []];
     }
 
+    const {
+      ranges: rawRanges,
+      invertRanges,
+      filter,
+      update,
+      select,
+      limit,
+      offset
+    } = Object.assign({
+      ranges: [[undefined, undefined]] as WhereRanges<KeyType>,
+      limit: 0,
+      offset: 0,
+      invertRanges: false,
+    }, options);
+
     const result: Record<KeyType, ReturnType> = {} as any;
     const removedIds: KeyType[] = [];
 
-    const { start, end } = this;
+    const { start, end, numPartitions } = this;
+    const partitions = this.meta.partitions;
     let found = 0;
     let metaIsDirty = false;
-    for (const [umin, umax] of ranges) {
-      const min = umin === undefined || umin < start ? start : umin;
-      const max = umax === undefined || umax > end ? end : umax;
-      if (umin == 0) debugger;
 
-      let startPart = this.findPartitionForId(min);
-      let endPart = min == max ? startPart : this.findPartitionForId(max);
+    const ranges = rawRanges.map(([min, max]) => {
+      min = min === undefined ? start : min;
+      max = max === undefined ? end : max;
+      return [min, max]
+    });
 
-      for (let i = startPart; i <= endPart; i++) {
-        const docs = this.openPartition(i);
+    for (let i = 0; i < partitions.length; i++) {
+      if (!FragmentedDictionary.partitionMatchesRanges(partitions[i], ranges, invertRanges)) continue;
 
-        let isDirty = false;
+      const keys: KeyType[] = this.readKeysFile(i);
+      let values: Record<KeyType, Type> | undefined = undefined;
+      let docs: SortedDictionary<KeyType, Type> | undefined = undefined;
+      let isDirty = false;
 
-        for (const [value, id] of docs) {
-          if (min <= id && id <= max) {
-            if (filter && !filter(value, id)) continue;
+      for (const id of keys) {
+        if (!FragmentedDictionary.idMatchesRanges(id, ranges, invertRanges)) continue;
 
-            if (update) {
-              const newValue = update(value, id);
+        if (!values || !docs) {
+          values = this.readDictFile(i);
+          docs = new SortedDictionary(values, this.settings.keyType, true, keys.slice(0));
+        }
 
-              if (value !== newValue) {
-                isDirty = true;
-                if (newValue === undefined) {
-                  docs.pop(id);
-                  removedIds.push(id);
-                  metaIsDirty = true;
-                } else {
-                  docs.set(id, newValue);
-                }
-              }
-            }
+        const value: Type = values[id];
+        if (filter && !filter(value, id)) continue;
+        found++;
+        if (found <= offset) continue;
 
-            if (select) {
-              result[id] = select(value, id);
-            }
+        if (update) {
+          const newValue = update(value, id);
 
-            found++;
-            if (limit && found >= limit) {
-              if (isDirty) {
-                this.savePartition(i, docs);
-              }
-              if (metaIsDirty) this.saveMeta();
-              return [result, removedIds];
+          if (value !== newValue) {
+            isDirty = true;
+            if (newValue === undefined) {
+              docs.pop(id);
+              removedIds.push(id);
+              metaIsDirty = true;
+            } else {
+              docs.set(id, newValue);
             }
           }
+        }
+
+        if (select) {
+          result[id] = select(value, id);
+        }
+
+
+        if (limit && found >= limit) {
+          if (isDirty) {
+            this.savePartition(i, docs);
+          }
+          if (metaIsDirty) this.saveMeta();
+          return [result, removedIds];
         }
 
         if (isDirty) {
@@ -635,8 +725,8 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
           this.savePartition(i, docs);
         }
       }
-
     }
+
     if (metaIsDirty) this.saveMeta();
     return [result, removedIds];
   }
