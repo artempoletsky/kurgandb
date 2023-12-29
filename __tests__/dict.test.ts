@@ -522,6 +522,24 @@ describe("Fragmented dictionary", () => {
     expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [13, 13]], true)).toBe(true);
   });
 
+  test("inverted select", () => {
+    const numTickets = 10;
+    fillNumbers(numTickets);
+    const takenTickets = [1, 4, 5];
+    const generatedRandom = 3; //[0..6] rand(numTickets - takenTickets.length)
+
+    const seven = numbers.iterateRanges({
+      ranges: takenTickets.map(t => [t, t]),
+      invertRanges: true,
+      limit: 1,
+      offset: generatedRandom,
+      select: val => val,
+    })[0];
+
+    expect(seven).toHaveProperty("7");
+    expect(seven[7]).toBe(7);
+  });
+
   afterAll(async () => {
     await allIsSaved();
     rmie(PART);

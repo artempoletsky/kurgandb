@@ -672,7 +672,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     });
 
     for (let i = 0; i < partitions.length; i++) {
-      if (!FragmentedDictionary.partitionMatchesRanges(partitions[i], ranges, invertRanges)) continue;
+      if (!invertRanges && !FragmentedDictionary.partitionMatchesRanges(partitions[i], ranges)) continue;
 
       const keys: KeyType[] = this.readKeysFile(i);
       let values: Record<KeyType, Type> | undefined = undefined;
@@ -682,16 +682,22 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       for (const id of keys) {
         if (!FragmentedDictionary.idMatchesRanges(id, ranges, invertRanges)) continue;
 
+        if (filter) {
+          if (!values || !docs) {
+            values = this.readDictFile(i);
+            docs = new SortedDictionary(values, this.settings.keyType, true, keys.slice(0));
+          }
+          if (filter && !filter(values[id], id)) continue;
+        }
+
+        found++;
+        if (found <= offset) continue;
+
         if (!values || !docs) {
           values = this.readDictFile(i);
           docs = new SortedDictionary(values, this.settings.keyType, true, keys.slice(0));
         }
-
-        const value: Type = values[id];
-        if (filter && !filter(value, id)) continue;
-        found++;
-        if (found <= offset) continue;
-
+        const value = values[id];
         if (update) {
           const newValue = update(value, id);
 
