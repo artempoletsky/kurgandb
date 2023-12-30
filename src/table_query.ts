@@ -16,10 +16,14 @@ type WhereFilter<KeyType extends string | number, Type> = {
 
 export default class TableQuery<KeyType extends string | number, Type> {
   protected table: Table<KeyType, Type>;
-  protected whereFilter: WhereFilter<string | number, Type> | undefined;
-  protected filters: DocCallback<KeyType, Type, boolean>[] = [];
   protected indices: IndicesRecord;
   protected mainDict: MainDict<KeyType>;
+
+  protected whereFilter: WhereFilter<string | number, Type> | undefined;
+  protected filters: DocCallback<KeyType, Type, boolean>[] = [];
+  protected _offset: number = 0;
+  protected _limit: number | undefined;
+
   constructor(table: Table<KeyType, Type>, indices: IndicesRecord, mainDict: MainDict<KeyType>) {
     this.table = table;
     this.indices = indices;
@@ -55,7 +59,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return this.whereRange(fieldName, value, value);
   }
 
-  whereRange<ValueType extends string | number | Date | boolean>(fieldName: keyof Type & string, min: ValueType, max: ValueType): TableQuery<KeyType, Type> {
+  whereRange<ValueType extends string | number | Date | boolean | undefined>(fieldName: keyof Type & string, min: ValueType, max: ValueType): TableQuery<KeyType, Type> {
     return this.whereRanges(fieldName, [[min, max]]);
   }
 
@@ -99,9 +103,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return ids.map(id => [id, id]);
   }
 
-  select(limit?: number): Type[]
-  select<ReturnType>(limit: number, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[]
-  select<ReturnType = Type>(limit = 100, predicate?: DocCallback<KeyType, Type, ReturnType>): (ReturnType | Type)[] {
+  select<ReturnType = Type>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
     const select = (data: any[], id: KeyType) => {
       const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
       if (predicate) {
@@ -109,12 +111,34 @@ export default class TableQuery<KeyType extends string | number, Type> {
       }
       return doc.toJSON();
     }
-    if (this.whereFilter?.ranges[0][0] === 0) debugger;
-    const res = this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), undefined, select, limit);
+
+    const res = this.mainDict.iterateRanges({
+      ranges: this.getQueryRanges(),
+      filter: this.getFilterFunction(),
+      select,
+      limit: this._limit === undefined ? 100 : this._limit,
+      offset: this._offset,
+    });
+
     return Object.values(res[0]);
   }
 
-  update(limit = 0, predicate: DocCallback<KeyType, Type, void>): void {
+  offset(offset: number) {
+    this._offset = offset;
+    return this;
+  }
+
+  limit(limit: number) {
+    this._limit = limit;
+    return this;
+  }
+
+  paginate(pageNum: number, pageSize: number) {
+    this.offset(pageSize * (pageNum - 1));
+    return this.limit(pageSize);
+  }
+
+  update(predicate: DocCallback<KeyType, Type, void>): void {
 
     const update = (data: any[], id: KeyType) => {
       const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
@@ -125,14 +149,26 @@ export default class TableQuery<KeyType extends string | number, Type> {
       return doc.serialize();
     }
 
-    this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), update, undefined, limit);
+    this.mainDict.iterateRanges({
+      ranges: this.getQueryRanges(),
+      filter: this.getFilterFunction(),
+      update,
+      limit: this._limit || 0,
+      offset: this._offset || 0,
+    });
   }
 
-  delete(limit = 0) {
-    const res = this.mainDict.iterateRanges(this.getQueryRanges(), this.getFilterFunction(), (data: any[], id: KeyType) => {
-      this.table.removeIdFromIndex(id, data);
-      return undefined;
-    }, undefined, limit);
+  delete() {
+    const res = this.mainDict.iterateRanges({
+      ranges: this.getQueryRanges(),
+      filter: this.getFilterFunction(),
+      update: (data: any[], id: KeyType) => {
+        this.table.removeIdFromIndex(id, data);
+        return undefined;
+      },
+      limit: this._limit || 0,
+      offset: this._offset || 0,
+    });
     return res[1];
   }
 }

@@ -540,6 +540,21 @@ describe("Fragmented dictionary", () => {
     expect(seven[7]).toBe(7);
   });
 
+  test("limit offset", () => {
+    
+    fillNumbers(100);
+    
+    const page2 = numbers.iterateRanges({
+      limit: 10,
+      offset: 10,
+      select: val => val,
+    })[0];
+    const values = Object.values(page2);
+    expect(values.length).toBe(10);
+    expect(values[0]).toBe(11);
+    expect(values[9]).toBe(20);
+  });
+
   afterAll(async () => {
     await allIsSaved();
     rmie(PART);

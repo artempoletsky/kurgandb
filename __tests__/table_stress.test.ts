@@ -229,11 +229,11 @@ describe("Rich table", () => {
       }
 
       perfStart("whereSalary");
-      const rich = t.whereRange("salary", 900, 1000).select(0);
+      const rich = t.whereRange("salary", 900, 1000).limit(0).select();
       perfEndLog("whereSalary");
 
       console.log(rich.length);
-      
+
 
       perfStart("whereBirthday");
       const sameBirthday = t.where("birthday", rich[1].birthday).select();

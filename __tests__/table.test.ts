@@ -234,8 +234,27 @@ describe("Table", () => {
 
     let johns = t.where("name", "John").select();
     expect(johns.length).toBeGreaterThan(2);
-    johns = t.where("name", "John").select(2);
+    johns = t.where("name", "John").limit(2).select();
     expect(johns.length).toBe(2);
+  });
+
+  test("paginate", () => {
+    t.all().delete();
+    t.insertMany(Array.from(Array(100)).map((und, i) => ({
+      bool: false,
+      date: Date.now(),
+      heavy: null,
+      name: `Item ${i}`
+    })));
+
+    expect(t.length).toBe(100);
+    const page1 = t.all().paginate(1, 10).select();
+    const page2 = t.all().paginate(2, 10).select();
+    expect(page1.length).toBe(10);
+    expect(page2.length).toBe(10);
+    expect(page1[0].name).toBe("Item 0");
+    expect(page2[0].name).toBe("Item 10");
+    expect(page2[9].name).toBe("Item 19");
   });
 
   test("renames a field", () => {
@@ -300,7 +319,7 @@ describe("Table", () => {
       });
     }
 
-    
+
 
     const zeros = t2.where("float", 0).select();
 

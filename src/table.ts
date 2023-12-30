@@ -57,7 +57,7 @@ export function getMetaFilepath(tableName: string): string {
   return `/data/${tableName}/_meta.json`;
 }
 
-export function isHeavyType(type: FieldType): boolean {
+export function isHeavyType(type: FieldType): type is "JSON" | "Text" {
   return HeavyTypes.includes(type as HeavyType);
 }
 
@@ -205,6 +205,10 @@ export class Table<KeyType extends string | number, Type> {
     return this.createQuery().filter(predicate);
   }
 
+  all() {
+    return this.createQuery().whereRange(this.primaryKey as any, undefined, undefined);
+  }
+
   renameField(oldName: string, newName: string) {
     const { fields, tags } = this.scheme;
     // console.log(oldName, newName);
@@ -311,16 +315,17 @@ export class Table<KeyType extends string | number, Type> {
     // const ids: KeyType[] = [];
     // const col: string[] | number[] = [];
     const fIndex = this._fieldNameIndex[fieldName];
-    this.mainDict.iterateRanges([[undefined, undefined]], undefined, undefined, (arr, id) => {
-      try {
-        this.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
-      } catch (error) {
-        this.removeIndex(fieldName);
-        throw error;
+    this.mainDict.iterateRanges({
+      filter: (arr, id) => {
+        try {
+          this.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
+        } catch (error) {
+          this.removeIndex(fieldName);
+          throw error;
+        }
+        return false;
       }
-
-      return undefined;
-    }, 0);
+    });
 
     this.insertColumnToIndex(fieldName, indexData);
 
@@ -401,7 +406,7 @@ export class Table<KeyType extends string | number, Type> {
 
   clear() {
     if (!this.scheme.settings.dynamicData) throw new Error(`${this.name} is not a dynamic table`);;
-    return this.filter(() => true).delete(0);
+    return this.filter(() => true).delete();
   }
 
   getIndexDictDir(fieldName: string) {
@@ -559,7 +564,7 @@ export class Table<KeyType extends string | number, Type> {
         for (let i = 0; i < storable.length; i++) {
           const value = storable[i][key];
           if (value) {
-            wfs(this.getHeavyFieldFilepath(ids[i], type as HeavyType, key), value);
+            wfs(this.getHeavyFieldFilepath(ids[i], type, key), value);
           }
         }
       }
@@ -590,12 +595,14 @@ export class Table<KeyType extends string | number, Type> {
       const ids = Array.from(indexData.values()).map(arr => arr[0]);
       indexDict.insertMany(column, ids);
     } else {
-
-      indexDict.iterateRanges(Array.from(indexData.keys()).map(v => [v, v]), undefined, (arr, id) => {
-        const toPush = indexData.get(id);
-        indexData.delete(id);
-        return arr.concat.apply(arr, toPush);
-      }, undefined, 0);
+      indexDict.iterateRanges({
+        ranges: Array.from(indexData.keys()).map(v => [v, v]),
+        update: (arr, id) => {
+          const toPush = indexData.get(id);
+          indexData.delete(id);
+          return arr.concat.apply(arr, toPush);
+        },
+      });
 
       indexDict.insertMany(Array.from(indexData.keys()), Array.from(indexData.values()));
     }
@@ -652,7 +659,7 @@ export class Table<KeyType extends string | number, Type> {
   at(id: KeyType): Type | null
   at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
   public at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
-    return this.where(this.primaryKey as any, id).select(1, predicate)[0] || null;
+    return this.where(this.primaryKey as any, id).limit(1).select(predicate)[0] || null;
   }
 
   atIndex(index: number): Type | null
@@ -667,7 +674,7 @@ export class Table<KeyType extends string | number, Type> {
     if (this.scheme.settings.manyRecords) {
       throw new Error("You probably don't want to download a whole table");
     }
-    return this.filter(() => true).select(0);
+    return this.all().limit(0).select();
   }
 
   getFieldsOfType(...types: FieldType[]): string[] {

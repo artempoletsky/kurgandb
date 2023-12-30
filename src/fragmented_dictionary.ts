@@ -717,8 +717,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
           result[id] = select(value, id);
         }
 
-
-        if (limit && found >= limit) {
+        if (limit && found - offset >= limit) {
           if (isDirty) {
             this.savePartition(i, docs);
           }
