@@ -4,6 +4,7 @@ import FragmentedDictionary, { WhereRanges } from "./fragmented_dictionary";
 import { DocCallback, IndicesRecord, MainDict, Table } from "./table";
 import { PlainObject } from "./utils";
 import uniq from "lodash.uniq";
+import SortedDictionary from "./sorted_dictionary";
 
 
 // export type UpdatePredicate<Type> = (doc: TDocument<Type>) => void;
@@ -24,6 +25,9 @@ export default class TableQuery<KeyType extends string | number, Type> {
   protected _offset: number = 0;
   protected _limit: number | undefined;
 
+  protected _orderBy: string | undefined;
+  protected orderDirection: "ASC" | "DESC" = "ASC";
+
   constructor(table: Table<KeyType, Type>, indices: IndicesRecord, mainDict: MainDict<KeyType>) {
     this.table = table;
     this.indices = indices;
@@ -41,12 +45,16 @@ export default class TableQuery<KeyType extends string | number, Type> {
     }
 
 
+    return this.convertRangesToFilter(fieldName, mappedRanges);
+  }
+
+  protected convertRangesToFilter(fieldName: string, mappedRanges: WhereRanges<any>) {
     return this.filter(doc => {
       for (const [min, max] of mappedRanges) {
-        if (min !== undefined && min > doc[fieldName]) {
+        if (min !== undefined && min > doc.get(fieldName as any)) {
           continue;
         }
-        if (max !== undefined && max < doc[fieldName]) {
+        if (max !== undefined && max < doc.get(fieldName as any)) {
           continue;
         }
         return true;
@@ -68,8 +76,22 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return this;
   }
 
-  getFilterFunction() {
+  getFilterFunction(): undefined | ((data: any[], id: KeyType) => boolean)
+  getFilterFunction(useDocument: true): undefined | ((doc: TDocument<KeyType, Type>) => boolean)
+  getFilterFunction(useDocument = false): any {
     if (!this.filter.length) return undefined;
+    if (useDocument) {
+      return (doc: TDocument<KeyType, Type>) => {
+        for (let i = 0; i < this.filters.length; i++) {
+          let filter = this.filters[i];
+
+          if (!filter(doc)) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
     return (data: any[], id: KeyType) => {
       const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
       for (let i = 0; i < this.filters.length; i++) {
@@ -91,7 +113,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     if (fieldName == this.table.primaryKey) {
       return this.whereFilter.ranges as WhereRanges<KeyType>;
     }
-    if (this.whereFilter.fieldName == "float") debugger;
+
     const rec = this.indices[fieldName].filterSelect(this.whereFilter.ranges, 0);
 
     if (this.table.fieldHasAnyTag(fieldName, "unique")) {
@@ -104,6 +126,9 @@ export default class TableQuery<KeyType extends string | number, Type> {
   }
 
   select<ReturnType = Type>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
+    if (this._orderBy !== undefined) {
+      return this.orderedSelect(predicate);
+    }
     const select = (data: any[], id: KeyType) => {
       const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
       if (predicate) {
@@ -121,6 +146,12 @@ export default class TableQuery<KeyType extends string | number, Type> {
     });
 
     return Object.values(res[0]);
+  }
+
+  orderBy(fieldName: string & (keyof Type | "id"), direction: "ASC" | "DESC" = "ASC") {
+    this._orderBy = fieldName;
+    this.orderDirection = direction;
+    return this;
   }
 
   offset(offset: number) {
@@ -170,5 +201,55 @@ export default class TableQuery<KeyType extends string | number, Type> {
       offset: this._offset || 0,
     });
     return res[1];
+  }
+
+  throwInvalidIndex(name: string | undefined) {
+    throw new Error(`${name} is an invalid index`);
+  }
+
+  protected orderedSelect<ReturnType = Type>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
+    if (this._orderBy === undefined) {
+      this.throwInvalidIndex(undefined);
+      return [];
+    }
+    const { _orderBy: orderBy, mainDict, table, indices, _limit: limit, _offset: offset, orderDirection } = this;
+    const index = indices[orderBy];
+    if (!index) this.throwInvalidIndex(orderBy);
+
+    if (this.whereFilter) {
+      this.convertRangesToFilter(this.whereFilter.fieldName, this.whereFilter.ranges);
+    }
+
+    const all = index.loadAll();
+    let allIds = all.values();
+    if (orderDirection == "DESC") {
+      allIds = allIds.reverse();
+    }
+    const isIndexUnique = table.fieldHasAnyTag(orderBy, "unique");
+    const openedPartitions: Record<number, SortedDictionary<KeyType, any[]>> = {};
+    const result: ReturnType[] = [];
+    const filter = this.getFilterFunction(true);
+    let found = 0;
+
+    for (const ids of allIds) {
+      const idsToiterate = isIndexUnique ? [ids] : ids;
+      for (const id of idsToiterate) {
+        const partId = mainDict.findPartitionForId(id);
+        if (!openedPartitions[partId]) {
+          openedPartitions[partId] = mainDict.openPartition(partId);
+        }
+        const partition = openedPartitions[partId];
+        const doc: TDocument<KeyType, Type> = new Document(partition.get(id), id, table, indices) as any;
+        if (filter && !filter(doc)) continue;
+        found++;
+
+        if (found > offset) result.push(predicate ? predicate(doc) : <any>doc.toJSON());
+        if (limit && (result.length >= limit)) {
+          return result;
+        }
+      }
+    }
+
+    return result;
   }
 }

@@ -327,7 +327,40 @@ describe("Table", () => {
 
   });
 
+  test("order by", () => {
+    t2.all().delete();
 
+    const data: SimpleFloat[] = [];
+    for (let i = 0; i < 100; i++) {
+      data.push({
+        float: i
+      });
+    }
+
+    t2.insertMany(data);
+
+    const evens = t2
+      .all()
+      .orderBy("float", "DESC")
+      .paginate(2, 10)
+      .filter(doc => (doc.float % 2 == 0))
+      .select(doc => doc.float);
+
+    expect(evens.length).toBe(10);
+    expect(evens[0]).toBe(78);
+    expect(evens[9]).toBe(60);
+
+    const odds = t2
+      .whereRange("float", 10, undefined)
+      .orderBy("float")
+      .paginate(1, 10)
+      .filter(doc => (doc.float % 2 == 1))
+      .select(doc => doc.float);
+
+    expect(odds.length).toBe(10);
+    expect(odds[0]).toBe(11);
+    expect(odds[9]).toBe(29);
+  });
 
   afterAll(async () => {
     await allIsSaved();
