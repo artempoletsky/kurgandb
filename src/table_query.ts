@@ -1,6 +1,6 @@
 import flatten from "lodash.flatten";
-import { Document, TDocument } from "./document";
-import FragmentedDictionary, { WhereRanges } from "./fragmented_dictionary";
+import { Document, FieldType, TDocument } from "./document";
+import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
 import { DocCallback, IndicesRecord, MainDict, Table } from "./table";
 import { PlainObject } from "./utils";
 import uniq from "lodash.uniq";
@@ -15,6 +15,20 @@ type WhereFilter<KeyType extends string | number, Type> = {
   ranges: WhereRanges<KeyType>
 }
 
+
+function idFilterFromSet<KeyType extends string | number>(ids: KeyType[]): IDFilter<KeyType> {
+  return id => ids.includes(id);
+}
+
+function partitionFilterFromSet<KeyType extends string | number>(ids: KeyType[]): PartitionFilter<KeyType> {
+  return (start, end) => {
+    for (const id of ids) {
+      if (start <= id || id <= end) return true;
+    }
+    return false;
+  };
+}
+
 export default class TableQuery<KeyType extends string | number, Type> {
   protected table: Table<KeyType, Type>;
   protected indices: IndicesRecord;
@@ -27,25 +41,14 @@ export default class TableQuery<KeyType extends string | number, Type> {
 
   protected _orderBy: string | undefined;
   protected orderDirection: "ASC" | "DESC" = "ASC";
+  protected idFilter: IDFilter<any> | undefined;
+  protected partitionFilter: PartitionFilter<any> | undefined;
+  protected whereField: string | undefined;
 
   constructor(table: Table<KeyType, Type>, indices: IndicesRecord, mainDict: MainDict<KeyType>) {
     this.table = table;
     this.indices = indices;
     this.mainDict = mainDict;
-  }
-
-  whereRanges<ValueType extends string | number | Date | boolean>(fieldName: keyof Type & string, ranges: [ValueType | undefined, ValueType | undefined][]): TableQuery<KeyType, Type> {
-    const type = this.table.scheme.fields[fieldName];
-    const mappedRanges = ranges.map<[string | number | undefined, string | number | undefined]>(([min, max]) => {
-      return [Document.storeValueOfType(min as any, type as any), Document.storeValueOfType(max as any, type as any)];
-    });
-    if (this.table.primaryKey == fieldName || this.table.fieldHasAnyTag(fieldName, "index", "unique")) {
-      this.whereFilter = { fieldName, ranges: mappedRanges };
-      return this;
-    }
-
-
-    return this.convertRangesToFilter(fieldName, mappedRanges);
   }
 
   protected convertRangesToFilter(fieldName: string, mappedRanges: WhereRanges<any>) {
@@ -63,12 +66,51 @@ export default class TableQuery<KeyType extends string | number, Type> {
     });
   }
 
-  where<ValueType extends string | number | Date | boolean>(fieldName: keyof Type & string, value: ValueType) {
-    return this.whereRange(fieldName, value, value);
+
+  protected convertWhereToFilter<FieldType extends string | number>(fieldName: string, idFilter: IDFilter<FieldType>) {
+    this.filters.push(doc => {
+      return idFilter(doc.get(fieldName));
+    });
+    return this;
   }
 
-  whereRange<ValueType extends string | number | Date | boolean | undefined>(fieldName: keyof Type & string, min: ValueType, max: ValueType): TableQuery<KeyType, Type> {
-    return this.whereRanges(fieldName, [[min, max]]);
+  where<FieldType extends string | number>(fieldName: keyof Type | "id",
+    idFilter: IDFilter<FieldType>,
+    partitionFilter?: PartitionFilter<FieldType>): TableQuery<KeyType, Type>
+  where<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): TableQuery<KeyType, Type>
+  where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
+    let idFilter: IDFilter<FieldType>, partitionFilter: PartitionFilter<FieldType>;
+    if (typeof args[0] == "function") {
+      idFilter = args[0];
+      partitionFilter = args[1];
+    } else {
+      idFilter = idFilterFromSet(args);
+      partitionFilter = partitionFilterFromSet(args);
+    }
+
+    if (fieldName != this.table.primaryKey && (this.whereField || !this.table.fieldHasAnyTag(fieldName, "index", "unique"))) {
+      return this.convertWhereToFilter<FieldType>(fieldName, idFilter);
+    }
+
+    this.whereField = fieldName;
+    this.idFilter = idFilter;
+    this.partitionFilter = partitionFilter;
+    return this;
+  }
+
+  whereRange
+    <FieldType extends string | number>(
+      fieldName: keyof Type & string,
+      min: FieldType | undefined,
+      max: FieldType | undefined
+    ): TableQuery<KeyType, Type> {
+    return this.where<any>(fieldName, (val: any) => {
+      if (min !== undefined && val < min) return false;
+      if (max !== undefined && val > max) return false;
+      return true;
+    }, (start, end) => {
+      return FragmentedDictionary.partitionMatchesRanges(start, end, [[min, max]]);
+    });
   }
 
   filter(predicate: DocCallback<KeyType, Type, boolean>): TableQuery<KeyType, Type> {
@@ -105,27 +147,38 @@ export default class TableQuery<KeyType extends string | number, Type> {
     }
   }
 
-  getQueryRanges(): WhereRanges<KeyType> {
-    if (!this.whereFilter) return [[undefined, undefined]];
+  getQueryFilters(): [IDFilter<KeyType> | undefined, PartitionFilter<KeyType> | undefined] {
+    let idFilter: IDFilter<KeyType> | undefined;
+    let partitionFilter: PartitionFilter<KeyType> | undefined;
+    const { whereField, table } = this;
 
-    const { fieldName } = this.whereFilter;
-    let ids: KeyType[];
-    if (fieldName == this.table.primaryKey) {
-      return this.whereFilter.ranges as WhereRanges<KeyType>;
+    if (whereField) {
+      if (whereField == table.primaryKey) {
+        return [this.idFilter, this.partitionFilter];
+      }
+      if (!this.idFilter) throw new Error("id filter is undefined"); //must be imposible
+      const index = this.indices[whereField];
+
+      const rec = index.where({
+        idFilter: this.idFilter,
+        partitionFilter: this.partitionFilter,
+        limit: 0,
+        select: val => val
+      })[0];
+
+      let ids: KeyType[];
+      if (table.fieldHasAnyTag(whereField, "unique")) {
+        ids = Object.values(rec);
+      } else {
+        ids = uniq(flatten(Object.values(rec)));
+      }
+      idFilter = idFilterFromSet(ids);
+      partitionFilter = partitionFilterFromSet(ids);
     }
-
-    const rec = this.indices[fieldName].filterSelect(this.whereFilter.ranges, 0);
-
-    if (this.table.fieldHasAnyTag(fieldName, "unique")) {
-      ids = Object.values(rec);
-    } else {
-      ids = uniq(flatten(Object.values(rec)));
-    }
-
-    return ids.map(id => [id, id]);
+    return [idFilter, partitionFilter];
   }
 
-  select<ReturnType = Type>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
+  select<ReturnType = Type & { id: number }>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
     if (this._orderBy !== undefined) {
       return this.orderedSelect(predicate);
     }
@@ -137,8 +190,11 @@ export default class TableQuery<KeyType extends string | number, Type> {
       return doc.toJSON();
     }
 
-    const res = this.mainDict.iterateRanges({
-      ranges: this.getQueryRanges(),
+    const [idFilter, partitionFilter] = this.getQueryFilters();
+
+    const res = this.mainDict.where({
+      idFilter,
+      partitionFilter,
       filter: this.getFilterFunction(),
       select,
       limit: this._limit === undefined ? 100 : this._limit,
@@ -180,8 +236,11 @@ export default class TableQuery<KeyType extends string | number, Type> {
       return doc.serialize();
     }
 
-    this.mainDict.iterateRanges({
-      ranges: this.getQueryRanges(),
+    const [idFilter, partitionFilter] = this.getQueryFilters();
+
+    this.mainDict.where({
+      idFilter,
+      partitionFilter,
       filter: this.getFilterFunction(),
       update,
       limit: this._limit || 0,
@@ -190,11 +249,14 @@ export default class TableQuery<KeyType extends string | number, Type> {
   }
 
   delete() {
-    const res = this.mainDict.iterateRanges({
-      ranges: this.getQueryRanges(),
+
+    const [idFilter, partitionFilter] = this.getQueryFilters();
+    const res = this.mainDict.where({
+      idFilter,
+      partitionFilter,
       filter: this.getFilterFunction(),
       update: (data: any[], id: KeyType) => {
-        this.table.removeIdFromIndex(id, data);
+        this.table.removeIdFromIndex(id, data); //TODO: refactor me
         return undefined;
       },
       limit: this._limit || 0,
@@ -216,8 +278,9 @@ export default class TableQuery<KeyType extends string | number, Type> {
     const index = indices[orderBy];
     if (!index) this.throwInvalidIndex(orderBy);
 
-    if (this.whereFilter) {
-      this.convertRangesToFilter(this.whereFilter.fieldName, this.whereFilter.ranges);
+    if (this.whereField) {
+      if (!this.idFilter) throw new Error("id filter is not defined");
+      this.convertWhereToFilter(this.whereField, this.idFilter);
     }
 
     const all = index.loadAll();
@@ -232,7 +295,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     let found = 0;
 
     for (const ids of allIds) {
-      const idsToiterate = isIndexUnique ? [ids] : ids;
+      const idsToiterate: KeyType[] = isIndexUnique ? [ids] : ids;
       for (const id of idsToiterate) {
         const partId = mainDict.findPartitionForId(id);
         if (!openedPartitions[partId]) {

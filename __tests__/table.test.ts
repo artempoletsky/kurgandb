@@ -173,6 +173,16 @@ describe("Table", () => {
     expect(bars.length).toBe(2);
   });
 
+  test("where", () => {
+    const oneThree = t.where<number>("id", 1, 3).select();
+    expect(oneThree[0].id).toBe(1);
+    expect(oneThree[1].id).toBe(3);
+
+    const notBars = t.where<string>("name", name => name != "bar").select();
+    expect(notBars[0].name).toBe("foo");
+
+  });
+
   test("filters", () => {
     const bars = t.filter(doc => doc.name == "bar").select();
     expect(bars.length).toBe(2);

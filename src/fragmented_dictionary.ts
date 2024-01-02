@@ -47,6 +47,20 @@ export type IterateRangesOptions<KeyType extends string | number, Type, ReturnTy
   invertRanges?: boolean
 };
 
+export type IDFilter<KeyType extends string | number> = (id: KeyType) => boolean;
+export type PartitionFilter<KeyType extends string | number> = (start: KeyType, end: KeyType) => boolean;
+
+export type IterateWhereOptions<KeyType extends string | number, Type, ReturnType = Type> = {
+  partitionFilter?: PartitionFilter<KeyType>
+  idFilter?: IDFilter<KeyType>
+  filter?: (value: Type, id: KeyType) => boolean
+  update?: (value: Type, id: KeyType) => Type | undefined
+  select?: (value: Type, id: KeyType) => ReturnType
+  limit?: number
+  offset?: number
+  invertRanges?: boolean
+};
+
 const DefaultFragmentDictionarySettings: FragmentedDictionarySettings<number> = {
   keyType: "int",
   maxPartitionLenght: 10 * 1000,
@@ -606,16 +620,15 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
   static partitionMatchesRanges
     <KeyType extends string | number>(
-      { start, end, length }: PartitionMeta<KeyType>,
-      ranges: KeyType[][],
+      start: KeyType,
+      end: KeyType,
+      ranges: WhereRanges<KeyType>,
       invert = false
     ): boolean {
 
-    if (!length) return false;
-
     for (const [min, max] of ranges) {
-      if (max < start) continue;
-      if (min > end) continue;
+      if (max !== undefined && max < start) continue;
+      if (min !== undefined && min > end) continue;
       return !invert;
     }
     return invert;
@@ -624,12 +637,12 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   static idMatchesRanges
     <KeyType extends string | number>(
       id: KeyType,
-      ranges: KeyType[][],
+      ranges: WhereRanges<KeyType>,
       invert = false
     ): boolean {
     for (const [min, max] of ranges) {
-      if (id < min) continue;
-      if (id > max) continue;
+      if (min !== undefined && id < min) continue;
+      if (max !== undefined && id > max) continue;
       return !invert;
     }
     return invert;
@@ -643,15 +656,38 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     }
 
     const {
-      ranges: rawRanges,
+      ranges,
       invertRanges,
+    } = Object.assign({
+      ranges: [[undefined, undefined]] as WhereRanges<KeyType>,
+      invertRanges: false,
+    }, options);
+
+    return this.where(Object.assign({
+      idFilter: (id: KeyType) => {
+        return FragmentedDictionary.idMatchesRanges(id, ranges, invertRanges);
+      },
+      partitionFilter: (start: KeyType, end: KeyType) => {
+        return invertRanges || FragmentedDictionary.partitionMatchesRanges(start, end, ranges);
+      },
+    }, options));
+  }
+
+  where<ReturnType = Type>(options: IterateWhereOptions<KeyType, Type, ReturnType>): [Record<KeyType, ReturnType>, KeyType[]] {
+    if (!this.length) {
+      return [{} as any, []];
+    }
+
+    const {
+      partitionFilter,
+      idFilter,
       filter,
       update,
       select,
       limit,
       offset
     } = Object.assign({
-      ranges: [[undefined, undefined]] as WhereRanges<KeyType>,
+
       limit: 0,
       offset: 0,
       invertRanges: false,
@@ -660,19 +696,15 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     const result: Record<KeyType, ReturnType> = {} as any;
     const removedIds: KeyType[] = [];
 
-    const { start, end, numPartitions } = this;
     const partitions = this.meta.partitions;
     let found = 0;
     let metaIsDirty = false;
 
-    const ranges = rawRanges.map(([min, max]) => {
-      min = min === undefined ? start : min;
-      max = max === undefined ? end : max;
-      return [min, max]
-    });
 
     for (let i = 0; i < partitions.length; i++) {
-      if (!invertRanges && !FragmentedDictionary.partitionMatchesRanges(partitions[i], ranges)) continue;
+      const partition = partitions[i];
+      if (!partition.length) continue;
+      if (partitionFilter && !partitionFilter(partition.start, partition.end)) continue;
 
       const keys: KeyType[] = this.readKeysFile(i);
       let values: Record<KeyType, Type> | undefined = undefined;
@@ -680,14 +712,14 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       let isDirty = false;
 
       for (const id of keys) {
-        if (!FragmentedDictionary.idMatchesRanges(id, ranges, invertRanges)) continue;
+        if (idFilter && !idFilter(id)) continue;
 
         if (filter) {
           if (!values || !docs) {
             values = this.readDictFile(i);
             docs = new SortedDictionary(values, this.settings.keyType, true, keys.slice(0));
           }
-          if (filter && !filter(values[id], id)) continue;
+          if (!filter(values[id], id)) continue;
         }
 
         found++;

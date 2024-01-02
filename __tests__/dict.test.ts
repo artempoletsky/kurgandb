@@ -493,33 +493,33 @@ describe("Fragmented dictionary", () => {
   });
 
   test("id matches ranges", () => {
-    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 1]], false)).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(1, [[undefined, undefined]])).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(1, [[undefined, undefined]], true)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 1]])).toBe(true);
     expect(FragmentedDictionary.idMatchesRanges(1, [[1, 1]], true)).toBe(false);
-    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 10]], false)).toBe(true);
-    expect(FragmentedDictionary.idMatchesRanges(5, [[1, 10]], false)).toBe(true);
-    expect(FragmentedDictionary.idMatchesRanges(10, [[1, 10]], false)).toBe(true);
-    expect(FragmentedDictionary.idMatchesRanges(0, [[1, 10]], false)).toBe(false);
-    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10]], false)).toBe(false);
-    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10]], false)).toBe(false);
-    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10], [11, 11]], false)).toBe(true);
-    expect(FragmentedDictionary.idMatchesRanges(12, [[1, 10], [11, 11]], false)).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(1, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(5, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(10, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(0, [[1, 10]])).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10]])).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10]])).toBe(false);
+    expect(FragmentedDictionary.idMatchesRanges(11, [[1, 10], [11, 11]])).toBe(true);
+    expect(FragmentedDictionary.idMatchesRanges(12, [[1, 10], [11, 11]])).toBe(false);
     expect(FragmentedDictionary.idMatchesRanges(12, [[1, 10], [11, 11]], true)).toBe(true);
   });
 
   test("partition matches ranges", () => {
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 0, end: 0, length: 0 }, [[0, 0]])).toBe(false);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 0, end: 0, length: 1 }, [[0, 0]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 0, end: 0, length: 1 }, [[0, 0]], true)).toBe(false);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 1, end: 10, length: 10 }, [[1, 10]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 1, end: 5, length: 10 }, [[1, 10]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 4, end: 5, length: 2 }, [[1, 10]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 4, end: 5, length: 2 }, [[5, 10]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 4, end: 5, length: 2 }, [[6, 10]])).toBe(false);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 11, end: 12, length: 2 }, [[6, 10]])).toBe(false);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 10]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [12, 12]])).toBe(true);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [13, 13]])).toBe(false);
-    expect(FragmentedDictionary.partitionMatchesRanges({ start: 10, end: 12, length: 2 }, [[6, 9], [13, 13]], true)).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(0, 0, [[0, 0]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(0, 0, [[0, 0]], true)).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges(1, 10, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(1, 5, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(4, 5, [[1, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(4, 5, [[5, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(4, 5, [[6, 10]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges(11, 12, [[6, 10]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges(10, 12, [[6, 10]])).toBe(true);
+    expect(FragmentedDictionary.partitionMatchesRanges(10, 12, [[6, 9], [13, 13]])).toBe(false);
+    expect(FragmentedDictionary.partitionMatchesRanges(10, 12, [[6, 9], [13, 13]], true)).toBe(true);
   });
 
   test("inverted select", () => {
@@ -541,9 +541,9 @@ describe("Fragmented dictionary", () => {
   });
 
   test("limit offset", () => {
-    
+
     fillNumbers(100);
-    
+
     const page2 = numbers.iterateRanges({
       limit: 10,
       offset: 10,

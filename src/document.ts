@@ -107,7 +107,7 @@ export class Document<KeyType extends string | number, Type> {
     return `${this._table.name}['${this._id}']`;
   }
 
-  get(fieldName: string & keyof Type): any {
+  get(fieldName: string): any {
     const table = this._table;
     const { fields } = this._table.scheme;
     const type = fields[fieldName];

@@ -3,7 +3,7 @@ import { SchemeFile, TableSettings } from "./db";
 import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } from "./document";
 import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie, perfStart, perfEndLog } from "./utils";
 
-import FragmentedDictionary, { FragmentedDictionarySettings, PartitionMeta } from "./fragmented_dictionary";
+import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 
@@ -125,7 +125,7 @@ export class Table<KeyType extends string | number, Type> {
     return true;
   }
 
-  forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, flags: IndexFlags, tags: FieldTag[]) => void) {
+  protected forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, flags: IndexFlags, tags: FieldTag[]) => void) {
     for (const fieldName in this.scheme.tags) {
       const tags = this.scheme.tags[fieldName];
       if (this.fieldHasAnyTag(<keyof Type & string>fieldName, "unique", "index")) {
@@ -144,7 +144,7 @@ export class Table<KeyType extends string | number, Type> {
     return Table.tagsHasFieldNameWithAllTags(this.scheme.tags, fieldName, ...tags);
   }
 
-  loadMemoryIndices() {
+  protected loadMemoryIndices() {
     const { tags } = this.scheme;
     for (const fieldName in tags) {
       const fieldTags = tags[fieldName];
@@ -155,7 +155,7 @@ export class Table<KeyType extends string | number, Type> {
     }
   }
 
-  updateFieldIndices() {
+  protected updateFieldIndices() {
     this._fieldNameIndex = {};
     this._indexFieldName = [];
     let i = 0;
@@ -193,12 +193,12 @@ export class Table<KeyType extends string | number, Type> {
     return this.createQuery().whereRange(fieldName as any, min, max);
   }
 
-  whereRanges(fieldName: (keyof Type | "id") & string, ranges: any): TableQuery<KeyType, Type> {
-    return this.createQuery().whereRanges(fieldName as any, ranges);
-  }
-
-  where(fieldName: (keyof Type | "id") & string, value: any): TableQuery<KeyType, Type> {
-    return this.createQuery().where(fieldName as any, value);
+  where<FieldType extends string | number>(fieldName: keyof Type | "id",
+    idFilter: IDFilter<FieldType>,
+    partitionFilter?: PartitionFilter<FieldType>): TableQuery<KeyType, Type>
+  where<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): TableQuery<KeyType, Type>
+  where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
+    return this.createQuery().where<FieldType>(fieldName, ...args);
   }
 
   filter(predicate: DocCallback<KeyType, Type, boolean>): TableQuery<KeyType, Type> {
