@@ -1,5 +1,5 @@
 {
-  "name": "Kurgan DB",
+  "name": "@artempoletsky/kurgandb",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
