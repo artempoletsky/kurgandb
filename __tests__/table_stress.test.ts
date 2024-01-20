@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, perfEndLog } from "../src/utils";
-import { clientQueryUnsafe as clientQuery } from "../src/api";
+import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
@@ -201,7 +201,7 @@ describe("Rich table", () => {
     test("at", () => {
 
       perfStart("query");
-      clientQuery(({ jest_test_table }, { db }) => {
+      query(({ jest_test_table }, { db }) => {
         return jest_test_table.at(9);
       });
       perfEnd("query");
@@ -236,7 +236,7 @@ describe("Rich table", () => {
 
 
       perfStart("whereBirthday");
-      const sameBirthday = t.where("birthday", rich[1].birthday).select();
+      const sameBirthday = t.where("birthday", rich[1].birthday as string).select();
       perfEnd("whereBirthday");
 
       console.log(sameBirthday.length);

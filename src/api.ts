@@ -2,7 +2,7 @@
 import { Predicate, predicateToQuery } from "./client";
 import { AllTablesDict, DataBase, TCreateTable } from "./db";
 import { HeavyTypes, LightTypes } from "./document";
-import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "./lib/rpc";
+import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
 
 import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie } from "./utils";
@@ -11,7 +11,7 @@ import { allIsSaved } from "./virtual_fs";
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
 
-export type TQuery = {
+export type AQuery = {
   payload: PlainObject
   tables: string[]
   predicateBody: string
@@ -19,7 +19,7 @@ export type TQuery = {
 
 
 type QueryImplementation = (tables: AllTablesDict, scope: PlainObject) => any;
-function constructQuery(args: TQuery): QueryImplementation {
+function constructQuery(args: AQuery): QueryImplementation {
   return new Function(`{ ${args.tables.join(', ')} }`, `{ payload, db, $ }`, args.predicateBody) as QueryImplementation;
 }
 
@@ -62,7 +62,7 @@ Rules.query = [{
   payload: {},
   tables: ["string[]", AreTablesExist],
   predicateBody: "string",
-}, PrediateConstructor, RunQuery] as ValidationRule<TQuery>;
+}, PrediateConstructor, RunQuery] as ValidationRule<AQuery>;
 
 type TQueryPayload = {
   queryImplementation: Function
@@ -70,11 +70,11 @@ type TQueryPayload = {
   result: any
 }
 
-async function query({ }: TQuery, { result }: TQueryPayload) {
+async function query(arg: AQuery, { result }: TQueryPayload) {
   return result;
 }
 
-export async function queryUnsafe(args: TQuery) {
+export async function queryUnsafe(args: AQuery) {
   const queryImplementation: QueryImplementation = constructQuery(args);
   const tables = args.tables.reduce((res, tableName) => {
     res[tableName] = DataBase.getTable(tableName);
@@ -84,11 +84,13 @@ export async function queryUnsafe(args: TQuery) {
   return queryResult;
 }
 
-export async function clientQueryUnsafe(p: Predicate, payload: PlainObject = {}) {
+export async function clientQueryUnsafe<Tables, Payload>(p: Predicate<Tables, Payload>, payload: PlainObject = {}) {
   return queryUnsafe(predicateToQuery(p, payload));
 }
 
 API.query = query;
+
+export type FnQuery = (arg: AQuery) => Promise<any>;
 ////////////////////////////////////////////////////////////////////
 
 

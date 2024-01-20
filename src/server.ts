@@ -1,10 +1,13 @@
 import { POST } from "./api";
 // import { clientQuery } from "./client";
 
+
 import http from "http";
 import { DataBase } from "./db";
 
 DataBase.loadAllTables();
+
+const PORT = process.env.KURGANDB_SERVER_PORT || 8080
 
 http.createServer(function (req, res) {
   if (req.method == "OPTIONS") {
@@ -56,17 +59,8 @@ http.createServer(function (req, res) {
 
 
 
-}).listen(8080);
+}).listen(PORT);
 
+const version = require('../package.json').version;
 
-// clientQuery(({ users, posts }, { payload, userMethods, _ }) => {
-//   const user: any = users.find(user => userMethods.md5(user.name) == payload.name);
-//   if (!user) return user;
-//   user.posts = posts.select(post => post.user == user.id).map(doc => doc.pick("body"));
-//   return user;
-// }, {
-//   name: "John"
-// });
-
-// clientQuery({}, (a: any, b: any) => { a + b });
-// clientQuery({}, function ({ foo: far, bar }: any, b: any) { });
+console.info(`KurganDB v${version} are listening on '${PORT}'`);
