@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@artempoletsky/easyrpc": "^1.0.1",
+    "dotenv": "^16.3.2",
     "lodash.debounce": "^4.0.8",
     "lodash.flatten": "^4.4.0",
     "lodash.sortedindex": "^4.1.0",
