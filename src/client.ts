@@ -96,6 +96,7 @@ export async function query
 }
 
 export const standAloneQuery: typeof query = async (predicate, payload = {}) => {
+  DataBase.init();
   const [response, status] = await POST({
     method: "query",
     args: predicateToQuery<any, any>(predicate, payload)
