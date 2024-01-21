@@ -1,6 +1,6 @@
 import fs from "fs";
 import { TableScheme, Table, isHeavyType, IndicesRecord, MainDict } from "./table";
-import { PlainObject, rfs, existsSync, wfs } from "./utils";
+import { PlainObject, existsSync, rfs } from "./utils";
 
 export const LightTypes = ["string", "number", "date", "boolean", "json"] as const; //store their data in main json
 export const HeavyTypes = ["Text", "JSON"] as const; // store their data in a separate file
@@ -72,7 +72,7 @@ export class Document<KeyType extends string | number, Type> {
     const currentValue = this._data[indexField];
     table.changeIndexValue(fieldName, this._id, currentValue, newValue);
 
-    
+
     if (type == "date") {
       this._dates[fieldName] = new Date(value);
     }
@@ -177,7 +177,7 @@ export class Document<KeyType extends string | number, Type> {
 
   public getTextContent(key: string) {
     const filename = this.getExternalFilename(key);
-    return existsSync(filename) ? fs.readFileSync(process.cwd() + filename, { encoding: "utf8" }) : "";
+    return existsSync(filename) ? rfs(filename, true) : "";
   }
 
   public getJSONContent(key: string) {

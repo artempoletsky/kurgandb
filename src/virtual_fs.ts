@@ -1,12 +1,16 @@
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
+import fs, { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 
 import debounce from "lodash.debounce";
+import { rimraf } from "rimraf";
 
 const CWD = process.cwd();
 
 let ROOT = CWD;
 
 export function setRootDirectory(newRoot: string) {
+  if (newRoot.endsWith("/")) {
+    newRoot.slice(0, -1);
+  }
   ROOT = newRoot;
 }
 
@@ -49,6 +53,17 @@ export function renameDir(oldRelativePath: string, newRelativePath: string) {
   }
 }
 
+export function rmie(name: string) {
+  rimraf.sync(`${ROOT}/${name}`);
+}
+
+export function existsSync(filename: string) {
+  return fs.existsSync(`${ROOT}/${filename}`);
+}
+
+export function mkdirSync(name: string) {
+  fs.mkdirSync(`${ROOT}/${name}`, { recursive: true });
+}
 
 
 
@@ -66,7 +81,7 @@ export class VirtualFile {
 
   constructor(relativePath: string, defaultData?: any) {
     this._relativePath = relativePath;
-    this._existsFS = existsSync(ROOT + relativePath);
+    this._existsFS = fs.existsSync(ROOT + relativePath);
     this._dataIsDirty = false;
 
     this.debouncedRemoveFromCache = debounce(() => {
@@ -78,7 +93,7 @@ export class VirtualFile {
           this._existsFS = true;
         } else {
           this._existsFS = false;
-          if (existsSync(this.absolutePath)) {
+          if (fs.existsSync(this.absolutePath)) {
             rmSync(this.absolutePath);
           }
         }
@@ -171,7 +186,7 @@ export class VirtualFile {
     if (CACHE[newRelativePath]) throw new Error(`file ${newRelativePath} already exists in the virtual file system! ${this._relativePath}`);
 
     if (this._existsFS) {
-      if (existsSync(ROOT + newRelativePath)) throw new Error(`file ${newRelativePath} already exists in the real file system!`);
+      if (fs.existsSync(ROOT + newRelativePath)) throw new Error(`file ${newRelativePath} already exists in the real file system!`);
       renameSync(ROOT + this._relativePath, ROOT + newRelativePath);
     }
 

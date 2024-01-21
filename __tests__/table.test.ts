@@ -49,6 +49,7 @@ describe("Table", () => {
     //   "settings": {}
     // });
 
+    DataBase.init(process.cwd() + "/test_data");
 
     if (DataBase.isTableExist(TestTableName)) {
       DataBase.removeTable(TestTableName);

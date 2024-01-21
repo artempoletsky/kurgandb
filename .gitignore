@@ -2,3 +2,5 @@
 /build/
 /data/
 /.env
+/test_data/
+/kurgandb_data/

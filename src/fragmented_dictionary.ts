@@ -1,8 +1,8 @@
 
-import uniq from "lodash.uniq";
+import { rimraf } from "rimraf";
 import SortedDictionary from "./sorted_dictionary";
-import { PlainObject, mkdirSync, renameSync, existsSync, rmie } from "./utils";
-import vfs from "./virtual_fs";
+import { PlainObject } from "./utils";
+import vfs, { mkdirSync, existsSync, rmie } from "./virtual_fs";
 
 function getEmptyKey<KeyType extends string | number>(keyType: KeyType extends string ? "string" : "int"): KeyType {
   return keyType == "string" ? "" : 0 as any;

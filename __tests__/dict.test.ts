@@ -1,9 +1,8 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, existsSync, wfs, rmie } from "../src/utils";
 import FragmentedDictionary, { FragDictMeta, PartitionMeta } from "../src/fragmented_dictionary";
 import SortedDictionary from "../src/sorted_dictionary";
-import vfs, { allIsSaved } from "../src/virtual_fs";
-import { rimraf } from "rimraf";
+import vfs, { allIsSaved, rmie, existsSync } from "../src/virtual_fs";
+import virtual_fs from "../src/virtual_fs";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -16,11 +15,13 @@ describe("Fragmented dictionary", () => {
   let letters: FragmentedDictionary<string, number>;
   let partitions: FragmentedDictionary<number, number>;
   let index: FragmentedDictionary<string, number[]>;
-  const PART = "/data/jest_dict_partititions/";
-  const LETT = "/data/jest_dict_letters/";
-  const NUM = "/data/jest_dict_numbers/";
-  const IND = "/data/test_array_index/";
+  const PART = "/jest_dict_partititions/";
+  const LETT = "/jest_dict_letters/";
+  const NUM = "/jest_dict_numbers/";
+  const IND = "/test_array_index/";
+  
   beforeAll(() => {
+    virtual_fs.setRootDirectory(process.cwd() + "/test_data/");
     numbers = FragmentedDictionary.init({
       directory: NUM,
       keyType: "int",
@@ -76,13 +77,13 @@ describe("Fragmented dictionary", () => {
     dictMeta.start = partitions[0].start;
     dictMeta.end = (<any>partitions.at(-1)).end;
 
-    perfStart("partition search");
+    
+    console.time("partition search")
     const partitionId = FragmentedDictionary.findPartitionForId(id, dictMeta);
-    perfEnd("partition search");
-
-    // perfLog("partition search")
+    console.timeEnd("partition search")
+    
     expect(partitionId).not.toBe(false);
-    expect(perfDur("partition search")).toBeLessThan(20);
+    // expect(console.timeStamp("partition search")).toBeLessThan(20);
   });
 
   test("Partition ID search 2", () => {

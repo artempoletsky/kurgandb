@@ -5,9 +5,6 @@ import { Table } from "./table";
 import { PlainObject } from "./utils";
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 
-export function dbConnect() {
-
-}
 
 type WhereMethod<KeyType extends string | number, Type> = (field: keyof Type | "id", value: any) => ITableQuery<KeyType, Type>
 type FilterMethod<KeyType extends string | number, Type> = (field: keyof Type | "id", value: any) => ITableQuery<KeyType, Type>

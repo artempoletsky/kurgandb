@@ -1,7 +1,7 @@
 
-import { SchemeFile, TableSettings } from "./db";
+import { SCHEME_PATH, SchemeFile, TableSettings } from "./db";
 import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie, perfStart, perfEndLog } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery from "./table_query";
@@ -35,7 +35,7 @@ export type MainDict<KeyType extends string | number> = FragmentedDictionary<Key
 
 export type DocCallback<KeyType extends string | number, Type, ReturnType> = (doc: TDocument<KeyType, Type>) => ReturnType;
 
-export const SCHEME_PATH = "/data/scheme.json";
+
 
 export type IndexFlags = {
   isUnique: boolean,
@@ -54,7 +54,7 @@ export function getDefaultValueForType(type: FieldType) {
 }
 
 export function getMetaFilepath(tableName: string): string {
-  return `/data/${tableName}/_meta.json`;
+  return `/${tableName}/_meta.json`;
 }
 
 export function isHeavyType(type: FieldType): type is "JSON" | "Text" {
@@ -93,7 +93,7 @@ export class Table<KeyType extends string | number, Type> {
       }
     }
 
-    this.mainDict = FragmentedDictionary.open(`/data/${name}/main/`);
+    this.mainDict = FragmentedDictionary.open(`/${name}/main/`);
     this.memoryFields = {};
     this.loadMemoryIndices();
     this.updateFieldIndices();
@@ -280,7 +280,7 @@ export class Table<KeyType extends string | number, Type> {
   }
 
   static createIndexDictionary(tableName: string, fieldName: string, tags: FieldTag[], type: FieldType) {
-    const directory = `/data/${tableName}/indices/${fieldName}/`;
+    const directory = `/${tableName}/indices/${fieldName}/`;
 
     if (isHeavyType(type)) throw new Error(`Can't create an index of heavy type field ${fieldName}`);
     if (type == "json") throw new Error(`Can't create an index of json type field ${fieldName}`);
@@ -410,15 +410,15 @@ export class Table<KeyType extends string | number, Type> {
   }
 
   getIndexDictDir(fieldName: string) {
-    return `/data/${this.name}/indices/${fieldName}/`;
+    return `/${this.name}/indices/${fieldName}/`;
   }
 
   getMainDictDir() {
-    return `/data/${this.name}/main/`;
+    return `/${this.name}/main/`;
   }
 
   getHeavyFieldDir(fieldName: string) {
-    return `/data/${this.name}/heavy/${fieldName}/`;
+    return `/${this.name}/heavy/${fieldName}/`;
   }
 
   getHeavyFieldFilepath(id: number | string, type: HeavyType, fieldName: string): string {

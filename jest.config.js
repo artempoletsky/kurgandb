@@ -22,9 +22,18 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'table_stress.test.ts';
 // currentFile = 'db.test.ts';
 
+const runStressTests = true;
+
+customJestConfig.testPathIgnorePatterns = [];
 if (currentFile) {
   customJestConfig.testPathIgnorePatterns = files.filter(f => f != currentFile).map(f => "<rootDir>/__tests__/" + f);
 }
 
+if (!runStressTests && !currentFile) {
+  customJestConfig.testPathIgnorePatterns.push(
+    "<rootDir>/__tests__/table_stress.test.ts",
+    "<rootDir>/__tests__/fragmented_dict_stress.test.ts",
+  );
+}
 
 module.exports = customJestConfig;

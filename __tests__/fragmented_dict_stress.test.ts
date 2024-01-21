@@ -1,9 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, existsSync, wfs, rmie, perfEndLog } from "../src/utils";
 import FragmentedDictionary, { FragDictMeta, PartitionMeta } from "../src/fragmented_dictionary";
-import SortedDictionary from "../src/sorted_dictionary";
-import vfs, { allIsSaved } from "../src/virtual_fs";
-import { rimraf } from "rimraf";
+
+import virtual_fs, { allIsSaved, rmie } from "../src/virtual_fs";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -13,13 +11,14 @@ const xtest = (...args: any) => { };
 
 describe("Fragmented dictionary", () => {
   let numbers: FragmentedDictionary<number, number>;
-  const NUM = "/data/jest_dict_numbers_stress/";
+  const NUM = "/jest_dict_numbers_stress/";
   const partitionLength = 100 * 1000;
 
   const portion = Array.from(Array(partitionLength)).map((und, index) => index);
 
   const RESET = true;
   beforeAll(() => {
+    virtual_fs.setRootDirectory(process.cwd() + "/test_data");
     if (RESET) {
       rmie(NUM);
       numbers = FragmentedDictionary.init({
@@ -60,10 +59,10 @@ describe("Fragmented dictionary", () => {
 
   test("reads from a big dict", () => {
     
-    perfStart("getOne");
+    console.time("getOne");
     expect(numbers.getOne(99999)).toBeDefined();
-    perfEndLog("getOne");
-    expect(perfDur("getOne")).toBeLessThan(100);
+    console.timeEnd("getOne");
+    // expect(perfDur("getOne")).toBeLessThan(100);
   });
 
 

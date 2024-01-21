@@ -1,9 +1,12 @@
 import { rimraf } from "rimraf";
 import { FieldType } from "./document";
-import { FieldTag, SCHEME_PATH, Table, TableScheme, getMetaFilepath, isHeavyType } from "./table";
-import { PlainObject, mkdirSync, rfs, wfs } from "./utils";
+import { FieldTag, Table, TableScheme, getMetaFilepath, isHeavyType } from "./table";
+import { PlainObject, existsSync, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
+import fs from "fs";
+import vfs, { setRootDirectory } from "./virtual_fs";
 
+export const SCHEME_PATH = "/scheme.json";
 
 export type TCreateTable<Type> = {
   name: string
@@ -36,8 +39,50 @@ export type AllTablesDict = Record<string, Table<any, any>>;
 
 const Tables: AllTablesDict = {}
 
-
+let workingDirectory: string;
+let initialized = false;
 export class DataBase {
+
+  public static get workingDirectory(): string {
+    if (!workingDirectory) {
+      const envDir = process.env.KURGANDB_DATA_DIR;
+      if (envDir) {
+        workingDirectory = envDir;
+      } else {
+        workingDirectory = process.cwd() + "/kurgandb_data";
+      }
+      setRootDirectory(workingDirectory);
+    }
+    return workingDirectory;
+  }
+
+  static init(newWorkingDirectory?: string) {
+    if (newWorkingDirectory) {
+      if (newWorkingDirectory.endsWith("/")) {
+        newWorkingDirectory = newWorkingDirectory.slice(0, -1);
+      }
+      workingDirectory = newWorkingDirectory;
+      initialized = false;
+      for (const key in Tables) {
+        delete Tables[key];
+      }
+      vfs.setRootDirectory(workingDirectory);
+    }
+    if (initialized) {
+      return;
+    }
+    const dir = this.workingDirectory;
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir);
+      wfs(SCHEME_PATH, {
+        tables: {}
+      }, {
+        pretty: true
+      });
+    }
+    this.loadAllTables();
+    initialized = true;
+  }
 
   static loadAllTables() {
     let dbScheme: SchemeFile = rfs(SCHEME_PATH);
@@ -82,9 +127,9 @@ export class DataBase {
 
 
 
-    mkdirSync(`/data/${name}/`);
-    mkdirSync(`/data/${name}/indices/`);
-    const mainDictDir = `/data/${name}/main/`;
+    mkdirSync(`/${name}/`);
+    mkdirSync(`/${name}/indices/`);
+    const mainDictDir = `/${name}/main/`;
     let keyType: "int" | "string" = "int";
     for (const fieldName in tags) {
       const fieldTags = tags[fieldName];
@@ -109,7 +154,7 @@ export class DataBase {
       directory: mainDictDir,
     });
 
-    mkdirSync(`/data/${name}/heavy/`);
+    mkdirSync(`/${name}/heavy/`);
 
 
 
@@ -117,7 +162,7 @@ export class DataBase {
     for (const fieldName in fields) {
       const type = fields[fieldName];
       if (isHeavyType(type)) {
-        mkdirSync(`/data/${name}/heavy/${fieldName}/`);
+        mkdirSync(`/${name}/heavy/${fieldName}/`);
       }
     }
 
@@ -149,7 +194,7 @@ export class DataBase {
       pretty: true
     });
 
-    rimraf.sync(`${process.cwd()}/data/${name}/`);
+    rimraf.sync(`${this.workingDirectory}/${name}`);
   }
 }
 

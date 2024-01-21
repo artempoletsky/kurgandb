@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs, perfEndLog } from "../src/utils";
+import { PlainObject, perfEnd, perfStart, perfDur, perfLog, perfEndLog } from "../src/utils";
 import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
@@ -123,7 +123,7 @@ describe("Rich table", () => {
       //   },
       //   "settings": {}
       // });
-
+      DataBase.init(process.cwd() + "/test_data");
       if (DataBase.isTableExist(TestTableName)) {
         DataBase.removeTable(TestTableName);
       }

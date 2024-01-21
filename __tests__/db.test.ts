@@ -1,15 +1,16 @@
 import { describe, expect, test } from "@jest/globals";
 import { Predicate, predicateToQuery } from "../src/client";
-import { PlainObject, rfs } from "../src/utils";
+import { rfs } from "../src/utils";
 import { queryUnsafe } from "../src/api";
 import { standAloneQuery as query } from "../src/client";
-import { SCHEME_PATH } from "../src/table";
-import { SchemeFile } from "../src/db";
+import { SchemeFile, SCHEME_PATH, DataBase } from "../src/db";
+import { existsSync } from "fs";
+import { rimraf } from "rimraf";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
-
+DataBase.init(process.cwd() + "/test_data");
 
 describe("Predicate parser", () => {
 
@@ -23,8 +24,13 @@ describe("Predicate parser", () => {
   });
 });
 
-xdescribe("db", () => {
+describe("db", () => {
   const tableName = "jest_test_table";
+  const expectedDir = process.cwd() + "/test_data/" + tableName;
+  beforeAll(() => {
+    rimraf.sync(expectedDir);
+  });
+
   test("creates a table", async () => {
     const result = await query(({ }, { db, payload }) => {
       db.createTable({
@@ -39,6 +45,7 @@ xdescribe("db", () => {
     const scheme: SchemeFile = rfs(SCHEME_PATH);
     expect(scheme.tables).toHaveProperty(tableName);
     expect(scheme.tables.jest_test_table.fields.test).toBe("string");
+    expect(existsSync(expectedDir)).toBe(true);
   });
 
   test("removes a table", async () => {
@@ -50,5 +57,7 @@ xdescribe("db", () => {
 
     const scheme: SchemeFile = rfs(SCHEME_PATH);
     expect(scheme.tables).not.toHaveProperty(tableName);
+
+    expect(existsSync(expectedDir)).toBe(false);
   });
 });

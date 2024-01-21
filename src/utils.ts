@@ -1,43 +1,47 @@
 import fs from "fs";
 import { rimraf } from "rimraf";
+import { DataBase } from "./db";
 
 export type PlainObject = Record<string, any>;
-
-const CWD = process.cwd();
 
 type WFSOptions = {
   pretty: boolean
 } | undefined;
 
+function abs(path: string) {
+  return `${DataBase.workingDirectory}/${path}`;
+}
 export function wfs(filename: string, data: any, options?: WFSOptions) {
   const { pretty = false } = options || {};
 
   if (pretty) {
-    return fs.writeFileSync(CWD + filename, JSON.stringify(data, null, 2).replace(/\n/g, "\r\n"));
+    return fs.writeFileSync(abs(filename), JSON.stringify(data, null, 2).replace(/\n/g, "\r\n"));
   } else {
-    return fs.writeFileSync(CWD + filename, JSON.stringify(data));
+    return fs.writeFileSync(abs(filename), JSON.stringify(data));
   }
 }
 
-export function rfs(filename: string) {
-  return JSON.parse(fs.readFileSync(CWD + filename, { encoding: "utf8" }));
+export function rfs(filename: string, asText = false) {
+  const text = fs.readFileSync(abs(filename), { encoding: "utf8" });
+  if (asText) return text;
+  return JSON.parse(text);
 }
 
 export function existsSync(filename: string) {
-  return fs.existsSync(CWD + filename);
+  return fs.existsSync(abs(filename));
 }
 
 export function statSync(filename: string) {
-  return fs.statSync(CWD + filename);
+  return fs.statSync(abs(filename));
 }
 
 
 export function unlinkSync(filename: string) {
-  fs.unlinkSync(CWD + filename);
+  fs.unlinkSync(abs(filename));
 }
 
 export function mkdirSync(dirname: string) {
-  fs.mkdirSync(CWD + dirname)
+  fs.mkdirSync(abs(dirname), { recursive: true });
 }
 
 /**
@@ -51,10 +55,10 @@ export function rmie(name: string) {
     if (name.endsWith("/")) {
       // console.log(name);?
 
-      rimraf.sync(CWD + name);
+      rimraf.sync(abs(name));
       // fs.rmdirSync();
     } else {
-      unlinkSync(CWD + name);
+      unlinkSync(abs(name));
     }
   }
 }
@@ -65,13 +69,13 @@ export function rmie(name: string) {
  * @param dirname 
  */
 export function mdne(dirname: string) {
-  if (!existsSync(CWD + dirname)) {
-    mkdirSync(CWD + dirname);
+  if (!fs.existsSync(abs(dirname))) {
+    fs.mkdirSync(abs(dirname));
   }
 }
 
 export function renameSync(oldName: string, newName: string) {
-  return fs.renameSync(CWD + oldName, CWD + newName);
+  return fs.renameSync(abs(oldName), abs(newName));
 }
 
 

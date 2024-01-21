@@ -5,7 +5,7 @@ import { POST } from "./api";
 import http from "http";
 import { DataBase } from "./db";
 
-DataBase.loadAllTables();
+DataBase.init();
 
 const PORT = process.env.KURGANDB_SERVER_PORT || 8080
 
@@ -64,3 +64,4 @@ http.createServer(function (req, res) {
 const version = require('../package.json').version;
 
 console.info(`KurganDB v${version} are listening on '${PORT}'`);
+console.info(`Working directory: ${DataBase.workingDirectory}`);

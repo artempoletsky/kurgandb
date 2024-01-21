@@ -48,7 +48,8 @@ const RunQuery: Validator = async ({ payload, args }) => {
   const { tablesDict, queryImplementation } = payload as TQueryPayload;
   try {
     payload.result = queryImplementation(tablesDict, {
-      payload: args.payload
+      payload: args.payload,
+      db: DataBase
     });
   } catch (error) {
     return `query has failed with error: ${error}`;
