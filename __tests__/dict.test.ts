@@ -19,7 +19,7 @@ describe("Fragmented dictionary", () => {
   const LETT = "/jest_dict_letters/";
   const NUM = "/jest_dict_numbers/";
   const IND = "/test_array_index/";
-  
+
   beforeAll(() => {
     virtual_fs.setRootDirectory(process.cwd() + "/test_data/");
     numbers = FragmentedDictionary.init({
@@ -77,11 +77,11 @@ describe("Fragmented dictionary", () => {
     dictMeta.start = partitions[0].start;
     dictMeta.end = (<any>partitions.at(-1)).end;
 
-    
+
     console.time("partition search")
     const partitionId = FragmentedDictionary.findPartitionForId(id, dictMeta);
     console.timeEnd("partition search")
-    
+
     expect(partitionId).not.toBe(false);
     // expect(console.timeStamp("partition search")).toBeLessThan(20);
   });
@@ -554,6 +554,31 @@ describe("Fragmented dictionary", () => {
     expect(values.length).toBe(10);
     expect(values[0]).toBe(11);
     expect(values[9]).toBe(20);
+  });
+
+
+  test("has ids", () => {
+
+    fillNumbers(100);
+
+    expect(numbers.hasAnyId([1, 2, 3])).toBe(1);
+    expect(numbers.hasAnyId([10, 111])).toBe(10);
+    expect(numbers.hasAnyId([111])).toBe(false);
+
+    expect(numbers.hasAllIds([111])).toBe(false);
+    expect(numbers.hasAllIds([111, 10])).toBe(false);
+    expect(numbers.hasAllIds([12, 10, 15, 45])).toBe(true);
+  });
+
+  test("insert many doesn't mutate arguments", () => {
+
+    const ids = [111];
+    const values = [111];
+    
+    numbers.insertMany(ids, values);
+
+    expect(ids.length).toBe(1);
+    expect(values.length).toBe(1);
   });
 
   afterAll(async () => {

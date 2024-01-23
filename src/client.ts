@@ -83,7 +83,7 @@ export function predicateToQuery<Tables, Payload>(predicate: Predicate<Tables, P
 }
 
 
-export async function query
+export async function remoteQuery
   <Tables extends Record<string, Table<any, any>>, Payload extends PlainObject>
   (predicate: Predicate<Tables, Payload>, payload: PlainObject = {}) {
   const address = process.env.KURGANDB_REMOTE_ADDRESS;
@@ -95,7 +95,7 @@ export async function query
   return remoteQuery(predicateToQuery<Tables, Payload>(predicate, payload));
 }
 
-export const standAloneQuery: typeof query = async (predicate, payload = {}) => {
+export const standAloneQuery: typeof remoteQuery = async (predicate, payload = {}) => {
   DataBase.init();
   const [response, status] = await POST({
     method: "query",

@@ -9,10 +9,13 @@ const customJestConfig = {
   // "testPathIgnorePatterns": [
   //   "<rootDir>/__tests__/lemmatizer.test.ts"
   // ]
+  maxWorkers: 1,
 }
 
 let currentFile = false;
 const files = fs.readdirSync('./__tests__');
+
+// Uncomment for working with a single test file
 
 // currentFile = 'virtual_fs.test.ts';
 // currentFile = 'sorteddict.test.ts';

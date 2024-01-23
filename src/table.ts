@@ -162,6 +162,7 @@ export class Table<KeyType extends string | number, Type> {
 
     this.forEachField((key, type) => {
       if (isHeavyType(type)) return;
+      if (key == this.primaryKey) return;
 
       this._indexType[i] = type;
       this._indexFieldName[i] = key;
@@ -275,7 +276,8 @@ export class Table<KeyType extends string | number, Type> {
     this.updateFieldIndices();
   }
 
-  printField(fieldName: string) {
+  printField(fieldName?: string) {
+    if (!fieldName) return `'${this.name}[${this.primaryKey}]'`;
     return `field '${this.name}[${this.primaryKey}].${fieldName}'`;
   }
 
@@ -339,7 +341,7 @@ export class Table<KeyType extends string | number, Type> {
     const toPush = indexData.get(value);
 
     if (throwUnique && toPush) {
-      this.throwValueNotUnique(throwUnique, value);
+      throw this.errorValueNotUnique(throwUnique, value);
     }
 
     if (!toPush) {
@@ -516,12 +518,15 @@ export class Table<KeyType extends string | number, Type> {
     if (found.length == 0) {
       return true;
     }
-    if (throwError) this.throwValueNotUnique(fieldName, found[0]);
+    if (throwError) throw this.errorValueNotUnique(fieldName, found[0]);
     return false;
   }
 
-  protected throwValueNotUnique(fieldName: string, value: any) {
-    throw new Error(`Unique value ${value} for ${this.printField(fieldName)} already exists`);
+  protected errorValueNotUnique(fieldName: string, value: any) {
+    if (fieldName == this.primaryKey) {
+      return new Error(`Primary key value '${value}' on ${this.printField()} already exists`)
+    }
+    return new Error(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
   public insertMany(data: (PlainObject & Type)[]): KeyType[] {
@@ -546,16 +551,21 @@ export class Table<KeyType extends string | number, Type> {
 
     let ids: KeyType[];
     const values = storable.map(o => this.flattenObject(o));
-    if (this.primaryKey == "id") {
+
+    if (this.primaryKey == "id" && this.mainDict.settings.keyType == "int") {
       ids = this.mainDict.insertArray(values);
     } else {
-
-      // TODO: validate ids
       ids = storable.map(o => {
         const val = <KeyType>o[this.primaryKey];
         delete o[this.primaryKey];
         return val;
       });
+
+      const exisiting = this.mainDict.hasAnyId(ids);
+      if (exisiting !== false) {
+        throw this.errorValueNotUnique(this.primaryKey, exisiting);
+      }
+
       this.mainDict.insertMany(ids, values);
     }
 

@@ -6,7 +6,7 @@ import FragmentedDictionary from "./fragmented_dictionary";
 import fs from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
 
-export const SCHEME_PATH = "/scheme.json";
+export const SCHEME_PATH = "scheme.json";
 
 export type TCreateTable<Type> = {
   name: string
@@ -61,6 +61,7 @@ export class DataBase {
       if (newWorkingDirectory.endsWith("/")) {
         newWorkingDirectory = newWorkingDirectory.slice(0, -1);
       }
+      if (newWorkingDirectory == workingDirectory) return;
       workingDirectory = newWorkingDirectory;
       initialized = false;
       for (const key in Tables) {
@@ -74,12 +75,15 @@ export class DataBase {
     const dir = this.workingDirectory;
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir);
+    }
+    if (!fs.existsSync(`${dir}/${SCHEME_PATH}`)) {
       wfs(SCHEME_PATH, {
         tables: {}
       }, {
         pretty: true
       });
     }
+    
     this.loadAllTables();
     initialized = true;
   }

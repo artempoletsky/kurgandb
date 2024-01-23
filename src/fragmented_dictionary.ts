@@ -187,32 +187,6 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     return min || this.emptyKey;
   }
 
-  /**
-   * @deprecated
-   */
-  editRange(predicate: (value: Type, id: KeyType) => Type | undefined, min?: KeyType, max?: KeyType, limit = 100) {
-    this.editRanges([[min, max]], predicate, limit);
-  }
-
-  /**
-   * @deprecated
-   */
-  removeRanges(ranges: WhereRanges<KeyType>, predicate?: (value: Type, id: KeyType) => boolean, limit = 0): KeyType[] {
-    const result: KeyType[] = [];
-    this.iterateRanges({
-      ranges,
-      update: (val, id) => {
-        if (!predicate || predicate(val, id)) {
-          result.push(id);
-          return undefined;
-        }
-        return val;
-      },
-      limit,
-    });
-    return result;
-  }
-
   setOne(id: KeyType, value: Type) {
     if (!this.length) {
       return this.insertMany([id], [value]);
@@ -332,7 +306,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
     const { maxPartitionLenght } = this.settings;
     const { partitions } = this.meta;
-    const partitionsToOpen = this.findPartitionsForIds(dict.keys(true));
+    const partitionsToOpen = this.findPartitionsForIds(dict.keys());
 
 
     Array.from(partitionsToOpen.keys()).sort().reverse().forEach(partId => {
@@ -391,7 +365,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
     let keys: KeyType[], values: Type[], dict: Record<string, Type>;
     if (arg1 instanceof Array) {
-      keys = arg1;
+      keys = arg1.slice(0);
       values = arg2;
       dict = arg3 || keys.reduce((d: Record<string, Type>, k: KeyType, i: number) => {
         d[k as string] = values[i];
@@ -766,5 +740,54 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
 
     if (metaIsDirty) this.saveMeta();
     return [result, removedIds];
+  }
+
+  hasAnyId(ids: KeyType[]): false | KeyType {
+    const { partitions } = this.meta;
+    for (let i = 0; i < partitions.length; i++) {
+      const p = partitions[i];
+      let openPartition = false;
+      for (const id of ids) {
+        if (!p.length || p.start > id || id > p.end) {
+          continue;
+        }
+        openPartition = true;
+        break;
+      }
+      if (openPartition) {
+        const keys = this.readKeysFile(i);
+        for (const id of keys) {
+          if (ids.includes(id)) {
+            return id;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  hasAllIds(ids: KeyType[]): boolean {
+    const { partitions } = this.meta;
+
+    const keysCache = new Map<number, KeyType[]>();
+    for (const id of ids) {
+      let hasValidPartition: number | false = false;
+      for (let i = 0; i < partitions.length; i++) {
+        const p = partitions[i];
+        if (p.length && p.start <= id && id <= p.end) {
+          hasValidPartition = i;
+          break;
+        }
+      }
+      if (hasValidPartition === false) return false;
+
+      const keys = keysCache.get(hasValidPartition) || this.readKeysFile(hasValidPartition);
+      keysCache.set(hasValidPartition, keys);
+      if (!keys.includes(id)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }

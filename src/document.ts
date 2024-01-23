@@ -1,6 +1,7 @@
 import fs from "fs";
 import { TableScheme, Table, isHeavyType, IndicesRecord, MainDict } from "./table";
-import { PlainObject, existsSync, rfs } from "./utils";
+import { PlainObject } from "./utils";
+import { DataBase } from "./db";
 
 export const LightTypes = ["string", "number", "date", "boolean", "json"] as const; //store their data in main json
 export const HeavyTypes = ["Text", "JSON"] as const; // store their data in a separate file
@@ -68,6 +69,15 @@ export class Document<KeyType extends string | number, Type> {
     }
     let newValue: any = Document.storeValueOfType(value, type as any);
 
+    if (isHeavyType(type)) {
+      if (type == "Text") {
+        fs.writeFileSync(this.getExternalFilename(fieldName), value);
+      } else if (type == "JSON") {
+        fs.writeFileSync(this.getExternalFilename(fieldName), JSON.stringify(value));
+      }
+      return;
+    }
+
     const indexField = table.fieldNameIndex[fieldName];
     const currentValue = this._data[indexField];
     table.changeIndexValue(fieldName, this._id, currentValue, newValue);
@@ -76,21 +86,6 @@ export class Document<KeyType extends string | number, Type> {
     if (type == "date") {
       this._dates[fieldName] = new Date(value);
     }
-
-
-
-    if (isHeavyType(type)) {
-      if (type == "Text") {
-        fs.writeFileSync(process.cwd() + this.getExternalFilename(fieldName), value);
-      } else if (type == "JSON") {
-        fs.writeFileSync(process.cwd() + this.getExternalFilename(fieldName), JSON.stringify(value));
-      }
-      return;
-    }
-
-
-
-
 
     this._data[indexField] = newValue;
   }
@@ -113,13 +108,6 @@ export class Document<KeyType extends string | number, Type> {
     const type = fields[fieldName];
     if (!type) return;
 
-    // const iOfIndex = indices.indexOf(fieldName);
-    // if (iOfIndex != -1) {
-    //   return table.index[this._id][iOfIndex];
-    // }
-
-    const fieldIndex = table.fieldNameIndex[fieldName];
-
     if (isHeavyType(type)) {
       if (type == "Text") {
         return this.getTextContent(fieldName);
@@ -128,6 +116,15 @@ export class Document<KeyType extends string | number, Type> {
         return this.getJSONContent(fieldName);
       }
     }
+
+
+    // const iOfIndex = indices.indexOf(fieldName);
+    // if (iOfIndex != -1) {
+    //   return table.index[this._id][iOfIndex];
+    // }
+
+    const fieldIndex = table.fieldNameIndex[fieldName];
+
 
 
     if (type == "date") {
@@ -177,7 +174,7 @@ export class Document<KeyType extends string | number, Type> {
 
   public getTextContent(key: string) {
     const filename = this.getExternalFilename(key);
-    return existsSync(filename) ? rfs(filename, true) : "";
+    return fs.existsSync(filename) ? fs.readFileSync(filename, { encoding: "utf8" }) : "";
   }
 
   public getJSONContent(key: string) {
@@ -243,7 +240,7 @@ export class Document<KeyType extends string | number, Type> {
 
   getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
-    return this._table.getHeavyFieldFilepath(this._id, type as HeavyType, field);
+    return DataBase.workingDirectory + this._table.getHeavyFieldFilepath(this._id, type as HeavyType, field);
   }
 
   pick(...fields: string[]): Type {

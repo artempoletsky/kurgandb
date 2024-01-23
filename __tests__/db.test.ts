@@ -1,7 +1,6 @@
 import { describe, expect, test } from "@jest/globals";
 import { Predicate, predicateToQuery } from "../src/client";
 import { rfs } from "../src/utils";
-import { queryUnsafe } from "../src/api";
 import { standAloneQuery as query } from "../src/client";
 import { SchemeFile, SCHEME_PATH, DataBase } from "../src/db";
 import { existsSync } from "fs";
@@ -25,7 +24,7 @@ describe("Predicate parser", () => {
 });
 
 describe("db", () => {
-  const tableName = "jest_test_table";
+  const tableName = "jest_test_table_1";
   const expectedDir = process.cwd() + "/test_data/" + tableName;
   beforeAll(() => {
     rimraf.sync(expectedDir);
@@ -44,7 +43,7 @@ describe("db", () => {
     });
     const scheme: SchemeFile = rfs(SCHEME_PATH);
     expect(scheme.tables).toHaveProperty(tableName);
-    expect(scheme.tables.jest_test_table.fields.test).toBe("string");
+    expect(scheme.tables[tableName].fields.test).toBe("string");
     expect(existsSync(expectedDir)).toBe(true);
   });
 

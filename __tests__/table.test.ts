@@ -7,7 +7,7 @@ import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
 import { Document, FieldType } from "../src/document";
 import FragmentedDictionary from "../src/fragmented_dictionary";
-import { allIsSaved } from "../src/virtual_fs";
+import { allIsSaved, existsSync } from "../src/virtual_fs";
 
 
 const xdescribe = (...args: any) => { };
@@ -199,7 +199,7 @@ describe("Table", () => {
 
     expect(() => {
       t.createIndex("name", true);
-    }).toThrow(`Unique value bar for field '${TestTableName}[id].name' already exists`);
+    }).toThrow(`Unique value 'bar' for field '${TestTableName}[id].name' already exists`);
 
     expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
 
@@ -373,9 +373,63 @@ describe("Table", () => {
     expect(odds[9]).toBe(29);
   });
 
+  test("arrays", () => {
+    type VariedArrays = {
+      name: string
+      data: any[]
+    };
+    const t = DataBase.createTable<string, VariedArrays>({
+      name: "arrays",
+      fields: {
+        "data": "JSON",
+        "name": "string"
+      },
+      tags: {
+        name: ["primary"]
+      }
+    });
+    const toInsert: VariedArrays = {
+      "data": [],
+      "name": "blacklist"
+    };
+
+    expect(t.indexFieldName.length).toBe(0);
+
+    const flattened = t.flattenObject(toInsert);
+    
+    
+    expect(flattened.length).toBe(0);
+
+    expect(t.primaryKey).toBe("name");
+
+    const id = t.insert(toInsert);
+
+    expect(existsSync("/arrays/heavy/data/blacklist.json")).toBe(true);
+    
+    expect(id).toBe("blacklist");
+
+    expect(() => {
+      t.insert(toInsert);
+    }).toThrow("Primary key value 'blacklist' on 'arrays[name]' already exists");
+
+    t.where("name", "blacklist").update(doc => {
+      const arr = doc.data;
+      arr.push(1, 2, 3);
+      doc.data = arr;
+    });
+
+    const blacklist = t.at("blacklist")?.data;
+    expect(blacklist).toBeDefined();
+    if (!blacklist) return;
+    expect(blacklist[0]).toBe(1);
+    expect(blacklist[1]).toBe(2);
+    expect(blacklist[2]).toBe(3);
+  });
+
   afterAll(async () => {
     await allIsSaved();
     // t.closePartition();
     DataBase.removeTable(TestTableName);
+    DataBase.removeTable("arrays");
   });
 });
