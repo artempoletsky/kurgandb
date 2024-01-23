@@ -418,12 +418,13 @@ describe("Table", () => {
       doc.data = arr;
     });
 
-    const blacklist = t.at("blacklist")?.data;
+    const blacklist = t.at("blacklist");
     expect(blacklist).toBeDefined();
     if (!blacklist) return;
-    expect(blacklist[0]).toBe(1);
-    expect(blacklist[1]).toBe(2);
-    expect(blacklist[2]).toBe(3);
+    expect(blacklist.data[0]).toBe(1);
+    expect(blacklist.data[1]).toBe(2);
+    expect(blacklist.data[2]).toBe(3);
+    expect(blacklist.name).toBe("blacklist");
   });
 
   afterAll(async () => {

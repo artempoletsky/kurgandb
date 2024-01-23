@@ -63,6 +63,11 @@ export class Document<KeyType extends string | number, Type> {
   set(fieldName: keyof Type & string, value: any): void {
     const { fields, tags } = this._table.scheme;
     const table = this._table;
+    const { primaryKey } = this._table;
+    if (primaryKey == fieldName) {
+      throw new Error("Not implemented yet");
+    }
+
     const type = fields[fieldName];
     if (!type) {
       throw new Error(`There is no '${fieldName}' field in '${table.name}'`);
@@ -103,8 +108,13 @@ export class Document<KeyType extends string | number, Type> {
   }
 
   get(fieldName: string): any {
+
     const table = this._table;
     const { fields } = this._table.scheme;
+    const { primaryKey } = this._table;
+    if (primaryKey == fieldName) {
+      return this._id;
+    }
     const type = fields[fieldName];
     if (!type) return;
 
@@ -204,9 +214,11 @@ export class Document<KeyType extends string | number, Type> {
   }
 
   public toJSON(): Type {
-    const result: PlainObject = {
-      id: this._id
-    };
+
+    const result: PlainObject = {};
+    const { primaryKey } = this._table;
+    result[primaryKey] = this._id;
+
     this._table.forEachField((key, type) => {
       if (type != "password") {
         result[key] = this.get(key);
