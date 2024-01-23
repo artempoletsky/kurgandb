@@ -478,9 +478,13 @@ export class Table<KeyType extends string | number, Type> {
 
   changeIndexValue(fieldName: string, docID: KeyType, oldValue: undefined | string | number, newValue: undefined | string | number) {
     if (oldValue == newValue) return;
+    const indexDict = this.indices[fieldName];
+    if (!indexDict) {
+      return;
+    }
     const isUnique = this.fieldHasAnyTag(fieldName, "unique");
 
-    const indexDict = this.indices[fieldName];
+
     if (isUnique) {
       if (newValue !== undefined && indexDict.getOne(newValue)) throw new Error(`Attempting to create a duplicate in the unique ${this.printField(fieldName)}`);
 

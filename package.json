@@ -31,7 +31,7 @@
     "typescript": "^5.3.2"
   },
   "dependencies": {
-    "@artempoletsky/easyrpc": "^1.0.1",
+    "@artempoletsky/easyrpc": "^1.0.2",
     "dotenv": "^16.3.2",
     "lodash.debounce": "^4.0.8",
     "lodash.flatten": "^4.4.0",
@@ -45,6 +45,6 @@
     "./table": "./build/src/table.js"
   },
   "files": [
-    "/build"
+    "/build/src"
   ]
 }

@@ -396,8 +396,8 @@ describe("Table", () => {
     expect(t.indexFieldName.length).toBe(0);
 
     const flattened = t.flattenObject(toInsert);
-    
-    
+
+
     expect(flattened.length).toBe(0);
 
     expect(t.primaryKey).toBe("name");
@@ -405,7 +405,7 @@ describe("Table", () => {
     const id = t.insert(toInsert);
 
     expect(existsSync("/arrays/heavy/data/blacklist.json")).toBe(true);
-    
+
     expect(id).toBe("blacklist");
 
     expect(() => {
@@ -427,10 +427,71 @@ describe("Table", () => {
     expect(blacklist.name).toBe("blacklist");
   });
 
+  test("update", async () => {
+    type TestWord = {
+      id: string
+      word: string
+      part: string
+      level: string
+      oxfordLevel: string
+    }
+
+    const test_words = DataBase.createTable<string, TestWord>({
+      name: "test_words",
+      fields: {
+        "id": "string",
+        "word": "string",
+        "part": "string",
+        "level": "string",
+        "oxfordLevel": "string",
+      },
+      tags: {
+        id: ["primary"]
+      }
+    });
+
+    test_words.insert({
+      id: "a",
+      word: "a",
+      part: "other",
+      level: "x",
+      oxfordLevel: "a1",
+    });
+
+
+    await allIsSaved();
+
+    type PayloadType = Record<string, Record<string, string>>;
+    const payload: PayloadType = {
+      "a": {
+        "level": "a1"
+      }
+    };
+
+    const res = await clientQuery<{ test_words: Table<string, TestWord> }, PayloadType>(({ test_words }, { payload }) => {
+      test_words.where("id", ...Object.keys(payload)).update(doc => {
+        const fields = payload[doc.id];
+
+        for (const f in fields) {
+          debugger;
+          doc.set(<any>f, fields[f]);
+        }
+
+      });
+      return test_words.at("a");
+    }, payload);
+
+
+    expect(test_words.at("a")?.level).toBe("a1");
+    expect(res.id).toBe("a");
+  });
+
   afterAll(async () => {
     await allIsSaved();
     // t.closePartition();
     DataBase.removeTable(TestTableName);
     DataBase.removeTable("arrays");
+    DataBase.removeTable("test_words");
+
   });
 });
