@@ -7,6 +7,7 @@ import { Table } from "./table";
 
 import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie } from "./utils";
 import { allIsSaved } from "./virtual_fs";
+import _ from "lodash";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
@@ -20,7 +21,7 @@ export type AQuery = {
 
 type QueryImplementation = (tables: AllTablesDict, scope: PlainObject) => any;
 function constructQuery(args: AQuery): QueryImplementation {
-  return new Function(`{ ${args.tables.join(', ')} }`, `{ payload, db, $ }`, args.predicateBody) as QueryImplementation;
+  return new Function(`{ ${args.tables.join(', ')} }`, `{ payload, db, $, _ }`, args.predicateBody) as QueryImplementation;
 }
 
 const PrediateConstructor: Validator = async ({ payload, args }) => {
@@ -49,7 +50,9 @@ const RunQuery: Validator = async ({ payload, args }) => {
   try {
     payload.result = queryImplementation(tablesDict, {
       payload: args.payload,
-      db: DataBase
+      db: DataBase,
+      _,
+      $: {}
     });
   } catch (error) {
     return `query has failed with error: ${error}`;

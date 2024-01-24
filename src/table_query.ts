@@ -1,9 +1,8 @@
-import flatten from "lodash.flatten";
 import { Document, FieldType, TDocument } from "./document";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
 import { DocCallback, IndicesRecord, MainDict, Table } from "./table";
 import { PlainObject } from "./utils";
-import uniq from "lodash.uniq";
+import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
 
 
@@ -27,6 +26,18 @@ function partitionFilterFromSet<KeyType extends string | number>(ids: KeyType[])
     }
     return false;
   };
+}
+
+export function twoArgsToFilters<KeyType extends string | number>(args: any[]): [IDFilter<KeyType>, PartitionFilter<KeyType>] {
+  let idFilter: IDFilter<KeyType>, partitionFilter: PartitionFilter<KeyType>;
+  if (typeof args[0] == "function") {
+    idFilter = args[0];
+    partitionFilter = args[1];
+  } else {
+    idFilter = idFilterFromSet(args);
+    partitionFilter = partitionFilterFromSet(args);
+  }
+  return [idFilter, partitionFilter];
 }
 
 export default class TableQuery<KeyType extends string | number, Type> {
@@ -79,14 +90,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     partitionFilter?: PartitionFilter<FieldType>): TableQuery<KeyType, Type>
   where<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): TableQuery<KeyType, Type>
   where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
-    let idFilter: IDFilter<FieldType>, partitionFilter: PartitionFilter<FieldType>;
-    if (typeof args[0] == "function") {
-      idFilter = args[0];
-      partitionFilter = args[1];
-    } else {
-      idFilter = idFilterFromSet(args);
-      partitionFilter = partitionFilterFromSet(args);
-    }
+    let [idFilter, partitionFilter] = twoArgsToFilters<FieldType>(args);
 
     if (fieldName != this.table.primaryKey && (this.whereField || !this.table.fieldHasAnyTag(fieldName, "index", "unique"))) {
       return this.convertWhereToFilter<FieldType>(fieldName, idFilter);

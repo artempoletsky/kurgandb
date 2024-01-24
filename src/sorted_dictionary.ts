@@ -1,6 +1,5 @@
 
-import sortedIndex from "lodash.sortedindex";
-import uniq from "lodash.uniq";
+import { uniq, sortedIndex } from "lodash";
 
 function sortPredicate<KeyType extends string | number>(a: KeyType, b: KeyType) { return a > b ? 1 : -1 };
 

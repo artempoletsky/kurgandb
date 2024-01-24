@@ -4,8 +4,9 @@ import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } fro
 import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
-import TableQuery from "./table_query";
+import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
+import { flatten } from "lodash";
 
 // setFlagsFromString('--expose_gc');
 
@@ -596,14 +597,15 @@ export class Table<KeyType extends string | number, Type> {
     return ids;
   }
 
-  protected throwFieldNotIndex(fieldName: string) {
-    throw new Error(`${this.printField(fieldName)} is not an index!`);
+
+  protected errorFieldNotIndex(fieldName: string) {
+    return new Error(`${this.printField(fieldName)} is not an index!`);
   }
 
   insertColumnToIndex<ColType extends string | number>(fieldName: string, indexData: Map<ColType, KeyType[]>) {
     const column = Array.from(indexData.keys());
     const indexDict: FragmentedDictionary<ColType, any> = this.indices[fieldName] as any;
-    if (!indexDict) this.throwFieldNotIndex(fieldName);
+    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
     const isUnique = this.fieldHasAnyTag(fieldName, "unique");
     if (isUnique) {
       const ids = Array.from(indexData.values()).map(arr => arr[0]);
@@ -706,5 +708,24 @@ export class Table<KeyType extends string | number, Type> {
 
   getHeavyKeys(): string[] {
     return this.getFieldsOfType(...HeavyTypes);
+  }
+
+  indexIds<FieldType extends string | number>(fieldName: keyof Type | "id",
+    idFilter: IDFilter<FieldType>,
+    partitionFilter?: PartitionFilter<FieldType>): KeyType[]
+  indexIds<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): KeyType[]
+  indexIds<FieldType extends string | number>(fieldName: any, ...args: any[]) {
+    const index = this.indices[fieldName];
+    if (!index) throw this.errorFieldNotIndex(fieldName);
+
+    const [idFilter, partitionFilter] = twoArgsToFilters(args);
+    const res = index.where({
+      idFilter,
+      partitionFilter,
+      limit: 0,
+      select: val => val
+    })[0];
+
+    return flatten(Object.values(res));
   }
 }

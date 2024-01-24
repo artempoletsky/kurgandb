@@ -1,6 +1,6 @@
 import fs, { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 
-import debounce from "lodash.debounce";
+import { debounce } from "lodash";
 import { rimraf } from "rimraf";
 
 const CWD = process.cwd();
