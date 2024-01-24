@@ -4,23 +4,7 @@ import { DataBase } from "./db";
 import { Table } from "./table";
 import { PlainObject } from "./utils";
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
-
-
-type WhereMethod<KeyType extends string | number, Type> = (field: keyof Type | "id", value: any) => ITableQuery<KeyType, Type>
-type FilterMethod<KeyType extends string | number, Type> = (field: keyof Type | "id", value: any) => ITableQuery<KeyType, Type>
-export interface ITable<KeyType extends string | number, Type> {
-  name: string
-  length: number
-  insert(data: Type): KeyType
-  insertMany(data: Type[]): KeyType[]
-  at(id: KeyType): Type
-  where: WhereMethod<KeyType, Type>
-}
-
-export interface ITableQuery<KeyType extends string | number, Type> {
-  where: WhereMethod<KeyType, Type>
-  select(limit?: number): Type[]
-}
+import lodash from "lodash";
 
 // { } , { }
 const ArgumentsExp = /^\{([^}]*)\}\s*\,\s*\{([^}]*)\}$/
@@ -69,6 +53,7 @@ export type Predicate<Tables, Payload> = (tables: Tables, scope: {
   payload: Payload
   db: typeof DataBase
   $: Record<string, Function>
+  _: typeof lodash
 }) => any;
 
 
