@@ -1,12 +1,43 @@
 import { describe, expect, test } from "@jest/globals";
 
 import { $ } from "../src/utils";
+import { standAloneQuery as query } from "../src/client";
+import { DataBase } from "../src/db";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
 
 describe("Utility functions", () => {
+
+  const tableName = "test_utils_table";
+  type TestType = {
+    id: string
+    name: string
+    password: string
+  };
+
+  beforeAll(() => {
+    const t = DataBase.createTable<string, TestType>({
+      name: tableName,
+      fields: {
+        id: "string",
+        name: "string",
+        password: "string",
+      },
+      tags: {
+        id: ["primary"],
+        password: ["hidden"],
+      }
+    });
+
+    t.insert({
+      id: "1",
+      name: "foo",
+      password: "qwerty",
+    });
+  });
+
 
   test("randomIndex", () => {
     let rand = $.randomIndex(10);
@@ -32,5 +63,17 @@ describe("Utility functions", () => {
     expect(rand.length).toBe(10);
 
     // console.log(rand);
+  });
+
+  test("primary", async () => {
+    const id = await query(({ test_utils_table }, { $ }) => {
+      return test_utils_table.at("1", $.primary);
+    });
+
+    expect(id).toBe("1");
+  });
+
+  afterAll(()=>{
+    DataBase.removeTable(tableName);
   });
 });

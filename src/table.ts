@@ -362,9 +362,10 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     if (this.indices[fieldName]) this.throwAlreadyIndex(fieldName);
     const type = this.scheme.fields[fieldName];
 
-    const tags: FieldTag[] = unique ? ["unique"] : ["index"];
+    const tags: FieldTag[] = this.scheme.tags[fieldName] || [];
+
     this.indices[fieldName] = Table.createIndexDictionary(this.name, fieldName, tags, type);
-    this.scheme.tags[fieldName] = tags;
+
 
     const indexData: Map<string | number, KeyType[]> = new Map();
     // const ids: KeyType[] = [];
@@ -384,6 +385,8 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
     this.insertColumnToIndex(fieldName, indexData);
 
+    tags.push(unique ? "unique" : "index");
+    this.scheme.tags[fieldName] = tags;
     this.saveScheme();
   }
 
@@ -409,7 +412,8 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
     this.indices[name].destroy();
     delete this.indices[name];
-    delete this.scheme.tags[name];
+    const tags = this.scheme.tags[name].filter(tag => tag != "index" && tag != "unique");
+    this.scheme.tags[name] = tags;
 
     this.saveScheme();
   }

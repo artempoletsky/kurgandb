@@ -5,7 +5,7 @@ import {  LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
 
-import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie } from "./utils";
+import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie, $ } from "./utils";
 import { allIsSaved } from "./virtual_fs";
 import _ from "lodash";
 
@@ -52,7 +52,7 @@ const RunQuery: Validator = async ({ payload, args }) => {
       payload: args.payload,
       db: DataBase,
       _,
-      $: {}
+      $
     });
   } catch (error) {
     return `query has failed with error: ${error}`;
