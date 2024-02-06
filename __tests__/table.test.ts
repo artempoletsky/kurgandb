@@ -4,7 +4,7 @@ import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/u
 import { clientQueryUnsafe as clientQuery } from "../src/api";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
-import { Table, getMetaFilepath } from "../src/table";
+import { Table, getMetaFilepath, packEventListener, parseFunctionArguments } from "../src/table";
 import { Document, FieldType } from "../src/document";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
@@ -51,7 +51,7 @@ describe("Table", () => {
 
     DataBase.init(process.cwd() + "/test_data");
 
-    if (DataBase.isTableExist(TestTableName)) {
+    if (DataBase.doesTableExist(TestTableName)) {
       DataBase.removeTable(TestTableName);
     }
     t = DataBase.createTable<number, SimpleType>({
@@ -61,10 +61,11 @@ describe("Table", () => {
         date: "date",
         name: "string",
         // light: "json",
-        heavy: "JSON",
+        heavy: "json",
       },
       tags: {
-        name: ["index"]
+        name: ["index"],
+        heavy: ["heavy"],
       }
     });
   });
@@ -121,8 +122,6 @@ describe("Table", () => {
 
     const d1 = t.at(i1);
 
-    expect(d1).toBeTruthy();
-    if (!d1) return;
 
     expect(d1.name).toBe("foo");
     expect(t.at(i2)?.name).toBe("bar");
@@ -381,11 +380,12 @@ describe("Table", () => {
     const t = DataBase.createTable<string, VariedArrays>({
       name: "arrays",
       fields: {
-        "data": "JSON",
+        "data": "json",
         "name": "string"
       },
       tags: {
-        name: ["primary"]
+        name: ["primary"],
+        data: ["heavy"],
       }
     });
     const toInsert: VariedArrays = {
@@ -426,15 +426,19 @@ describe("Table", () => {
     expect(blacklist.data[2]).toBe(3);
     expect(blacklist.name).toBe("blacklist");
   });
+  type TestWord = {
+    id: string
+    word: string
+    part: string
+    level: string
+    oxfordLevel: string
+  }
+  type TestWordsMeta = {
+    levelsLen: Record<string, number>
+  }
 
   test("update", async () => {
-    type TestWord = {
-      id: string
-      word: string
-      part: string
-      level: string
-      oxfordLevel: string
-    }
+
 
     const test_words = DataBase.createTable<string, TestWord>({
       name: "test_words",
@@ -473,7 +477,6 @@ describe("Table", () => {
         const fields = payload[doc.id];
 
         for (const f in fields) {
-          debugger;
           doc.set(<any>f, fields[f]);
         }
 
@@ -484,6 +487,79 @@ describe("Table", () => {
 
     expect(test_words.at("a")?.level).toBe("a1");
     expect(res.id).toBe("a");
+  });
+
+  test("packEventListener", () => {
+    const args = parseFunctionArguments("{ table, meta }, { $, _, db }");
+    expect(args[0]).toBe("{table,meta}");
+    expect(args[1]).toBe("{$,_,db}");
+
+    let packed = packEventListener(({ table, meta }, { $, _, db }) => {
+      meta.test = "123";
+    });
+
+    // expect(packed[0]).toBe("{ table, meta }");
+    console.log(packed);
+    let unpacked = new Function(...packed);
+    // console.log(unpacked(123));
+
+    expect(unpacked).toThrowError();
+    const arg: any = { meta: {} };
+
+    unpacked(arg, {});
+    expect(arg.meta.test).toBe("123");
+  });
+
+  test("meta", () => {
+
+
+    const test_words = DataBase.getTable<string, TestWord, TestWordsMeta>("test_words");
+    // test_words.where("level", .);
+    expect(test_words.meta.levelsLen).toBeDefined();
+
+    test_words.registerEventListener("levelsLen", "tableOpen", ({ table, meta }) => {
+      meta.levelsLen = {
+        a1: table.where("level", "a1").select().length
+      };
+    });
+
+    expect(test_words.meta.levelsLen.a1).toBe(4);
+
+    test_words.registerEventListener("levelsLen", "documentInsert", ({ docData, meta }) => {
+      const count = meta.levelsLen[docData.level] || 0;
+      meta.levelsLen[docData.level] = count + 1;
+    });
+
+    const carData = {
+      id: "car",
+      word: "car",
+      level: "a1",
+      oxfordLevel: "a1",
+      part: "noun",
+    };
+    test_words.insert(carData);
+
+    expect(test_words.meta.levelsLen.a1).toBe(5);
+
+    test_words.where("id", "car").delete();
+    expect(test_words.meta.levelsLen.a1).toBe(4);
+
+    test_words.insert(carData);
+    expect(test_words.meta.levelsLen.a1).toBe(5);
+
+    test_words.registerEventListener("levelsLen", "documentChange", ({ field, oldValue, newValue, meta }) => {
+      if (field == "level") {
+        meta.levelsLen[oldValue]--;
+        meta.levelsLen[newValue] = meta.levelsLen[newValue] ? meta.levelsLen[newValue] + 1 : 1;
+      }
+    });
+
+    test_words.where("id", "car").update(doc => {
+      doc.level = "a2";
+    });
+
+    expect(test_words.meta.levelsLen.a1).toBe(4);
+    expect(test_words.meta.levelsLen.a2).toBe(1);
   });
 
   afterAll(async () => {

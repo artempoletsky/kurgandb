@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import FragmentedDictionary, { FragDictMeta, PartitionMeta } from "../src/fragmented_dictionary";
+import FragmentedDictionary, { FragDictMeta, PartitionMeta, getMetaFilepath } from "../src/fragmented_dictionary";
 import SortedDictionary from "../src/sorted_dictionary";
 import vfs, { allIsSaved, rmie, existsSync } from "../src/virtual_fs";
 import virtual_fs from "../src/virtual_fs";
@@ -56,6 +56,7 @@ describe("Fragmented dictionary", () => {
       partitions,
       start: 0,
       end: 0,
+      custom: {},
     };
 
     const partitionSize = 100 * 1000;
@@ -92,6 +93,7 @@ describe("Fragmented dictionary", () => {
       partitions: [{ start: "b", end: "c", length: 2 }, { start: "f", end: "f", length: 1 }, { start: "x", end: "z", length: 3 }],
       start: "b",
       end: "z",
+      custom: {},
     };
 
     expect(FragmentedDictionary.findPartitionForId("a", dictMeta)).toBe(0);
@@ -120,6 +122,7 @@ describe("Fragmented dictionary", () => {
       ],
       start: 1,
       end: 39,
+      custom: {},
     };
 
     expect(FragmentedDictionary.findPartitionForId(-1, dictMeta)).toBe(0);
@@ -152,6 +155,7 @@ describe("Fragmented dictionary", () => {
       ],
       start: 10,
       end: 22,
+      custom: {},
     };
 
     expect(FragmentedDictionary.findPartitionForId(-1, dictMeta)).toBe(0);
@@ -574,11 +578,21 @@ describe("Fragmented dictionary", () => {
 
     const ids = [111];
     const values = [111];
-    
+
     numbers.insertMany(ids, values);
 
     expect(ids.length).toBe(1);
     expect(values.length).toBe(1);
+  });
+
+  test("Custom metadata saving", async () => {
+    const path = getMetaFilepath(numbers.settings.directory);
+    const metaFile = vfs.openFile(path);
+
+    const secret = Math.random();
+    numbers.meta.custom.secret = secret;
+    let data = metaFile.read();
+    expect(data.custom.secret).toBe(secret);
   });
 
   afterAll(async () => {

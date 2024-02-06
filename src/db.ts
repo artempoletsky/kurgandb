@@ -1,6 +1,6 @@
 import { rimraf } from "rimraf";
 import { FieldType } from "./document";
-import { FieldTag, Table, TableScheme, getMetaFilepath, isHeavyType } from "./table";
+import { FieldTag, Table, TableScheme } from "./table";
 import { PlainObject, existsSync, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs from "fs";
@@ -30,7 +30,7 @@ export const DefaultTableSettings = {
 
 export type TableSettings = typeof DefaultTableSettings;
 
-export type AllTablesDict = Record<string, Table<any, any>>;
+export type AllTablesDict = Record<string, Table<any, any, any>>;
 // const EmptyTable: TableMetadata = {
 //   index: 0,
 //   length: 0,
@@ -100,11 +100,11 @@ export class DataBase {
     return Tables;
   }
 
-  static getTable<KeyType extends string | number, Type>(name: string): Table<KeyType, Type> {
+  static getTable<KeyType extends string | number, Type, MetaObject = {}>(name: string): Table<KeyType, Type, MetaObject> {
     if (!Tables[name]) {
       // const meta = rfs(getMetaFilepath(name));
       let dbScheme: SchemeFile = rfs(SCHEME_PATH);
-      Tables[name] = new Table<KeyType, Type>(name, dbScheme.tables[name]);
+      Tables[name] = new Table<KeyType, Type, MetaObject>(name, dbScheme.tables[name]);
     }
 
     return Tables[name] as any;
@@ -116,12 +116,13 @@ export class DataBase {
     return dbScheme.tables[tableName];
   }
 
-  static isTableExist(tableName: string): boolean {
+  static doesTableExist(tableName: string): boolean {
     return !!this.getScheme(tableName);
   }
 
-  static createTable<KeyType extends string | number, Type>({ name, fields, settings: rawSettings, tags }: TCreateTable<Type>): Table<KeyType, Type> {
-    if (this.isTableExist(name)) {
+  static createTable<KeyType extends string | number, Type, MetaObject = {}>
+  ({ name, fields, settings: rawSettings, tags }: TCreateTable<Type>): Table<KeyType, Type, MetaObject> {
+    if (this.doesTableExist(name)) {
       throw new Error(`Table '${name}' already exists`);
     }
     if (!rawSettings) rawSettings = {};
@@ -165,7 +166,8 @@ export class DataBase {
 
     for (const fieldName in fields) {
       const type = fields[fieldName];
-      if (isHeavyType(type)) {
+      const fieldTags = tags[fieldName] || [];
+      if (fieldTags.includes("heavy")) {
         mkdirSync(`/${name}/heavy/${fieldName}/`);
       }
     }
@@ -183,11 +185,11 @@ export class DataBase {
       pretty: true
     });
 
-    return this.getTable<KeyType, Type>(name);
+    return this.getTable<KeyType, Type, MetaObject>(name);
   }
 
   static removeTable(name: string) {
-    if (!this.isTableExist(name)) {
+    if (!this.doesTableExist(name)) {
       throw new Error(`Table '${name}' doesn't exist`);
     }
     const schemeFile: SchemeFile = rfs(SCHEME_PATH);

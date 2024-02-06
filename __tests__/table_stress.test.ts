@@ -42,7 +42,7 @@ const RichTypeFields: Record<keyof RichType, FieldType> = {
   "registrationDate": "date",
   "lastActive": "date",
   "birthday": "date",
-  "password": "password",
+  "password": "string",
   "blog_posts": "json",
   "favoriteQuote": "string",
   "favoriteRandomNumber": "number",
@@ -124,7 +124,7 @@ describe("Rich table", () => {
       //   "settings": {}
       // });
       DataBase.init(process.cwd() + "/test_data");
-      if (DataBase.isTableExist(TestTableName)) {
+      if (DataBase.doesTableExist(TestTableName)) {
         DataBase.removeTable(TestTableName);
       }
 

@@ -31,6 +31,7 @@ export type FragDictMeta<KeyType extends string | number> = {
   start: KeyType
   end: KeyType
   partitions: PartitionMeta<KeyType>[]
+  custom: Record<string, any>
 }
 
 export type PartitionIterateMap<KeyType> = Map<number, KeyType[]>;
@@ -74,6 +75,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   public meta: FragDictMeta<KeyType>;
 
   protected emptyKey: KeyType;
+  protected _metaFilepath: string;
 
   static rename(oldDir: string, newDir: string) {
     // renameSync(oldDir, newDir);
@@ -98,7 +100,8 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
       length: 0,
       start: getEmptyKey(opt.keyType),
       end: getEmptyKey(opt.keyType),
-      partitions: []
+      partitions: [],
+      custom: {},
     };
 
     vfs.writeFile(getMetaFilepath(opt.directory), empty);
@@ -120,6 +123,21 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     if (!existsSync(settings.directory)) throw new Error(`directory '${settings.directory}' doesn't exists`);
     this.meta = meta;
     this.emptyKey = settings.keyType == "string" ? "" : 0 as any;
+
+    this._metaFilepath = getMetaFilepath(this.settings.directory);
+
+    this.meta.custom = new Proxy({
+      ...this.meta.custom
+    }, {
+      set: (target, key: string, value) => {
+        target[key] = value;
+        vfs.writeFile(this._metaFilepath, this.meta);
+        return true;
+      },
+      get: (target, key: string) => {
+        return target[key];
+      }
+    });
   }
 
   destroy() {
@@ -298,7 +316,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     this.meta.start = _start || this.emptyKey;
     this.meta.end = _end || this.emptyKey;
 
-    vfs.writeFile(getMetaFilepath(this.settings.directory), this.meta);
+    vfs.writeFile(this._metaFilepath, this.meta);
   }
 
   insertSortedDict(dict: SortedDictionary<KeyType, Type>) {

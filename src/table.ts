@@ -1,16 +1,49 @@
 
-import { SCHEME_PATH, SchemeFile, TableSettings } from "./db";
-import { FieldType, Document, HeavyTypes, HeavyType, LightTypes, TDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
+import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
+import { FieldType, Document, LightTypes, TDocument } from "./document";
+import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie, $ } from "./utils";
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
-import { flatten } from "lodash";
+import _, { flatten } from "lodash";
+import { CallbackScope } from "./client";
 
 // setFlagsFromString('--expose_gc');
 
-export type FieldTag = "primary" | "unique" | "index" | "memory";
+export function parseFunctionArguments(args: string): string[] {
+  args = args.replace(/\s/g, "");
+  if (args == "") return [];
+
+  const ArgExp = /{[^}]*}/g;
+  const execRes = args.match(ArgExp);
+
+  if (!execRes) throw new Error("can't parse arguments");
+  return execRes;
+}
+
+export function packEventListener(handler: (...args: any[]) => void): string[] {
+  const MainExp = /^[^(]*\(([^)]*)\)[^{]*\{([\s\S]*)\}\s*$/
+
+  const execRes = MainExp.exec(handler.toString());
+
+  if (!execRes) throw new Error("can't parse function");
+  const body = execRes[2].trim();
+
+  function parseArguments(str: string) {
+
+
+    // console.log(str);
+  }
+
+  const args = parseFunctionArguments(execRes[1]);
+
+
+
+  return [...args, body];
+}
+
+export type FieldTag = "primary" | "unique" | "index" | "memory" | "textarea" | "heavy" | "hidden";
 
 
 export type TableScheme = {
@@ -46,9 +79,7 @@ export function getDefaultValueForType(type: FieldType) {
   switch (type) {
     case "number": return 0;
     case "string": return "";
-    case "JSON": return null;
     case "json": return null;
-    case "Text": return "";
     case "date": return new Date();
     case "boolean": return false;
   }
@@ -58,11 +89,34 @@ export function getMetaFilepath(tableName: string): string {
   return `/${tableName}/_meta.json`;
 }
 
-export function isHeavyType(type: FieldType): type is "JSON" | "Text" {
-  return HeavyTypes.includes(type as HeavyType);
+
+export type DocumentChangeEvent<KeyType extends string | number, Type, MetaType> = {
+  docData: Type,
+  meta: MetaType,
+  field: keyof Type,
+  oldValue: any,
+  newValue: any,
+  table: Table<KeyType, Type, MetaType>,
 }
 
-export class Table<KeyType extends string | number, Type> {
+export type DocumentInsertEvent<KeyType extends string | number, Type, MetaType> = {
+  docData: Type,
+  meta: MetaType,
+  table: Table<KeyType, Type, MetaType>,
+}
+
+export type DocumentRemoveEvent<KeyType extends string | number, Type, MetaType> = {
+  docData: Type,
+  meta: MetaType,
+  table: Table<KeyType, Type, MetaType>,
+}
+
+export type TableOpenEvent<KeyType extends string | number, Type, MetaType> = {
+  meta: MetaType,
+  table: Table<KeyType, Type, MetaType>,
+}
+
+export class Table<KeyType extends string | number, Type, MetaType = {}> {
   protected mainDict: MainDict<KeyType>;
   protected indices: IndicesRecord;
   protected memoryFields: Record<string, SortedDictionary<KeyType, any>>;
@@ -101,8 +155,8 @@ export class Table<KeyType extends string | number, Type> {
   }
 
   static fieldTypeToKeyType(type: FieldType): "int" | "string" {
-    if (type == "JSON" || type == "json" || type == "Text") throw new Error("wrong type");
-    if (type == "password" || type == "string") return "string";
+    if (type == "json") throw new Error("wrong type");
+    if (type == "string") return "string";
     return "int";
   }
 
@@ -161,8 +215,8 @@ export class Table<KeyType extends string | number, Type> {
     this._indexFieldName = [];
     let i = 0;
 
-    this.forEachField((key, type) => {
-      if (isHeavyType(type)) return;
+    this.forEachField((key, type, tags) => {
+      if (tags.has("heavy")) return;
       if (key == this.primaryKey) return;
 
       this._indexType[i] = type;
@@ -235,10 +289,10 @@ export class Table<KeyType extends string | number, Type> {
     }
 
     const newFields: Record<string, FieldType> = {};
-    this.forEachField((name, type) => {///iterate to keep the same order in the javascript dictionary
+    this.forEachField((name, type, tags) => {///iterate to keep the same order in the javascript dictionary
       if (name == oldName) {
         newFields[newName] = type;
-        if (isHeavyType(type)) {
+        if (tags.has("heavy")) {
           //rename the folder dedicated to the heavy field
           renameSync(this.getHeavyFieldDir(oldName), this.getHeavyFieldDir(newName));
         }
@@ -255,11 +309,10 @@ export class Table<KeyType extends string | number, Type> {
     return this.mainDict.end;
   }
 
-  forEachField(predicate: (fieldName: string & keyof Type, type: FieldType, index: number) => any): void {
+  forEachField(predicate: (fieldName: string & keyof Type, type: FieldType, tags: Set<FieldTag>) => any): void {
     const fields = this.scheme.fields;
-    let i = 0;
     for (const key in fields) {
-      predicate(key as any, fields[key], i++);
+      predicate(key as any, fields[key], new Set(this.scheme.tags[key]));
     }
   }
 
@@ -285,7 +338,6 @@ export class Table<KeyType extends string | number, Type> {
   static createIndexDictionary(tableName: string, fieldName: string, tags: FieldTag[], type: FieldType) {
     const directory = `/${tableName}/indices/${fieldName}/`;
 
-    if (isHeavyType(type)) throw new Error(`Can't create an index of heavy type field ${fieldName}`);
     if (type == "json") throw new Error(`Can't create an index of json type field ${fieldName}`);
 
     let keyType = this.fieldTypeToKeyType(type);
@@ -362,38 +414,37 @@ export class Table<KeyType extends string | number, Type> {
     this.saveScheme();
   }
 
-  removeField(name: string) {
+  removeField(fieldName: string) {
     const { fields, tags } = this.scheme;
-    const type = fields[name];
-    if (!type) throw new Error(`${this.printField(name)} doesn't exist`);
+    const type = fields[fieldName];
+    if (!type) throw new Error(`${this.printField(fieldName)} doesn't exist`);
 
 
-    if (name == this.primaryKey) throw new Error(`Can't remove the primary key ${this.printField(name)}! Create a new table instead.`);
-    const isHeavy = isHeavyType(type);
+    if (fieldName == this.primaryKey) throw new Error(`Can't remove the primary key ${this.printField(fieldName)}! Create a new table instead.`);
 
-    if (this.fieldHasAnyTag(name, "index", "unique")) {
-      this.removeIndex(name);
+    if (this.fieldHasAnyTag(fieldName, "index", "unique")) {
+      this.removeIndex(fieldName);
     }
 
-    if (isHeavy)
-      rmie(this.getHeavyFieldDir(name));
+    if (this.fieldHasAnyTag(fieldName, "heavy"))
+      rmie(this.getHeavyFieldDir(fieldName));
     else {
-      this.removeDocColumn(this._fieldNameIndex[name]);
+      this.removeDocColumn(this._fieldNameIndex[fieldName]);
     }
 
-    delete this.scheme.fields[name];
+    delete this.scheme.fields[fieldName];
     this.saveScheme();
   }
 
 
-  addField(name: string, type: FieldType, predicate?: DocCallback<KeyType, Type, any>) {
-    if (this.scheme.fields[name]) {
-      throw new Error(`field '${name}' already exists`);
+  addField(fieldName: string, type: FieldType, predicate?: DocCallback<KeyType, Type, any>) {
+    if (this.scheme.fields[fieldName]) {
+      throw new Error(`field '${fieldName}' already exists`);
     }
 
-    const filesDir = this.getHeavyFieldDir(name);
+    const filesDir = this.getHeavyFieldDir(fieldName);
 
-    if (isHeavyType(type) && !existsSync(filesDir)) {
+    if (this.fieldHasAnyTag(fieldName, "heavy") && !existsSync(filesDir)) {
       mkdirSync(filesDir);
     }
 
@@ -403,7 +454,7 @@ export class Table<KeyType extends string | number, Type> {
       return definedPredicate(new Document<KeyType, Type>(arr, id, this, this.indices) as TDocument<KeyType, Type>);
     });
 
-    this.scheme.fields[name] = type;
+    this.scheme.fields[fieldName] = type;
     this.saveScheme();
   }
 
@@ -424,8 +475,8 @@ export class Table<KeyType extends string | number, Type> {
     return `/${this.name}/heavy/${fieldName}/`;
   }
 
-  getHeavyFieldFilepath(id: number | string, type: HeavyType, fieldName: string): string {
-    return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "Text" ? "txt" : "json"}`;
+  getHeavyFieldFilepath(id: number | string, type: FieldType, fieldName: string): string {
+    return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "json" ? "json" : "txt"}`;
   }
 
   createDefaultObject(): Type {
@@ -534,7 +585,7 @@ export class Table<KeyType extends string | number, Type> {
     return new Error(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
-  public insertMany(data: (PlainObject & Type)[]): KeyType[] {
+  public insertMany(data: Type[]): KeyType[] {
     const storable: PlainObject[] = [];
 
     // perfStart("make storable");
@@ -574,8 +625,8 @@ export class Table<KeyType extends string | number, Type> {
       this.mainDict.insertMany(ids, values);
     }
 
-    this.forEachField((key, type) => {
-      if (isHeavyType(type)) {
+    this.forEachField((key, type, tags) => {
+      if (tags.has("heavy")) {
         for (let i = 0; i < storable.length; i++) {
           const value = storable[i][key];
           if (value) {
@@ -634,8 +685,8 @@ export class Table<KeyType extends string | number, Type> {
   expandObject(arr: any[]) {
     const result: PlainObject = {};
     let i = 0;
-    this.forEachField((key, type) => {
-      if (isHeavyType(type)) return;
+    this.forEachField((key, type, tags) => {
+      if (tags.has("heavy")) return;
       // if (type == "boolean") {
       //   result[key] = !!arr[i];
       //   return;
@@ -646,7 +697,7 @@ export class Table<KeyType extends string | number, Type> {
     return result;
   }
 
-  makeObjectStorable(o: Type & PlainObject): PlainObject {
+  makeObjectStorable(o: Type): PlainObject {
     const result: PlainObject = {};
     this.forEachField((key, type) => {
       result[key] = Document.storeValueOfType(o[key], type as any);
@@ -672,10 +723,12 @@ export class Table<KeyType extends string | number, Type> {
     }, 0);
   }
 
-  at(id: KeyType): Type | null
-  at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
+  at(id: KeyType): Type
+  at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType
   public at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
-    return this.where(this.primaryKey as any, id).limit(1).select(predicate)[0] || null;
+    const res = this.where(this.primaryKey as any, id).limit(1).select(predicate);
+    if (res.length == 0) throw new Error(`id '${id}' doesn't exists at ${this.printField()}`);
+    return res[0];
   }
 
   atIndex(index: number): Type | null
@@ -702,12 +755,32 @@ export class Table<KeyType extends string | number, Type> {
     return result;
   }
 
+  getFieldsWithAnyTags(...tags: FieldTag[]): string[] {
+    const result: string[] = [];
+    this.forEachField((key) => {
+      if (this.fieldHasAnyTag(key, ...tags)) {
+        result.push(key);
+      }
+    });
+    return result;
+  }
+
+  getFieldsWithoutAnyTags(...tags: FieldTag[]): string[] {
+    const result: string[] = [];
+    this.forEachField((key) => {
+      if (!this.fieldHasAnyTag(key, ...tags)) {
+        result.push(key);
+      }
+    });
+    return result;
+  }
+
   getLightKeys(): string[] {
-    return this.getFieldsOfType(...LightTypes);
+    return this.getFieldsWithoutAnyTags("heavy");
   }
 
   getHeavyKeys(): string[] {
-    return this.getFieldsOfType(...HeavyTypes);
+    return this.getFieldsWithAnyTags("heavy");
   }
 
   indexIds<FieldType extends string | number>(fieldName: keyof Type | "id",
@@ -728,4 +801,143 @@ export class Table<KeyType extends string | number, Type> {
 
     return flatten(Object.values(res));
   }
+
+  public get meta(): MetaType {
+    return this.mainDict.meta.custom.$table;
+  }
+
+  protected events: Record<string, Record<string, Function>> = {};
+
+  protected unpackEventListeners() {
+    const listeners = this.mainDict.meta.custom.$serviceListeners || {};
+    const { events } = this;
+    for (const eventName in listeners) {
+      events[eventName] = {};
+      for (const handlerId in listeners[eventName]) {
+        events[eventName][handlerId] = new Function(listeners[eventName][handlerId]);
+      }
+    }
+  }
+
+  registerEventListener(handlerId: string, eventName: "tableOpen", handler: (event: TableOpenEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
+  registerEventListener(handlerId: string, eventName: "documentRemove", handler: (event: DocumentRemoveEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
+  registerEventListener(handlerId: string, eventName: "documentInsert", handler: (event: DocumentInsertEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
+  registerEventListener(handlerId: string, eventName: "documentChange", handler: (event: DocumentChangeEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
+  registerEventListener(handlerId: string, eventName: string, handler: (event: any, scope: CallbackScope) => void): void {
+    let listeners = this.events[eventName];
+    const { $serviceListeners } = this.mainDict.meta.custom;
+    if (!listeners) {
+      listeners = this.events[eventName] = {};
+      $serviceListeners[eventName] = {};
+    }
+    listeners[handlerId] = handler;
+    $serviceListeners[handlerId] = packEventListener(handler);
+    this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
+    if (eventName == "tableOpen") {
+      const meta = {
+        ...this.meta
+      };
+      const e: TableOpenEvent<KeyType, Type, MetaType> = {
+        meta,
+        table: this,
+      };
+      handler(e, {
+        $: $,
+        _: _,
+        db: DataBase,
+      });
+      this.mainDict.meta.custom.$table = meta;
+    }
+  }
+
+  unregisterEventListener(handlerId: string, eventName: "documentRemove" | "documentInsert" | "documentChange" | undefined) {
+    const { events } = this;
+    if (eventName === undefined) {
+      for (const name in events) {
+        this.unregisterEventListener(handlerId, name as any);
+      }
+      return;
+    }
+    delete events[eventName][handlerId];
+    const { $serviceListeners } = this.mainDict.meta.custom;
+    delete $serviceListeners[eventName][handlerId];
+    this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
+  }
+
+  triggerEvent(eventName: "tableOpen", handler: (event: TableOpenEvent<KeyType, Type, MetaType>) => void): void
+  triggerEvent(eventName: "documentRemove", handler: (event: DocumentRemoveEvent<KeyType, Type, MetaType>) => void): void
+  triggerEvent(eventName: "documentInsert", handler: (event: DocumentInsertEvent<KeyType, Type, MetaType>) => void): void
+  triggerEvent(eventName: "documentChange", handler: (event: DocumentChangeEvent<KeyType, Type, MetaType>) => void): void
+  triggerEvent(eventName: string, event: any): void {
+    const listeners = this.events[eventName];
+    if (!listeners) return;
+    for (const handlerId in listeners) {
+      listeners[handlerId](event, {
+        $: $,
+        _: _,
+        db: DataBase,
+      });
+    }
+  }
+
+  toggleFieldHeavy(fieldName: string) {
+    throw new Error("not implemented");
+  }
+
+  toggleTag(fieldName: string, tag: FieldTag) {
+    if (tag == "heavy") {
+      this.toggleFieldHeavy(fieldName);
+      return;
+    }
+
+    let tags = this.scheme.tags[fieldName] || [];
+    let set = new Set(tags);
+
+    if (set.has(tag)) {
+      if (tag == "unique" || tag == "index") {
+        this.removeIndex(fieldName);
+        return;
+      } else {
+        set.delete(tag);
+      }
+    } else {
+      if (tag == "unique" || tag == "index") {
+        this.createIndex(<any>fieldName, tag == "unique");
+        return;
+      } else {
+        set.add(tag);
+      }
+    }
+    this.scheme.tags[fieldName] = Array.from(set);
+    this.saveScheme();
+  }
+
+  has(...ids: KeyType[]) {
+    return this.mainDict.hasAllIds(ids);
+  }
+
+
+  getFreeId(): KeyType {
+    if (this.mainDict.settings.keyType == "string") {
+      let idCandidiate = "new_id";
+      let tries = 0;
+      while (this.has(<KeyType>idCandidiate)) {
+        tries++;
+        idCandidiate = "new_id_" + tries;
+      }
+      return idCandidiate as KeyType;
+    } else {
+      throw new Error("not implemented yet");
+    }
+  }
+
+  getDocumentDraft(): Type {
+    const res = {} as Type & PlainObject;
+    this.forEachField((fieldName, type) => {
+      res[fieldName] = fieldName == this.primaryKey ? this.getFreeId() : getDefaultValueForType(type);
+    });
+
+    return res;
+  }
+
 }

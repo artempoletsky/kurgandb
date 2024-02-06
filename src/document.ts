@@ -1,17 +1,13 @@
 import fs from "fs";
-import { TableScheme, Table, isHeavyType, IndicesRecord, MainDict } from "./table";
+import { TableScheme, Table, IndicesRecord, MainDict } from "./table";
 import { PlainObject } from "./utils";
 import { DataBase } from "./db";
 
 export const LightTypes = ["string", "number", "date", "boolean", "json"] as const; //store their data in main json
-export const HeavyTypes = ["Text", "JSON"] as const; // store their data in a separate file
-export const SpecialTypes = ["password"] as const;
 
-export const AllTypes = [...LightTypes, ...SpecialTypes, ...HeavyTypes];
+
 export type LightType = typeof LightTypes[number];
-export type HeavyType = typeof HeavyTypes[number];
-export type SpecialType = typeof SpecialTypes[number];
-export type FieldType = typeof AllTypes[number]
+export type FieldType = LightType;
 
 
 export type TDocument<KeyType extends string | number, Type> = Document<KeyType, Type> & Type;
@@ -29,7 +25,7 @@ export class Document<KeyType extends string | number, Type> {
     return this._id;
   }
 
-  constructor(data: any[], id: KeyType, table: Table<KeyType, Type>, indices: IndicesRecord) {
+  constructor(data: any[], id: KeyType, table: Table<KeyType, Type, any>, indices: IndicesRecord) {
     this._indices = indices;
 
     this._table = table;
@@ -61,10 +57,13 @@ export class Document<KeyType extends string | number, Type> {
   }
 
   set(fieldName: keyof Type & string, value: any): void {
-    const { fields, tags } = this._table.scheme;
+    const { fields } = this._table.scheme;
     const table = this._table;
     const { primaryKey } = this._table;
+    const tags = this._table.scheme.tags[fieldName] || [];
+
     if (primaryKey == fieldName) {
+      if (value == this._id) return;
       throw new Error("Not implemented yet");
     }
 
@@ -74,11 +73,11 @@ export class Document<KeyType extends string | number, Type> {
     }
     let newValue: any = Document.storeValueOfType(value, type as any);
 
-    if (isHeavyType(type)) {
-      if (type == "Text") {
-        fs.writeFileSync(this.getExternalFilename(fieldName), value);
-      } else if (type == "JSON") {
+    if (tags.includes("heavy")) {
+      if (type == "json") {
         fs.writeFileSync(this.getExternalFilename(fieldName), JSON.stringify(value));
+      } else {
+        fs.writeFileSync(this.getExternalFilename(fieldName), value);
       }
       return;
     }
@@ -111,20 +110,17 @@ export class Document<KeyType extends string | number, Type> {
 
     const table = this._table;
     const { fields } = this._table.scheme;
+    const tags = this._table.scheme.tags[fieldName] || [];
     const { primaryKey } = this._table;
+
     if (primaryKey == fieldName) {
       return this._id;
     }
     const type = fields[fieldName];
     if (!type) return;
 
-    if (isHeavyType(type)) {
-      if (type == "Text") {
-        return this.getTextContent(fieldName);
-      }
-      if (type == "JSON") {
-        return this.getJSONContent(fieldName);
-      }
+    if (tags.includes("heavy")) {
+      return type == "json" ? this.getJSONContent(fieldName) : this.getTextContent(fieldName);
     }
 
 
@@ -162,10 +158,7 @@ export class Document<KeyType extends string | number, Type> {
   static storeValueOfType(value: Date | string | number, type: "date"): number
   static storeValueOfType(value: boolean | number, type: "boolean"): number
   static storeValueOfType(value: string, type: "string"): string
-  static storeValueOfType(value: string, type: "Text"): string
-  static storeValueOfType(value: string, type: "password"): string
   static storeValueOfType<JSONType extends PlainObject | any[] | null>(value: JSONType, type: "json"): JSONType
-  static storeValueOfType<JSONType extends PlainObject | any[] | null>(value: JSONType, type: "JSON"): JSONType
   static storeValueOfType(value: any, type: FieldType): any
   static storeValueOfType(value: any, type: FieldType): string | number | PlainObject | any[] | undefined | null {
     if (type == "boolean") {
@@ -220,23 +213,23 @@ export class Document<KeyType extends string | number, Type> {
     result[primaryKey] = this._id;
 
     this._table.forEachField((key, type) => {
-      if (type != "password") {
+      if (!this._table.fieldHasAnyTag(key, "hidden")) {
         result[key] = this.get(key);
       }
     });
     return result as Type;
   }
 
-  static validateData<Type>(data: Type & PlainObject, scheme: TableScheme): false | string {
+  static validateData<Type>(data: Type, scheme: TableScheme): false | string {
     const schemeFields = scheme.fields;
     // console.log(scheme);
     // console.log(data);
     for (const key in schemeFields) {
-      if (data[key] === undefined) return `Key: '${key}' is missing`;
+      if ((<any>data)[key] === undefined) return `Key: '${key}' is missing`;
     }
 
     for (const key in data) {
-      let value = data[key];
+      let value: any = data[key];
       let requiredType = scheme.fields[key];
       if (!requiredType) return `Key: '${key}' is redundant`;
 
@@ -252,7 +245,7 @@ export class Document<KeyType extends string | number, Type> {
 
   getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
-    return DataBase.workingDirectory + this._table.getHeavyFieldFilepath(this._id, type as HeavyType, field);
+    return DataBase.workingDirectory + this._table.getHeavyFieldFilepath(this._id, type, field);
   }
 
   pick(...fields: string[]): Type {
@@ -264,7 +257,7 @@ export class Document<KeyType extends string | number, Type> {
     return result as Type;
   }
 
-  without(...fields: string[]): Type {
+  omit(...fields: string[]): Type {
     const result: PlainObject = {};
     this._table.forEachField((key, type) => {
       if (!fields.includes(key))

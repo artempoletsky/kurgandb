@@ -67,7 +67,7 @@ export function mkdirSync(name: string) {
 
 
 
-export class VirtualFile {
+class VirtualFile {
   protected _relativePath: string;
   protected _existsFS: boolean;
 

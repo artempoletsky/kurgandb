@@ -1,7 +1,7 @@
 
 import { Predicate, predicateToQuery } from "./client";
 import { AllTablesDict, DataBase, TCreateTable } from "./db";
-import { HeavyTypes, LightTypes } from "./document";
+import {  LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
 
@@ -36,7 +36,7 @@ const PrediateConstructor: Validator = async ({ payload, args }) => {
 const AreTablesExist: Validator = async ({ payload, args }) => {
   let dict: AllTablesDict = {};
   for (const name of args.tables) {
-    if (!DataBase.isTableExist(name)) {
+    if (!DataBase.doesTableExist(name)) {
       return `table ${name} doesn't exist`
     }
     dict[name] = DataBase.getTable(name);
@@ -114,13 +114,13 @@ const validateRecordFactory = function (possibleValues: any[]): Validator {
 }
 
 const checkTableNotExists: Validator = async ({ value }) => {
-  if (DataBase.isTableExist(value)) return `table '${value}' already exists`;
+  if (DataBase.doesTableExist(value)) return `table '${value}' already exists`;
   return true;
 };
 
 Rules.createTable = {
   name: ["string", checkTableNotExists],
-  fields: validateRecordFactory([...LightTypes, ...HeavyTypes]),
+  fields: validateRecordFactory([...LightTypes]),
   tags: "any",
 } as ValidationRule<TCreateTable<PlainObject>>;
 
@@ -144,7 +144,7 @@ type TRemoveTable = {
 };
 
 const checkTableExists: Validator = async ({ value }) => {
-  if (!DataBase.isTableExist(value)) return `table '${value}' doesn't exist`;
+  if (!DataBase.doesTableExist(value)) return `table '${value}' doesn't exist`;
   return true;
 };
 

@@ -21,11 +21,12 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'sorteddict.test.ts';
 // currentFile = 'dict.test.ts';
 // currentFile = 'table.test.ts';
+// currentFile = 'utils.test.ts';
 // currentFile = 'fragmented_dict_stress.test.ts';
 // currentFile = 'table_stress.test.ts';
 // currentFile = 'db.test.ts';
 
-const runStressTests = true;
+const runStressTests = false;
 
 customJestConfig.testPathIgnorePatterns = [];
 if (currentFile) {

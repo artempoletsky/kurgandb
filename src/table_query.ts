@@ -56,7 +56,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
   protected partitionFilter: PartitionFilter<any> | undefined;
   protected whereField: string | undefined;
 
-  constructor(table: Table<KeyType, Type>, indices: IndicesRecord, mainDict: MainDict<KeyType>) {
+  constructor(table: Table<KeyType, Type, any>, indices: IndicesRecord, mainDict: MainDict<KeyType>) {
     this.table = table;
     this.indices = indices;
     this.mainDict = mainDict;

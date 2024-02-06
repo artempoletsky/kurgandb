@@ -2,7 +2,7 @@
 import { AQuery, FnQuery, queryUnsafe, POST } from "./api";
 import { DataBase } from "./db";
 import { Table } from "./table";
-import { PlainObject } from "./utils";
+import { PlainObject, $ } from "./utils";
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 import lodash from "lodash";
 
@@ -49,11 +49,14 @@ function parseBraceArgument(argStr: string): string[] | null {
   return argStr.match(BracesExp);
 }
 
-export type Predicate<Tables, Payload> = (tables: Tables, scope: {
-  payload: Payload
+export type CallbackScope = {
   db: typeof DataBase
-  $: Record<string, Function>
+  $: typeof $
   _: typeof lodash
+}
+
+export type Predicate<Tables, Payload> = (tables: Tables, scope: CallbackScope & {
+  payload: Payload
 }) => any;
 
 
