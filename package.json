@@ -36,6 +36,7 @@
   "exports": {
     ".": "./build/src/client.js",
     "./client": "./build/src/client_client.js",
+    "./globals": "./build/src/globals.js",
     "./package.json": "./package.json",
     "./table": "./build/src/table.js"
   },

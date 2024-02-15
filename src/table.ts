@@ -1,6 +1,6 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
-import { FieldType, Document, LightTypes, TDocument } from "./document";
+import { Document, TDocument } from "./document";
 import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie, $ } from "./utils";
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
@@ -8,6 +8,7 @@ import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
+import { FieldType } from "./globals";
 
 // setFlagsFromString('--expose_gc');
 

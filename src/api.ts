@@ -1,13 +1,13 @@
 
 import { Predicate, predicateToQuery } from "./client";
 import { AllTablesDict, DataBase, TCreateTable } from "./db";
-import {  LightTypes } from "./document";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
 
 import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie, $ } from "./utils";
 import { allIsSaved } from "./virtual_fs";
 import _ from "lodash";
+import { FieldTypes } from "./globals";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};
@@ -54,8 +54,8 @@ const RunQuery: Validator = async ({ payload, args }) => {
       _,
       $
     });
-  } catch (error) {
-    return `query has failed with error: ${error}`;
+  } catch (err: any) {
+    return `query has failed with error: ${err}`;
   }
 
   await allIsSaved();
@@ -120,7 +120,7 @@ const checkTableNotExists: Validator = async ({ value }) => {
 
 Rules.createTable = {
   name: ["string", checkTableNotExists],
-  fields: validateRecordFactory([...LightTypes]),
+  fields: validateRecordFactory([...FieldTypes]),
   tags: "any",
 } as ValidationRule<TCreateTable<PlainObject>>;
 

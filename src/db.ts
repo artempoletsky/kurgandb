@@ -1,10 +1,11 @@
 import { rimraf } from "rimraf";
-import { FieldType } from "./document";
+
 import { FieldTag, Table, TableScheme } from "./table";
 import { PlainObject, existsSync, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
+import { FieldType } from "./globals";
 
 export const SCHEME_PATH = "scheme.json";
 

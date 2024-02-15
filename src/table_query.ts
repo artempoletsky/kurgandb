@@ -1,4 +1,4 @@
-import { Document, FieldType, TDocument } from "./document";
+import { Document, TDocument } from "./document";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
 import { DocCallback, IndicesRecord, MainDict, Table } from "./table";
 import { PlainObject } from "./utils";

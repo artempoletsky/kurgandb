@@ -2,13 +2,7 @@ import fs from "fs";
 import { TableScheme, Table, IndicesRecord, MainDict } from "./table";
 import { PlainObject } from "./utils";
 import { DataBase } from "./db";
-
-export const LightTypes = ["string", "number", "date", "boolean", "json"] as const; //store their data in main json
-
-
-export type LightType = typeof LightTypes[number];
-export type FieldType = LightType;
-
+import { FieldType } from "./globals";
 
 export type TDocument<KeyType extends string | number, Type> = Document<KeyType, Type> & Type;
 

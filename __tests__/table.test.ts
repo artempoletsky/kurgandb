@@ -5,7 +5,6 @@ import { clientQueryUnsafe as clientQuery } from "../src/api";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath, packEventListener, parseFunctionArguments } from "../src/table";
-import { Document, FieldType } from "../src/document";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 

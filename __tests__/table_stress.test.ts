@@ -4,7 +4,7 @@ import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
-import { Document, FieldType } from "../src/document";
+import { FieldType } from "../src/globals";
 
 
 const xdescribe = (...args: any) => { };
