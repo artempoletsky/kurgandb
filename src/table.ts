@@ -49,6 +49,8 @@ export type FieldTag = "primary" | "unique" | "index" | "memory" | "textarea" | 
 
 export type TableScheme = {
   fields: Record<string, FieldType>
+  fieldsOrder: string[]
+  fieldsOrderUser: string[]
   tags: Record<string, FieldTag[]>
   settings: TableSettings
 };
@@ -277,11 +279,17 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
       FragmentedDictionary.rename(this.getIndexDictDir(oldName), this.getIndexDictDir(newName));
     }
 
-    const fieldTags = tags[oldName];
-    if (fieldTags) {
-      delete tags[oldName];
-      tags[newName] = fieldTags;
+    if (this.fieldHasAnyTag(oldName, "heavy")) {
+      renameSync(this.getHeavyFieldDir(oldName), this.getHeavyFieldDir(newName));
     }
+
+    const fieldTags = tags[oldName] || [];
+    delete tags[oldName];
+    tags[newName] = fieldTags;
+
+    const type = fields[oldName];
+    delete fields[oldName];
+    fields[newName] = type;
 
     const indexDict = this.indices[oldName];
     if (indexDict) {
@@ -289,20 +297,16 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
       this.indices[newName] = indexDict;
     }
 
-    const newFields: Record<string, FieldType> = {};
-    this.forEachField((name, type, tags) => {///iterate to keep the same order in the javascript dictionary
-      if (name == oldName) {
-        newFields[newName] = type;
-        if (tags.has("heavy")) {
-          //rename the folder dedicated to the heavy field
-          renameSync(this.getHeavyFieldDir(oldName), this.getHeavyFieldDir(newName));
-        }
-      } else {
-        newFields[name] = type;
-      }
-    });
 
-    this.scheme.fields = newFields;
+    function arrReplace<Type>(arr: Type[], find: Type, replacement: Type) {
+      let iOf = arr.indexOf(find);
+      if (iOf == -1) return;
+      arr.splice(iOf, 1, replacement);
+    }
+
+    arrReplace(this.scheme.fieldsOrder, oldName, newName);
+    arrReplace(this.scheme.fieldsOrderUser, oldName, newName);
+
     this.saveScheme();
   }
 
@@ -310,10 +314,10 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     return this.mainDict.end;
   }
 
-  forEachField(predicate: (fieldName: string & keyof Type, type: FieldType, tags: Set<FieldTag>) => any): void {
+  forEachField(predicate: (fieldName: string, type: FieldType, tags: Set<FieldTag>) => any): void {
     const fields = this.scheme.fields;
-    for (const key in fields) {
-      predicate(key as any, fields[key], new Set(this.scheme.tags[key]));
+    for (const key of this.scheme.fieldsOrderUser) {
+      predicate(key, fields[key], new Set(this.scheme.tags[key]));
     }
   }
 
@@ -438,21 +442,24 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     }
 
     delete this.scheme.fields[fieldName];
+    delete this.scheme.tags[fieldName];
+
+    _.remove(this.scheme.fieldsOrderUser, (e) => e == fieldName);
+    _.remove(this.scheme.fieldsOrder, (e) => e == fieldName);
     this.saveScheme();
   }
 
 
-  addField(fieldName: string, type: FieldType, predicate?: DocCallback<KeyType, Type, any>) {
+  addField(fieldName: string, type: FieldType, isHeavy: boolean, predicate?: DocCallback<KeyType, Type, any>) {
     if (this.scheme.fields[fieldName]) {
       throw new Error(`field '${fieldName}' already exists`);
     }
 
     const filesDir = this.getHeavyFieldDir(fieldName);
 
-    if (this.fieldHasAnyTag(fieldName, "heavy") && !existsSync(filesDir)) {
+    if (isHeavy && !existsSync(filesDir)) {
       mkdirSync(filesDir);
     }
-
     const definedPredicate = predicate || (() => getDefaultValueForType(type));
 
     this.insertDocColumn(this._indexFieldName.length, (id, arr) => {
@@ -460,6 +467,11 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     });
 
     this.scheme.fields[fieldName] = type;
+    this.scheme.tags[fieldName] = isHeavy ? ["heavy"] : [];
+    this.scheme.fieldsOrderUser.push(fieldName);
+    if (!isHeavy) {
+      this.scheme.fieldsOrder.push(fieldName);
+    }
     this.saveScheme();
   }
 
@@ -705,7 +717,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
   makeObjectStorable(o: Type): PlainObject {
     const result: PlainObject = {};
     this.forEachField((key, type) => {
-      result[key] = Document.storeValueOfType(o[key], type as any);
+      result[key] = Document.storeValueOfType((<any>o)[key], type as any);
     });
     return result;
   }
@@ -937,12 +949,12 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
   }
 
   getDocumentDraft(): Type {
-    const res = {} as Type & PlainObject;
+    const res = {} as PlainObject;
     this.forEachField((fieldName, type) => {
       res[fieldName] = fieldName == this.primaryKey ? this.getFreeId() : getDefaultValueForType(type);
     });
 
-    return res;
+    return res as Type;
   }
 
 }

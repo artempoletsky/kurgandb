@@ -1,11 +1,12 @@
 import { rimraf } from "rimraf";
 
 import { FieldTag, Table, TableScheme } from "./table";
-import { PlainObject, existsSync, mkdirSync, rfs, wfs } from "./utils";
+import { PlainObject, existsSync, field, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
 import { FieldType } from "./globals";
+import _ from "lodash";
 
 export const SCHEME_PATH = "scheme.json";
 
@@ -84,7 +85,7 @@ export class DataBase {
         pretty: true
       });
     }
-    
+
     this.loadAllTables();
     initialized = true;
   }
@@ -122,7 +123,7 @@ export class DataBase {
   }
 
   static createTable<KeyType extends string | number, Type, MetaObject = {}>
-  ({ name, fields, settings: rawSettings, tags }: TCreateTable<Type>): Table<KeyType, Type, MetaObject> {
+    ({ name, fields, settings: rawSettings, tags }: TCreateTable<Type>): Table<KeyType, Type, MetaObject> {
     if (this.doesTableExist(name)) {
       throw new Error(`Table '${name}' already exists`);
     }
@@ -164,22 +165,31 @@ export class DataBase {
 
 
 
-
+    const fieldsOrderUser = Object.keys(fields);
+    const fieldsOrder = new Set(fieldsOrderUser);
     for (const fieldName in fields) {
-      const type = fields[fieldName];
       const fieldTags = tags[fieldName] || [];
       if (fieldTags.includes("heavy")) {
         mkdirSync(`/${name}/heavy/${fieldName}/`);
+        fieldsOrder.delete(fieldName);
       }
+      if (fieldTags.includes("primary")) {
+        fieldsOrder.delete(fieldName);
+      }
+      tags[fieldName] = fieldTags;
     }
 
     // wfs(getMetaFilepath(name), EmptyTable);
 
     const schemeFile: SchemeFile = rfs(SCHEME_PATH);
+
+
     schemeFile.tables[name] = {
       fields,
+      fieldsOrder: Array.from(fieldsOrder),
+      fieldsOrderUser,
       tags,
-      settings
+      settings,
     };
 
     wfs(SCHEME_PATH, schemeFile, {

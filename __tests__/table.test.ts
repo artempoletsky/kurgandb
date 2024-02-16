@@ -31,6 +31,7 @@ describe("Table", () => {
     date: Date | string | number,
     bool: boolean,
     name: string,
+    light: string[],
     heavy: null | {
       bar: number
     }
@@ -59,7 +60,7 @@ describe("Table", () => {
         bool: "boolean",
         date: "date",
         name: "string",
-        // light: "json",
+        light: "json",
         heavy: "json",
       },
       tags: {
@@ -67,6 +68,15 @@ describe("Table", () => {
         heavy: ["heavy"],
       }
     });
+
+
+  });
+
+  test("scheme check", () => {
+    expect(t.scheme.fieldsOrder.includes("heavy")).toBe(false);
+    expect(t.scheme.fieldsOrderUser.includes("heavy")).toBe(true);
+    expect(t.scheme.fieldsOrder.length).toBe(4);
+    expect(t.scheme.fieldsOrderUser.length).toBe(5);
   });
 
   test("makes objects storable", () => {
@@ -74,6 +84,7 @@ describe("Table", () => {
       name: "foo",
       bool: true,
       date: new Date(),
+      light: ["1", "2", "3"],
       heavy: {
         bar: 123
       }
@@ -97,6 +108,7 @@ describe("Table", () => {
       date: new Date(),
       bool: false,
       name: "foo",
+      light: ["1", "2", "3"],
       heavy: {
         bar: Math.random()
       }
@@ -109,6 +121,7 @@ describe("Table", () => {
       date: new Date(),
       bool: true,
       name: "bar",
+      light: ["1", "2", "3"],
       heavy: {
         bar: Math.random()
       }
@@ -163,6 +176,7 @@ describe("Table", () => {
     t.insert({
       bool: true,
       date: Date.now(),
+      light: ["1", "2", "3"],
       heavy: null,
       name: "bar",
     });
@@ -236,6 +250,7 @@ describe("Table", () => {
       t.insert({
         bool: false,
         date: Date.now(),
+        light: ["1", "2", "3"],
         heavy: null,
         name: "John"
       });
@@ -252,6 +267,7 @@ describe("Table", () => {
     t.insertMany(Array.from(Array(100)).map((und, i) => ({
       bool: false,
       date: Date.now(),
+      light: ["1", "2", "3"],
       heavy: null,
       name: `Item ${i}`
     })));
@@ -267,12 +283,17 @@ describe("Table", () => {
   });
 
   test("renames a field", () => {
-    expect(Object.keys(t.scheme.fields).length).toBe(4);
+    expect(Object.keys(t.scheme.fields).length).toBe(5);
     t.renameField("heavy", "foo");
+    expect(t.scheme.fieldsOrderUser.includes("heavy")).toBe(false);
+    expect(t.scheme.fieldsOrderUser.includes("foo")).toBe(true);
+    expect(t.scheme.fieldsOrder.includes("heavy")).toBe(false);
+    expect(t.scheme.fieldsOrder.includes("foo")).toBe(false);
 
-    // console.log(t.scheme.fields);
+
     expect(t).not.toHaveProperty("scheme.fields.heavy");
     expect(t).toHaveProperty("scheme.fields.foo");
+    expect(t.scheme.fields.foo).toBe("json");
 
     expect(() => {
       t.renameField("name", "foo");
@@ -281,23 +302,49 @@ describe("Table", () => {
     expect(t).toHaveProperty("scheme.fields.name");
 
     t.renameField("name", "bar");
+    expect(t.scheme.fieldsOrderUser.includes("name")).toBe(false);
+    expect(t.scheme.fieldsOrderUser.includes("bar")).toBe(true);
+
+    expect(t.scheme.fieldsOrder.includes("name")).toBe(false);
+    expect(t.scheme.fieldsOrder.includes("bar")).toBe(true);
+
     expect(t.scheme.tags).not.toHaveProperty("name");
     expect(t.scheme.tags.bar.includes("index")).toBe(true);
-    expect(Object.keys(t.scheme.fields).length).toBe(4);
+    expect(Object.keys(t.scheme.fields).length).toBe(5);
   });
 
-  test("removes a field", () => {
+  test("removes a field", async () => {
+    let dict = FragmentedDictionary.open<number, any[]>(t.getMainDictDir());
+    let first = dict.getOne(1);
+    expect(first?.length).toBe(4);
+
     t.removeField("bar");
     expect(t.scheme.fields).not.toHaveProperty("bar");
     expect(t.scheme.tags).not.toHaveProperty("bar");
-    expect(Object.keys(t.scheme.fields).length).toBe(3);
+    expect(t.scheme.fieldsOrder.includes("bar")).toBe(false);
+    expect(t.scheme.fieldsOrderUser.includes("bar")).toBe(false);
+
+    expect(Object.keys(t.scheme.fields).length).toBe(4);
+    await allIsSaved();
+
+    dict = FragmentedDictionary.open<number, any[]>(t.getMainDictDir());
+
+    first = dict.getOne(1);
+    expect(first?.length).toBe(3);
+
+    const d = t.at(1);
+    expect(d.light[1]).toBe("2");
+
+
   });
 
-  test("adds a field", () => {
-    t.addField("random", "number", e => Math.random());
-    expect(t.scheme.fields).toHaveProperty("random");
+  test("adds a field", async () => {
+    t.addField("123", "number", false, e => Math.random());
+    expect(t.scheme.fields).toHaveProperty("123");
+    await allIsSaved();
     const d: any = t.at(1);
-    expect(d.random).toBeLessThan(1);
+    expect(d["123"]).toBeLessThan(1);
+    expect(d.light[0]).toBe("1");
   });
 
   type SimpleFloat = {

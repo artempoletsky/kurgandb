@@ -186,7 +186,7 @@ export class Document<KeyType extends string | number, Type> {
     if (!this._data) throw new Error(`No data: ${this.idPrint()}`);
 
 
-    table.indexFieldName.forEach((key, index) => {
+    table.scheme.fieldsOrder.forEach((key, index) => {
       const type = table.indexType[index];
       if (type == "date" && this._dates[key]) {
         result[index] = this._dates[key].toJSON();
