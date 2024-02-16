@@ -25,7 +25,7 @@ describe("Fragmented dictionary", () => {
     numbers = FragmentedDictionary.init({
       directory: NUM,
       keyType: "int",
-      maxPartitionLenght: 3,
+      maxPartitionLength: 3,
     });
 
     partitions = FragmentedDictionary.init({
@@ -37,14 +37,14 @@ describe("Fragmented dictionary", () => {
     letters = FragmentedDictionary.init({
       directory: LETT,
       keyType: "string",
-      maxPartitionLenght: 3,
+      maxPartitionLength: 3,
     });
 
     index = FragmentedDictionary.init({
       keyType: "string",
       directory: IND,
       maxPartitionSize: 0,
-      maxPartitionLenght: 100 * 1000,
+      maxPartitionLength: 100 * 1000,
     });
   });
 

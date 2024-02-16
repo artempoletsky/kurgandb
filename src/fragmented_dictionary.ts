@@ -15,7 +15,7 @@ export function getMetaFilepath(directory: string) {
 export type FragmentedDictionarySettings<KeyType extends string | number> = {
   keyType: KeyType extends string ? "string" : "int"
   maxPartitionSize: number,
-  maxPartitionLenght: number,
+  maxPartitionLength: number,
   directory: string,
 };
 
@@ -64,7 +64,7 @@ export type IterateWhereOptions<KeyType extends string | number, Type, ReturnTyp
 
 const DefaultFragmentDictionarySettings: FragmentedDictionarySettings<number> = {
   keyType: "int",
-  maxPartitionLenght: 10 * 1000,
+  maxPartitionLength: 10 * 1000,
   maxPartitionSize: 5 * Math.pow(1024, 3),
   directory: "",
 };
@@ -322,7 +322,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   insertSortedDict(dict: SortedDictionary<KeyType, Type>) {
     if (!dict.length) return;
 
-    const { maxPartitionLenght } = this.settings;
+    const { maxPartitionLength: maxPartitionLenght } = this.settings;
     const { partitions } = this.meta;
     const partitionsToOpen = this.findPartitionsForIds(dict.keys());
 
@@ -502,7 +502,7 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
   }
 
   partitionExceedsSize(id: number): boolean {
-    const { maxPartitionLenght, maxPartitionSize } = this.settings;
+    const { maxPartitionLength: maxPartitionLenght, maxPartitionSize } = this.settings;
     // const { size, meta } = this.currentPartition;
     const length = this.meta.partitions[id].length;
 

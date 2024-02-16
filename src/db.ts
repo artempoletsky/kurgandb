@@ -1,11 +1,11 @@
 import { rimraf } from "rimraf";
 
-import { FieldTag, Table, TableScheme } from "./table";
+import { Table, TableScheme } from "./table";
 import { PlainObject, existsSync, field, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
-import { FieldType } from "./globals";
+import { FieldTag, FieldType } from "./globals";
 import _ from "lodash";
 
 export const SCHEME_PATH = "scheme.json";
@@ -132,7 +132,21 @@ export class DataBase {
 
     const settings: TableSettings = Object.assign(DefaultTableSettings, rawSettings);
 
+    let autoId = true;
+    for (const fieldName in tags) {
+      if (tags[fieldName].includes("primary")) {
+        autoId = false;
+        break;
+      }
+    }
 
+    if (autoId) {
+      tags.id = ["primary", "autoinc"];
+      fields = {
+        id: "number",
+        ...fields,
+      };
+    }
 
     mkdirSync(`/${name}/`);
     mkdirSync(`/${name}/indices/`);
@@ -140,24 +154,24 @@ export class DataBase {
     let keyType: "int" | "string" = "int";
     for (const fieldName in tags) {
       const fieldTags = tags[fieldName];
+      const tagsSet = new Set(fieldTags);
       const type = fields[<keyof Type>fieldName];
 
 
-      if (Table.tagsHasFieldNameWithAnyTag(tags, fieldName, "index", "unique")) {
+      if (tagsSet.has("index") || tagsSet.has("unique")) {
         Table.createIndexDictionary(name, fieldName, fieldTags, type);
       }
-      if (Table.tagsHasFieldNameWithAnyTag(tags, fieldName, "primary")) {
-        try {
-          keyType = Table.fieldTypeToKeyType(type);
-        } catch (error) {
+
+      if (tagsSet.has("primary")) {
+        if (type !== "string" && type != "number")
           throw new Error(`can't set up field '${fieldName}' of type '${type}' as primary key for '${name}'`);
-        }
+        keyType = Table.fieldTypeToKeyType(type);
       }
     }
     // mkdirSync(mainDictDir);
     FragmentedDictionary.init({
       keyType,
-      maxPartitionLenght: 5000,
+      maxPartitionLength: 5000,
       directory: mainDictDir,
     });
 

@@ -8,7 +8,7 @@ import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
-import { FieldType } from "./globals";
+import { FieldTag, FieldType } from "./globals";
 
 // setFlagsFromString('--expose_gc');
 
@@ -44,7 +44,6 @@ export function packEventListener(handler: (...args: any[]) => void): string[] {
   return [...args, body];
 }
 
-export type FieldTag = "primary" | "unique" | "index" | "memory" | "textarea" | "heavy" | "hidden";
 
 
 export type TableScheme = {
@@ -156,6 +155,12 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     this.loadMemoryIndices();
     this.updateFieldIndices();
   }
+
+
+  public get autoId(): boolean {
+    return this.fieldHasAnyTag(this.primaryKey, "autoinc");
+  }
+
 
   static fieldTypeToKeyType(type: FieldType): "int" | "string" {
     if (type == "json") throw new Error("wrong type");
@@ -475,6 +480,18 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     this.saveScheme();
   }
 
+  throwFieldDoesntExist(fieldName: string) {
+    return new Error(`Field name '${this.printField(fieldName)}' doesn't exist`);
+  }
+
+  changeFieldIndex(fieldName: string, newIndex: number) {
+    const { fieldsOrderUser } = this.scheme;
+    const iOf = fieldsOrderUser.indexOf(fieldName);
+    if (iOf == -1) throw this.throwFieldDoesntExist(fieldName);
+    fieldsOrderUser.splice(iOf, 1);
+    fieldsOrderUser.splice(newIndex, 0, fieldName);
+  }
+
   clear() {
     if (!this.scheme.settings.dynamicData) throw new Error(`${this.name} is not a dynamic table`);;
     return this.filter(() => true).delete();
@@ -607,7 +624,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
     // perfStart("make storable");
     for (const obj of data) {
-      const validationError = Document.validateData(obj, this.scheme);
+      const validationError = Document.validateData(obj, this.scheme, this.autoId);
       if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
 
       storable.push(this.makeObjectStorable(obj));
@@ -625,7 +642,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     let ids: KeyType[];
     const values = storable.map(o => this.flattenObject(o));
 
-    if (this.primaryKey == "id" && this.mainDict.settings.keyType == "int") {
+    if (this.autoId) {
       ids = this.mainDict.insertArray(values);
     } else {
       ids = storable.map(o => {

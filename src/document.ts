@@ -203,8 +203,8 @@ export class Document<KeyType extends string | number, Type> {
   public toJSON(): Type {
 
     const result: PlainObject = {};
-    const { primaryKey } = this._table;
-    result[primaryKey] = this._id;
+    // const { primaryKey } = this._table;
+    // result[primaryKey] = this._id;
 
     this._table.forEachField((key, type) => {
       if (!this._table.fieldHasAnyTag(key, "hidden")) {
@@ -214,15 +214,18 @@ export class Document<KeyType extends string | number, Type> {
     return result as Type;
   }
 
-  static validateData<Type>(data: Type, scheme: TableScheme): false | string {
+  static validateData<Type>(data: Type, scheme: TableScheme, excludeId: boolean): false | string {
     const schemeFields = scheme.fields;
     // console.log(scheme);
     // console.log(data);
     for (const key in schemeFields) {
+      if (excludeId && key == "id") continue;
       if ((<any>data)[key] === undefined) return `Key: '${key}' is missing`;
     }
 
     for (const key in data) {
+      if (excludeId && key == "id") continue;
+
       let value: any = data[key];
       let requiredType = scheme.fields[key];
       if (!requiredType) return `Key: '${key}' is redundant`;

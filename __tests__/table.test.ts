@@ -76,7 +76,9 @@ describe("Table", () => {
     expect(t.scheme.fieldsOrder.includes("heavy")).toBe(false);
     expect(t.scheme.fieldsOrderUser.includes("heavy")).toBe(true);
     expect(t.scheme.fieldsOrder.length).toBe(4);
-    expect(t.scheme.fieldsOrderUser.length).toBe(5);
+    expect(t.scheme.fieldsOrderUser.length).toBe(6);
+    expect(t.scheme.fieldsOrderUser.includes("id")).toBe(true);
+    expect(t.scheme.fieldsOrder.includes("id")).toBe(false);
   });
 
   test("makes objects storable", () => {
@@ -283,7 +285,7 @@ describe("Table", () => {
   });
 
   test("renames a field", () => {
-    expect(Object.keys(t.scheme.fields).length).toBe(5);
+    expect(Object.keys(t.scheme.fields).length).toBe(6);
     t.renameField("heavy", "foo");
     expect(t.scheme.fieldsOrderUser.includes("heavy")).toBe(false);
     expect(t.scheme.fieldsOrderUser.includes("foo")).toBe(true);
@@ -310,7 +312,7 @@ describe("Table", () => {
 
     expect(t.scheme.tags).not.toHaveProperty("name");
     expect(t.scheme.tags.bar.includes("index")).toBe(true);
-    expect(Object.keys(t.scheme.fields).length).toBe(5);
+    expect(Object.keys(t.scheme.fields).length).toBe(6);
   });
 
   test("removes a field", async () => {
@@ -324,7 +326,7 @@ describe("Table", () => {
     expect(t.scheme.fieldsOrder.includes("bar")).toBe(false);
     expect(t.scheme.fieldsOrderUser.includes("bar")).toBe(false);
 
-    expect(Object.keys(t.scheme.fields).length).toBe(4);
+    expect(Object.keys(t.scheme.fields).length).toBe(5);
     await allIsSaved();
 
     dict = FragmentedDictionary.open<number, any[]>(t.getMainDictDir());
@@ -345,6 +347,26 @@ describe("Table", () => {
     const d: any = t.at(1);
     expect(d["123"]).toBeLessThan(1);
     expect(d.light[0]).toBe("1");
+  });
+
+
+  test("changeFieldIndex", () => {
+    let item = t.at(1);
+    
+    let iOf1 = t.scheme.fieldsOrderUser.indexOf("id");
+    expect(iOf1).toBe(0);
+
+    let iOf2 = Object.keys(item).indexOf("id");
+    expect(iOf2).toBe(1);
+
+    t.changeFieldIndex("id", 1);
+
+    item = t.at(1);
+    
+    iOf1 = t.scheme.fieldsOrderUser.indexOf("id");
+    iOf2 = Object.keys(item).indexOf("id");
+    expect(iOf1).toBe(1);
+    expect(iOf2).toBe(2);
   });
 
   type SimpleFloat = {
@@ -545,7 +567,6 @@ describe("Table", () => {
     });
 
     // expect(packed[0]).toBe("{ table, meta }");
-    console.log(packed);
     let unpacked = new Function(...packed);
     // console.log(unpacked(123));
 

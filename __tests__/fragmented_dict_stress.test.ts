@@ -24,7 +24,7 @@ describe("Fragmented dictionary", () => {
       numbers = FragmentedDictionary.init({
         directory: NUM,
         keyType: "int",
-        maxPartitionLenght: partitionLength,
+        maxPartitionLength: partitionLength,
       });
     } else {
       numbers = FragmentedDictionary.open(NUM);
