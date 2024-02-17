@@ -1,6 +1,6 @@
 import { POST } from "./api";
 // import { clientQuery } from "./client";
-
+import pkg from "../package.json";
 
 import http from "http";
 import { DataBase } from "./db";
@@ -61,7 +61,7 @@ http.createServer(function (req, res) {
 
 }).listen(PORT);
 
-const version = require('../package.json').version;
+// const version = require('../package.json').version;
 
-console.info(`KurganDB v${version} are listening on '${PORT}'`);
+console.info(`KurganDB v${pkg.version} are listening on '${PORT}'`);
 console.info(`Working directory: ${DataBase.workingDirectory}`);

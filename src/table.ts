@@ -223,14 +223,12 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     this._indexFieldName = [];
     let i = 0;
 
-    this.forEachField((key, type, tags) => {
-      if (tags.has("heavy")) return;
-      if (key == this.primaryKey) return;
-
+    for (const key of this.scheme.fieldsOrder) {
+      const type = this.scheme.fields[key];
       this._indexType[i] = type;
       this._indexFieldName[i] = key;
       this._fieldNameIndex[key] = i++;
-    });
+    }
   }
 
   public get fieldNameIndex() {
@@ -462,14 +460,16 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
     const filesDir = this.getHeavyFieldDir(fieldName);
 
-    if (isHeavy && !existsSync(filesDir)) {
-      mkdirSync(filesDir);
+    if (isHeavy) {
+      if (!existsSync(filesDir)) mkdirSync(filesDir);
     }
-    const definedPredicate = predicate || (() => getDefaultValueForType(type));
+    else {
+      const definedPredicate = predicate || (() => getDefaultValueForType(type));
+      this.insertDocColumn(this._indexFieldName.length, (id, arr) => {
+        return definedPredicate(new Document<KeyType, Type>(arr, id, this, this.indices) as TDocument<KeyType, Type>);
+      });
+    }
 
-    this.insertDocColumn(this._indexFieldName.length, (id, arr) => {
-      return definedPredicate(new Document<KeyType, Type>(arr, id, this, this.indices) as TDocument<KeyType, Type>);
-    });
 
     this.scheme.fields[fieldName] = type;
     this.scheme.tags[fieldName] = isHeavy ? ["heavy"] : [];
