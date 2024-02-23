@@ -1,14 +1,15 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
 import { Document, TDocument } from "./document";
-import { PlainObject, rfs, wfs, existsSync, mkdirSync, renameSync, rmie, $ } from "./utils";
+import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
+
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
-import { FieldTag, FieldType } from "./globals";
+import { FieldTag, FieldType, $, PlainObject } from "./globals";
 
 // setFlagsFromString('--expose_gc');
 
@@ -602,13 +603,13 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
 
   canInsertUnique<ColumnType extends string | number>(fieldName: string, column: ColumnType[], throwError: boolean = false): boolean {
-    const indexDict = this.indices[fieldName];
+    const indexDict: FragmentedDictionary<ColumnType, string | number> = this.indices[fieldName] as any;
     if (!indexDict) throw new Error(`${this.printField(fieldName)} is not an index`);
-    const found = indexDict.filterSelect(column.map(v => [v, v]), 1);
-    if (found.length == 0) {
-      return true;
-    }
-    if (throwError) throw this.errorValueNotUnique(fieldName, found[0]);
+
+    const found = indexDict.hasAnyId(column);
+
+    if (!found) return true;
+    if (throwError) throw this.errorValueNotUnique(fieldName, found);
     return false;
   }
 
@@ -967,7 +968,8 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
   getDocumentDraft(): Type {
     const res = {} as PlainObject;
-    this.forEachField((fieldName, type) => {
+    this.forEachField((fieldName, type, tags) => {
+      if (tags.has("autoinc")) return;
       res[fieldName] = fieldName == this.primaryKey ? this.getFreeId() : getDefaultValueForType(type);
     });
 

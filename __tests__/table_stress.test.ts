@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import { PlainObject, perfEnd, perfStart, perfDur, perfLog, perfEndLog } from "../src/utils";
+import {  perfEnd, perfStart, perfDur, perfLog, perfEndLog } from "../src/utils";
 import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";

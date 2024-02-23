@@ -1,8 +1,8 @@
 import { describe, expect, test } from "@jest/globals";
 
-import { $ } from "../src/utils";
 import { standAloneQuery as query } from "../src/client";
 import { DataBase } from "../src/db";
+import { $ } from "../src/globals";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };

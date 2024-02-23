@@ -1,8 +1,7 @@
 import fs from "fs";
 import { TableScheme, Table, IndicesRecord, MainDict } from "./table";
-import { PlainObject } from "./utils";
 import { DataBase } from "./db";
-import { FieldType } from "./globals";
+import { FieldType, PlainObject } from "./globals";
 
 export type TDocument<KeyType extends string | number, Type> = Document<KeyType, Type> & Type;
 

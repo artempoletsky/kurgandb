@@ -4,10 +4,9 @@ import { AllTablesDict, DataBase, TCreateTable } from "./db";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
 
-import { PlainObject, rfs, wfs, existsSync, unlinkSync, rmie, $ } from "./utils";
 import { allIsSaved } from "./virtual_fs";
 import _ from "lodash";
-import { FieldTypes } from "./globals";
+import { FieldTypes, $, PlainObject } from "./globals";
 
 const Rules: APIValidationObject = {};
 const API: APIObject = {};

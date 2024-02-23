@@ -1,7 +1,7 @@
 import { rimraf } from "rimraf";
 
 import { Table, TableScheme } from "./table";
-import { PlainObject, existsSync, field, mkdirSync, rfs, wfs } from "./utils";
+import { mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";

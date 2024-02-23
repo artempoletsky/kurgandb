@@ -1,5 +1,5 @@
+import type { PlainObject } from "./globals";
 import type { TableScheme } from "./table";
-import type { PlainObject } from "./utils";
 
 
 export function formToDocument(form: HTMLFormElement, scheme: TableScheme): PlainObject {

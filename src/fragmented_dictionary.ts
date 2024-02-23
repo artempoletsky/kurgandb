@@ -1,7 +1,6 @@
-
-import { rimraf } from "rimraf";
+import { PlainObject } from "./globals";
 import SortedDictionary from "./sorted_dictionary";
-import { PlainObject } from "./utils";
+
 import vfs, { mkdirSync, existsSync, rmie } from "./virtual_fs";
 
 function getEmptyKey<KeyType extends string | number>(keyType: KeyType extends string ? "string" : "int"): KeyType {

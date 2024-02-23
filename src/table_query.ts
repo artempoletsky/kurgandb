@@ -1,7 +1,7 @@
 import { Document, TDocument } from "./document";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
 import { DocCallback, IndicesRecord, MainDict, Table } from "./table";
-import { PlainObject } from "./utils";
+
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
 

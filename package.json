@@ -2,8 +2,8 @@
   "name": "@artempoletsky/kurgandb",
   "version": "1.1.0",
   "description": "",
-  "main": "build/src/client.js",
-  "types": "build/src/client.d.ts",
+  "main": "build/src/server.js",
+  "bin": "build/src/server.js",
   "scripts": {
     "dev": "npx nodemon",
     "build": "rimraf ./build && tsc",
@@ -20,6 +20,7 @@
     "@faker-js/faker": "^8.3.1",
     "@types/jest": "^29.5.11",
     "@types/lodash": "^4.14.202",
+    "@types/md5": "^2.3.5",
     "@types/node": "^20.10.3",
     "babel-jest": "^29.7.0",
     "jest": "^29.7.0",
@@ -28,14 +29,16 @@
     "typescript": "^5.3.2"
   },
   "dependencies": {
-    "@artempoletsky/easyrpc": "^1.0.2",
+    "@artempoletsky/easyrpc": "^1.1.1",
     "dotenv": "^16.3.2",
     "lodash": "^4.17.21",
+    "md5": "^2.3.0",
     "rimraf": "^5.0.5"
   },
   "exports": {
     ".": "./build/src/client.js",
     "./client": "./build/src/client_client.js",
+    "./utils": "./build/src/utils_client.js",
     "./globals": "./build/src/globals.js",
     "./package.json": "./package.json",
     "./table": "./build/src/table.js"

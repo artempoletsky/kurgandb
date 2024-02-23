@@ -1,9 +1,8 @@
 import fs from "fs";
 import { rimraf } from "rimraf";
 import { DataBase } from "./db";
-import { TDocument } from "./document";
+import { PlainObject } from "./globals";
 
-export type PlainObject = Record<string, any>;
 
 type WFSOptions = {
   pretty: boolean
@@ -107,66 +106,4 @@ export function perfEndLog(name: string) {
 
 export function perfDur(name: string): number {
   return Math.floor(-PerfMeasuerements[name] * 100) / 100;
-}
-
-
-export function randomIndex(length: number, exclude: Set<number> = new Set()): number {
-  if (length <= 0) throw new Error("length must be greater than 0");
-
-  let range = length - exclude.size;
-  if (range <= 0 || exclude.size == 0) {
-    return Math.floor(Math.random() * length);
-  }
-  let res = Math.floor(Math.random() * range);
-  while (exclude.has(res)) {
-    res += 1;
-  }
-  return res;
-}
-
-export function randomIndices(length: number, count: number) {
-  if (length <= 0) throw new Error("length must be greater than 0");
-  // const result: number[] = [];
-  const exclude: Set<number> = new Set();
-  for (let i = 0; i < count; i++) {
-    const rand = randomIndex(length, exclude);
-    exclude.add(rand);
-  }
-  return Array.from(exclude.keys());
-}
-
-export function pick<Type>(...fields: (keyof Type)[]) {
-  return (doc: TDocument<any, Type>) => {
-    return doc.pick(...fields as string[]);
-  }
-}
-
-export function omit<Type>(...fields: (keyof Type)[]) {
-  return (doc: TDocument<any, Type>) => {
-    return doc.omit(...fields as string[]);
-  }
-}
-
-export function primary<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
-  return doc.id;
-}
-
-export function field<Type>(fieldName: keyof Type): any {
-  return (doc: TDocument<any, Type>) => {
-    return doc.get(fieldName as string);
-  }
-}
-
-export function full<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
-  return doc.omit();
-}
-
-export const $ = {
-  randomIndex,
-  randomIndices,
-  pick,
-  omit,
-  primary,
-  field,
-  full,
 }

@@ -1,8 +1,9 @@
 
 import { AQuery, FnQuery, queryUnsafe, POST } from "./api";
 import { DataBase } from "./db";
+import { $, PlainObject } from "./globals";
 import { Table } from "./table";
-import { PlainObject, $ } from "./utils";
+
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 import lodash from "lodash";
 
@@ -78,7 +79,9 @@ export async function remoteQuery
   if (!address) {
     throw new Error("There is no remote address specified to connect to!");
   }
-  const remoteQuery: FnQuery = getAPIMethod(address, "query");
+  const remoteQuery: FnQuery = getAPIMethod(address, "query", {
+    cache: "no-store"
+  });
 
   return remoteQuery(predicateToQuery<Tables, Payload>(predicate, payload));
 }
@@ -92,3 +95,13 @@ export const standAloneQuery: typeof remoteQuery = async (predicate, payload = {
   if (status == 200) return response;
   return Promise.reject(response);
 }
+
+
+export const queryUniversal: typeof remoteQuery = async (predicate, payload = {}) => {
+  const address = process.env.KURGANDB_REMOTE_ADDRESS;
+  if (address) {
+    return remoteQuery(predicate, payload);
+  }
+  return standAloneQuery(predicate, payload);
+}
+

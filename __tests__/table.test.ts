@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 import { Predicate, predicateToQuery } from "../src/client";
-import { PlainObject, perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/utils";
+import { perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/utils";
 import { clientQueryUnsafe as clientQuery } from "../src/api";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";

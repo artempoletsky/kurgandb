@@ -1,3 +1,5 @@
+#! /usr/bin/env node
+
 import { POST } from "./api";
 // import { clientQuery } from "./client";
 import pkg from "../package.json";
