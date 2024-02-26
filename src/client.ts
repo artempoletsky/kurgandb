@@ -56,48 +56,55 @@ export type CallbackScope = {
   _: typeof lodash
 }
 
-export type Predicate<Tables, Payload> = (tables: Tables, scope: CallbackScope & {
+export type Predicate<Tables, Payload, ReturnType> = (tables: Tables, scope: CallbackScope & {
   payload: Payload
-}) => any;
+}) => ReturnType;
 
 
-export function predicateToQuery<Tables, Payload>(predicate: Predicate<Tables, Payload>, payload: PlainObject): AQuery {
+export function predicateToQuery<Tables, Payload, ReturnType>(predicate: Predicate<Tables, Payload, ReturnType>, payload: Payload): AQuery {
   const parsed = parsePredicate(predicate.toString());
 
   return {
     predicateBody: parsed.body,
     tables: parsed.args[0],
-    payload,
+    payload: payload as any,
   }
 }
 
+export type Promisify<T> = Promise<T extends Promise<any> ? Awaited<T> : T>;
+
 
 export async function remoteQuery
-  <Tables extends Record<string, Table<any, any>>, Payload extends PlainObject>
-  (predicate: Predicate<Tables, Payload>, payload: PlainObject = {}) {
+  <Tables extends Record<string, Table<any, any, any>>, Payload, ReturnType>
+  (predicate: Predicate<Tables, Payload, ReturnType>, payload?: Payload)
+  : Promisify<ReturnType> {
+  if (!payload) payload = {} as Payload;
+
   const address = process.env.KURGANDB_REMOTE_ADDRESS;
   if (!address) {
     throw new Error("There is no remote address specified to connect to!");
   }
-  const remoteQuery: FnQuery = getAPIMethod(address, "query", {
+  const remoteQueryAPI: FnQuery = getAPIMethod(address, "query", {
     cache: "no-store"
   });
 
-  return remoteQuery(predicateToQuery<Tables, Payload>(predicate, payload));
+
+  return remoteQueryAPI(predicateToQuery<Tables, Payload, ReturnType>(predicate, payload));
 }
 
-export const standAloneQuery: typeof remoteQuery = async (predicate, payload = {}) => {
+export const standAloneQuery: typeof remoteQuery = async (predicate, payload) => {
+  if (!payload) payload = {} as any;
   DataBase.init();
   const [response, status] = await POST({
     method: "query",
-    args: predicateToQuery<any, any>(predicate, payload)
+    args: predicateToQuery<any, any, any>(predicate, payload)
   });
   if (status == 200) return response;
   return Promise.reject(response);
 }
 
 
-export const queryUniversal: typeof remoteQuery = async (predicate, payload = {}) => {
+export const queryUniversal: typeof remoteQuery = async (predicate, payload) => {
   const address = process.env.KURGANDB_REMOTE_ADDRESS;
   if (address) {
     return remoteQuery(predicate, payload);

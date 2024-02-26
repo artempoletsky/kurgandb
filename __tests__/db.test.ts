@@ -14,10 +14,10 @@ DataBase.init(process.cwd() + "/test_data");
 describe("Predicate parser", () => {
 
   test("parses predicates", () => {
-    const q1 = predicateToQuery<any, any>(({ }, { db, payload }) => { "hello world"; }, {});
+    const q1 = predicateToQuery<any, any, void>(({ }, { db, payload }) => { "hello world"; }, {});
     expect(q1.predicateBody).toBe('"hello world";')
     expect(q1.tables.length).toBe(0)
-    const q2 = predicateToQuery<any, any>(({ users }, { db, payload }) => { }, {});
+    const q2 = predicateToQuery<any, any, void>(({ users }, { db, payload }) => { }, {});
     expect(q2.tables[0]).toBe("users");
     expect(q2.tables[1]).toBeUndefined();
   });

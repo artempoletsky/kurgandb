@@ -1,5 +1,5 @@
 
-import { Predicate, predicateToQuery } from "./client";
+import { Predicate, Promisify, predicateToQuery } from "./client";
 import { AllTablesDict, DataBase, TCreateTable } from "./db";
 import validate, { APIObject, APIRequest, APIValidationObject, ValidationRule, Validator, validateUnionFabric } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
@@ -87,7 +87,8 @@ export async function queryUnsafe(args: AQuery) {
   return queryResult;
 }
 
-export async function clientQueryUnsafe<Tables, Payload>(p: Predicate<Tables, Payload>, payload: PlainObject = {}) {
+export async function clientQueryUnsafe<Tables, Payload, ReturnType>(p: Predicate<Tables, Payload, ReturnType>, payload?: Payload): Promisify<ReturnType> {
+  if (!payload) payload = {} as Payload;
   return queryUnsafe(predicateToQuery(p, payload));
 }
 

@@ -540,7 +540,7 @@ describe("Table", () => {
       }
     };
 
-    const res = await clientQuery<{ test_words: Table<string, TestWord> }, PayloadType>(({ test_words }, { payload }) => {
+    const res = await clientQuery<{ test_words: Table<string, TestWord> }, PayloadType, TestWord>(({ test_words }, { payload }) => {
       test_words.where("id", ...Object.keys(payload)).update(doc => {
         const fields = payload[doc.id];
 
