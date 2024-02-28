@@ -1,7 +1,8 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 import { Predicate, predicateToQuery } from "../src/client";
 import { perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/utils";
-import { clientQueryUnsafe as clientQuery } from "../src/api";
+// import { star as query } from "../src/api";
+import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath, packEventListener, parseFunctionArguments } from "../src/table";
@@ -352,7 +353,7 @@ describe("Table", () => {
 
   test("changeFieldIndex", () => {
     let item = t.at(1);
-    
+
     let iOf1 = t.scheme.fieldsOrderUser.indexOf("id");
     expect(iOf1).toBe(0);
 
@@ -362,7 +363,7 @@ describe("Table", () => {
     t.changeFieldIndex("id", 1);
 
     item = t.at(1);
-    
+
     iOf1 = t.scheme.fieldsOrderUser.indexOf("id");
     iOf2 = Object.keys(item).indexOf("id");
     expect(iOf1).toBe(1);
@@ -531,8 +532,6 @@ describe("Table", () => {
     });
 
 
-    await allIsSaved();
-
     type PayloadType = Record<string, Record<string, string>>;
     const payload: PayloadType = {
       "a": {
@@ -540,7 +539,7 @@ describe("Table", () => {
       }
     };
 
-    const res = await clientQuery<{ test_words: Table<string, TestWord> }, PayloadType, TestWord>(({ test_words }, { payload }) => {
+    const res = await query(({ test_words }, { payload }, { }) => {
       test_words.where("id", ...Object.keys(payload)).update(doc => {
         const fields = payload[doc.id];
 
@@ -550,11 +549,21 @@ describe("Table", () => {
 
       });
       return test_words.at("a");
-    }, payload);
+    }, { payload });
 
 
-    expect(test_words.at("a")?.level).toBe("a1");
+    expect(test_words.at("a").level).toBe("a1");
     expect(res.id).toBe("a");
+  });
+
+
+  test("ResponseError throw", async () => {
+
+    const q = query(({ test_words }: { test_words: Table<string, TestWord> }, { }, { }) => {
+      return test_words.at("foo1231");
+    }, {});
+
+    await expect(q).rejects.toHaveProperty("message", "id 'foo1231' doesn't exists at 'test_words[id]'");
   });
 
   test("packEventListener", () => {

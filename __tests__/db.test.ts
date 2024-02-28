@@ -5,6 +5,7 @@ import { standAloneQuery as query } from "../src/client";
 import { SchemeFile, SCHEME_PATH, DataBase } from "../src/db";
 import { existsSync } from "fs";
 import { rimraf } from "rimraf";
+import { allIsSaved } from "../src/virtual_fs";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -14,49 +15,59 @@ DataBase.init(process.cwd() + "/test_data");
 describe("Predicate parser", () => {
 
   test("parses predicates", () => {
-    const q1 = predicateToQuery<any, any, void>(({ }, { db, payload }) => { "hello world"; }, {});
-    expect(q1.predicateBody).toBe('"hello world";')
-    expect(q1.tables.length).toBe(0)
-    const q2 = predicateToQuery<any, any, void>(({ users }, { db, payload }) => { }, {});
-    expect(q2.tables[0]).toBe("users");
-    expect(q2.tables[1]).toBeUndefined();
+    const q1 = predicateToQuery<any, any, void>((tables, { payloadArg }, { db }) => { "hello world"; });
+
+    expect(q1.predicateBody).toBe('"hello world";');
+    expect(q1.predicateArgs.length).toBe(3);
+    expect(q1.predicateArgs[0]).toBe("tables");
+    expect(q1.predicateArgs[1]).toBe("{ payloadArg }");
+    expect(q1.predicateArgs[2]).toBe("{ db }");
+
+    const q2 = predicateToQuery<any, any, void>(function ({ users, posts }) { });
+    expect(q2.predicateArgs[0]).toBe("{ users, posts }");
+    expect(q2.predicateArgs[1]).toBe(undefined);
+
+
+    const q3 = predicateToQuery<any, any, void>(async (tables, payload, { db }) => {
+      await db;
+    });
+    expect(q3.isAsync).toBe(true);
   });
 });
 
 describe("db", () => {
   const tableName = "jest_test_table_1";
   const expectedDir = process.cwd() + "/test_data/" + tableName;
-  beforeAll(() => {
+  beforeAll(async () => {
     rimraf.sync(expectedDir);
+    await allIsSaved();
   });
 
   test("creates a table", async () => {
-    const result = await query(({ }, { db, payload }) => {
+    const result = await query(({ }, { tableName }, { db }) => {
       db.createTable({
-        name: payload.tableName,
+        name: tableName,
         fields: {
           test: "string"
         },
       });
-    }, {
-      tableName
-    });
+    }, { tableName });
     const scheme: SchemeFile = rfs(SCHEME_PATH);
     expect(scheme.tables).toHaveProperty(tableName);
     expect(scheme.tables[tableName].fields.test).toBe("string");
     expect(existsSync(expectedDir)).toBe(true);
+    await allIsSaved();
   });
 
   test("removes a table", async () => {
-    await query(({ }, { db, payload }) => {
-      db.removeTable(payload.tableName);
-    }, {
-      tableName
-    });
+    await query(({ }, { tableName }, { db }) => {
+      db.removeTable(tableName);
+    }, { tableName });
 
     const scheme: SchemeFile = rfs(SCHEME_PATH);
     expect(scheme.tables).not.toHaveProperty(tableName);
 
     expect(existsSync(expectedDir)).toBe(false);
+    await allIsSaved();
   });
 });

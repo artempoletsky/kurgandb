@@ -66,14 +66,14 @@ describe("Utility functions", () => {
   });
 
   test("primary", async () => {
-    const id = await query(({ test_utils_table }, { $ }) => {
+    const id = await query(({ test_utils_table }, { }, { $ }) => {
       return test_utils_table.at("1", $.primary);
-    });
+    }, undefined);
 
     expect(id).toBe("1");
   });
 
-  afterAll(()=>{
+  afterAll(() => {
     DataBase.removeTable(tableName);
   });
 });

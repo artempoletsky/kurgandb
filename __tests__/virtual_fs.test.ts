@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import fs from "../src/virtual_fs";
+import fs, { allIsSaved } from "../src/virtual_fs";
 import { existsSync, mkdirSync } from "fs";
 import { rimraf } from "rimraf";
 
@@ -10,7 +10,8 @@ describe("Virtual file system", () => {
 
   const DIR = "/test_virtual_fs";
   const CWD = process.cwd();
-  beforeAll(() => {
+  beforeAll(async () => {
+    await allIsSaved();
     rimraf.sync(CWD + "/test_data" + DIR);
     mkdirSync(CWD + "/test_data" + DIR);
     fs.setRootDirectory(CWD + "/test_data");
@@ -63,5 +64,9 @@ describe("Virtual file system", () => {
     expect(file.relativePath).toBe(DIR + "/test1.json");
     expect(existsSync(file.absolutePath)).toBe(true);
 
+  });
+
+  afterAll(async () => {
+    await allIsSaved();
   });
 });

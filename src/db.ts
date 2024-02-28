@@ -22,12 +22,12 @@ export type SchemeFile = {
 };
 
 export const DefaultTableSettings = {
-  largeObjects: false,
-  manyRecords: true,
+  // manyRecords: true,
+  // dynamicData: false,
+
   // maxPartitionSize: 1024 * 1024 * 1024,
   // maxPartitionLenght: 10 * 1000,
   // maxIndexPartitionLenght: 100 * 1000,
-  dynamicData: false,
 }
 
 export type TableSettings = typeof DefaultTableSettings;

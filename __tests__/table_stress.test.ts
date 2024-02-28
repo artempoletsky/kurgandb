@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
-import {  perfEnd, perfStart, perfDur, perfLog, perfEndLog } from "../src/utils";
+import { perfEnd, perfStart, perfDur, perfLog, perfEndLog } from "../src/utils";
 import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
@@ -198,12 +198,12 @@ describe("Rich table", () => {
       t = DataBase.getTable(TestTableName);
     })
 
-    test("at", () => {
+    test("at", async () => {
 
       perfStart("query");
-      query(({ jest_test_table }, { db }) => {
+      const rec = await query(({ jest_test_table }: { jest_test_table: Table<number, RichType> }, { }, { db }) => {
         return jest_test_table.at(9);
-      });
+      }, undefined);
       perfEnd("query");
 
 

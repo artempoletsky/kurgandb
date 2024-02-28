@@ -1,41 +1,84 @@
 
-import { AQuery, FnQuery, queryUnsafe, POST } from "./api";
+import { ResponseError } from "@artempoletsky/easyrpc";
+import { AQuery, FQuery, ARegisterQuery, FRegisterQuery, registerQuery, query } from "./api";
 import { DataBase } from "./db";
-import { $, PlainObject } from "./globals";
+import { $, PlainObject, md5 } from "./globals";
 import { Table } from "./table";
 
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 import lodash from "lodash";
 
 // { } , { }
-const ArgumentsExp = /^\{([^}]*)\}\s*\,\s*\{([^}]*)\}$/
-function parseArguments(argStr: string): string[][] {
-  let res = argStr.match(ArgumentsExp);
-  if (!res) throw new Error("can't parse argumens for predicate");
-
-  function prep(str: string): string[] {
-    const trimmed = str.trim();
-    if (!trimmed) return [];
-    return trimmed.split(",").map(e => e.trim());
-  }
-  let result = [prep(res[1]), prep(res[2])];
-
-  return result;
-}
-// (*) => {*}
-const PredicateExp = /^\(([^)]*)\)\s*=>\s*\{([\s\S]*)\}\s*$/
-function parsePredicate(predicate: string): {
-  body: string,
-  args: string[][]
+const ArgumentsExp = /\{([^\}]*)\}/g
+function parseHead(head: string): {
+  args: string[];
+  isAsync: boolean;
 } {
-  const execRes = PredicateExp.exec(predicate);
+  // const expRes = head.match(ArgumentsExp);
+  // if (!expRes) throw new Error("can't parse arguments for predicate");
 
-  if (!execRes) throw new Error("can't parse predicate");
+  // const args = expRes.map(s => s.slice(1, s.length - 1).trim());
+  // console.log(args);
 
-  const args = parseArguments(execRes[1].trim());
-  const body = execRes[2].trim();
+  let argsStarted = false;
+  let bracesStarted = false;
+  const args: string[] = [];
+  let currentArg = "";
+  head = head.replace(/\s+/g, " ");
+  for (let i = 0; i < head.length; i++) {
+    const c = head[i];
+    if (!argsStarted) {
+      if (c == "(") argsStarted = true;
+      continue;
+    }
+
+    if ((c == "," && !bracesStarted) || c == ")") {
+      args.push(currentArg.trim());
+      currentArg = "";
+      if (c == ")") {
+        break;
+      }
+      continue;
+    }
+
+    if (c == "{") bracesStarted = true;
+
+    if (c == "}") bracesStarted = false;
+
+    currentArg += c;
+  }
 
   return {
+    args,
+    isAsync: head.startsWith("async"),
+  };
+}
+// (*) => {*}
+const PredicateExp = /^\(([^)]*)\)\s*=>\s*\{([\s\S]*)\}\s*$/;
+
+
+const HeadSplitExp = /^[^\)]+\)/; //finds head of the function
+const BodyExtractExp = /^[^\{]*\{([\s\S]*)\}\s*$/;
+function parsePredicate(predicate: string): {
+  isAsync: boolean;
+  body: string;
+  args: string[];
+} {
+  const splitRes = HeadSplitExp.exec(predicate);
+  if (!splitRes) throw new Error("can't parse predicate");
+
+  const head = splitRes[0];
+
+  const bodyUnprepared = predicate.slice(head.length, predicate.length);
+  const bodyExtractRes = BodyExtractExp.exec(bodyUnprepared);
+  if (!bodyExtractRes) throw new Error("can't parse predicate");
+
+  const body = bodyExtractRes[1].trim();
+
+  const { args, isAsync } = parseHead(head);
+
+  return {
+    isAsync,
     args,
     body
   }
@@ -54,25 +97,53 @@ export type CallbackScope = {
   db: typeof DataBase
   $: typeof $
   _: typeof lodash
+  ResponseError: typeof ResponseError
 }
 
-export type Predicate<Tables, Payload, ReturnType> = (tables: Tables, scope: CallbackScope & {
-  payload: Payload
-}) => ReturnType;
+export type Predicate<Tables, Payload, ReturnType> = (tables: Tables, payload: Payload, scope: CallbackScope) => ReturnType;
 
 
-export function predicateToQuery<Tables, Payload, ReturnType>(predicate: Predicate<Tables, Payload, ReturnType>, payload: Payload): AQuery {
+export function predicateToQuery<Tables, Payload, ReturnType>(predicate: Predicate<Tables, Payload, ReturnType>): ARegisterQuery {
   const parsed = parsePredicate(predicate.toString());
 
   return {
+    isAsync: parsed.isAsync,
     predicateBody: parsed.body,
-    tables: parsed.args[0],
-    payload: payload as any,
+    predicateArgs: parsed.args,
   }
 }
 
 export type Promisify<T> = Promise<T extends Promise<any> ? Awaited<T> : T>;
 
+
+const QueriesHashes: Map<Predicate<any, any, any>, string> = new Map();
+
+export const QUERY_REGISTER_REQUIRED_MESSAGE = `Query register required`;
+
+async function registerOrCall(predicate: Predicate<any, any, any>, payload: any, registerQuery: FRegisterQuery, remoteQueryAPI: FQuery) {
+  let queryId = QueriesHashes.get(predicate);
+  if (!queryId) {
+    queryId = await registerQuery(predicateToQuery(predicate));
+    QueriesHashes.set(predicate, queryId);
+  }
+
+  let result;
+
+  try {
+    result = await remoteQueryAPI({
+      queryId,
+      payload,
+    });
+  } catch (err: any) {
+    if (err.message == QUERY_REGISTER_REQUIRED_MESSAGE) {
+      QueriesHashes.delete(predicate);
+      return registerOrCall(predicate, payload, registerQuery, remoteQueryAPI);
+    }
+    throw err;
+  }
+
+  return result;
+}
 
 export async function remoteQuery
   <Tables extends Record<string, Table<any, any, any>>, Payload, ReturnType>
@@ -84,23 +155,21 @@ export async function remoteQuery
   if (!address) {
     throw new Error("There is no remote address specified to connect to!");
   }
-  const remoteQueryAPI: FnQuery = getAPIMethod(address, "query", {
+
+  const remoteQueryAPI = getAPIMethod<FQuery>(address, "query", {
     cache: "no-store"
   });
 
+  const registerQuery = getAPIMethod<FRegisterQuery>(address, "registerQuery", {
+    cache: "no-store"
+  });
 
-  return remoteQueryAPI(predicateToQuery<Tables, Payload, ReturnType>(predicate, payload));
+  return registerOrCall(predicate, payload, registerQuery, remoteQueryAPI);
 }
 
 export const standAloneQuery: typeof remoteQuery = async (predicate, payload) => {
   if (!payload) payload = {} as any;
-  DataBase.init();
-  const [response, status] = await POST({
-    method: "query",
-    args: predicateToQuery<any, any, any>(predicate, payload)
-  });
-  if (status == 200) return response;
-  return Promise.reject(response);
+  return registerOrCall(predicate, payload, registerQuery, query);
 }
 
 

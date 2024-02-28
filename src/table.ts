@@ -10,6 +10,7 @@ import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
 import { FieldTag, FieldType, $, PlainObject } from "./globals";
+import { ResponseError } from "@artempoletsky/easyrpc";
 
 // setFlagsFromString('--expose_gc');
 
@@ -493,11 +494,6 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     fieldsOrderUser.splice(newIndex, 0, fieldName);
   }
 
-  clear() {
-    if (!this.scheme.settings.dynamicData) throw new Error(`${this.name} is not a dynamic table`);;
-    return this.filter(() => true).delete();
-  }
-
   getIndexDictDir(fieldName: string) {
     return `/${this.name}/indices/${fieldName}/`;
   }
@@ -573,7 +569,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
 
     if (isUnique) {
-      if (newValue !== undefined && indexDict.getOne(newValue)) throw new Error(`Attempting to create a duplicate in the unique ${this.printField(fieldName)}`);
+      if (newValue !== undefined && indexDict.getOne(newValue)) throw new ResponseError(`Attempting to create a duplicate in the unique ${this.printField(fieldName)}`);
 
       if (oldValue !== undefined) {
         indexDict.remove([oldValue]);
@@ -604,7 +600,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
   canInsertUnique<ColumnType extends string | number>(fieldName: string, column: ColumnType[], throwError: boolean = false): boolean {
     const indexDict: FragmentedDictionary<ColumnType, string | number> = this.indices[fieldName] as any;
-    if (!indexDict) throw new Error(`${this.printField(fieldName)} is not an index`);
+    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
 
     const found = indexDict.hasAnyId(column);
 
@@ -615,9 +611,9 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
   protected errorValueNotUnique(fieldName: string, value: any) {
     if (fieldName == this.primaryKey) {
-      return new Error(`Primary key value '${value}' on ${this.printField()} already exists`)
+      return new ResponseError(`Primary key value '${value}' on ${this.printField()} already exists`)
     }
-    return new Error(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
+    return new ResponseError(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
   public insertMany(data: Type[]): KeyType[] {
@@ -626,7 +622,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     // perfStart("make storable");
     for (const obj of data) {
       const validationError = Document.validateData(obj, this.scheme, this.autoId);
-      if (validationError) throw new Error(`insert failed, data is invalid for reason '${validationError}'`);
+      if (validationError) throw new ResponseError(`insert failed, data is invalid for reason '${validationError}'`);
 
       storable.push(this.makeObjectStorable(obj));
     }
@@ -758,11 +754,15 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     }, 0);
   }
 
+  protected errorWrongId(id: KeyType) {
+    return new ResponseError(`id '${id}' doesn't exists at ${this.printField()}`);
+  }
+
   at(id: KeyType): Type
   at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType
   public at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
     const res = this.where(this.primaryKey as any, id).limit(1).select(predicate);
-    if (res.length == 0) throw new Error(`id '${id}' doesn't exists at ${this.printField()}`);
+    if (res.length == 0) throw this.errorWrongId(id);
     return res[0];
   }
 
@@ -772,13 +772,6 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     const id = this.mainDict.keyAtIndex(index);
     if (id === undefined) return null;
     return this.at(id, predicate);
-  }
-
-  toJSON() {
-    if (this.scheme.settings.manyRecords) {
-      throw new Error("You probably don't want to download a whole table");
-    }
-    return this.all().limit(0).select();
   }
 
   getFieldsOfType(...types: FieldType[]): string[] {
@@ -880,6 +873,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
         $: $,
         _: _,
         db: DataBase,
+        ResponseError,
       });
       this.mainDict.meta.custom.$table = meta;
     }

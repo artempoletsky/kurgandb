@@ -1,5 +1,6 @@
 import type { TDocument } from "./document";
 import md5_fun from "md5";
+import { TableScheme } from "./table";
 
 
 export const FieldTypes = ["string", "number", "date", "boolean", "json"] as const;
@@ -38,29 +39,29 @@ export function randomIndices(length: number, count: number) {
   return Array.from(exclude.keys());
 }
 
-export function pick<Type>(...fields: (keyof Type)[]) {
+function pick<Type>(...fields: (keyof Type)[]) {
   return (doc: TDocument<any, Type>) => {
     return doc.pick(...fields as string[]);
   }
 }
 
-export function omit<Type>(...fields: (keyof Type)[]) {
+function omit<Type>(...fields: (keyof Type)[]) {
   return (doc: TDocument<any, Type>) => {
     return doc.omit(...fields as string[]);
   }
 }
 
-export function primary<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
+function primary<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
   return doc.id;
 }
 
-export function field<Type>(fieldName: keyof Type): any {
+function field<Type>(fieldName: keyof Type): any {
   return (doc: TDocument<any, Type>) => {
     return doc.get(fieldName as string);
   }
 }
 
-export function full<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
+function full<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
   return doc.omit();
 }
 
@@ -80,4 +81,23 @@ export const $ = {
   full,
   md5,
   encodePassword,
+}
+
+
+export function formToDocument(form: HTMLFormElement, scheme: TableScheme): PlainObject {
+  const result: PlainObject = {};
+  const formData = new FormData(form);
+
+  for (const fieldName in scheme.fields) {
+    const type = scheme.fields[fieldName];
+    const value = formData.get(fieldName)?.toString() || "";
+    if (type == "number") {
+      result[fieldName] = parseFloat(value);
+    } if (type == "json") {
+      result[fieldName] = JSON.parse(value);
+    } else {
+      result[fieldName] = value;
+    }
+  }
+  return result;
 }
