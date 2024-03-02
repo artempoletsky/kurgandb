@@ -1,6 +1,6 @@
 {
   "name": "@artempoletsky/kurgandb",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "",
   "main": "build/src/server.js",
   "bin": "build/src/server.js",
@@ -43,6 +43,7 @@
     "./table": "./build/src/table.js"
   },
   "files": [
-    "/build/src"
+    "/build/src",
+    "/build/package.json"
   ]
 }
