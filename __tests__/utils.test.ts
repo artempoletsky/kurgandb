@@ -3,6 +3,7 @@ import { describe, expect, test } from "@jest/globals";
 import { standAloneQuery as query } from "../src/client";
 import { DataBase } from "../src/db";
 import { $ } from "../src/globals";
+import { allIsSaved } from "../src/virtual_fs";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -18,6 +19,8 @@ describe("Utility functions", () => {
   };
 
   beforeAll(() => {
+    DataBase.init(process.cwd() + "/test_data");
+
     const t = DataBase.createTable<string, TestType>({
       name: tableName,
       fields: {
@@ -73,7 +76,9 @@ describe("Utility functions", () => {
     expect(id).toBe("1");
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await allIsSaved();
     DataBase.removeTable(tableName);
+    await allIsSaved();
   });
 });
