@@ -8,6 +8,8 @@ import vfs, { setRootDirectory } from "./virtual_fs";
 import { FieldTag, FieldType } from "./globals";
 import _ from "lodash";
 
+import pkg from "../package.json";
+
 export const SCHEME_PATH = "scheme.json";
 
 export type TCreateTable<Type> = {
@@ -44,6 +46,12 @@ const Tables: AllTablesDict = {}
 let workingDirectory: string;
 let initialized = false;
 export class DataBase {
+
+  
+  public static get version() : string {
+    return pkg.version;
+  }
+  
 
   public static get workingDirectory(): string {
     if (!workingDirectory) {

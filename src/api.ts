@@ -1,5 +1,5 @@
 
-import { CallbackScope, Predicate, Promisify, predicateToQuery, remoteQuery } from "./client";
+import { CallbackScope, Predicate, Promisify, QUERY_REGISTER_REQUIRED_MESSAGE, predicateToQuery, remoteQuery } from "./client";
 import { AllTablesDict, DataBase, TCreateTable } from "./db";
 import validate, { APIObject, APIRequest, APIValidationObject, ResponseError } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
@@ -32,7 +32,9 @@ export async function query(args: AQuery) {
 
   let queryImplementation = QueriesCache[args.queryId];
   if (!queryImplementation) {
-    throw new ResponseError(`Query register required`);
+    // console.log(QUERY_REGISTER_REQUIRED_MESSAGE, args.queryId);
+
+    throw new ResponseError(QUERY_REGISTER_REQUIRED_MESSAGE);
   }
 
   let result: any

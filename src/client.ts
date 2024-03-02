@@ -157,7 +157,7 @@ export async function remoteQuery
   }
 
   const remoteQueryAPI = getAPIMethod<FQuery>(address, "query", {
-    cache: "no-store"
+    // cache: "no-store"
   });
 
   const registerQuery = getAPIMethod<FRegisterQuery>(address, "registerQuery", {
@@ -169,6 +169,7 @@ export async function remoteQuery
 
 export const standAloneQuery: typeof remoteQuery = async (predicate, payload) => {
   if (!payload) payload = {} as any;
+  DataBase.init();
   return registerOrCall(predicate, payload, registerQuery, query);
 }
 

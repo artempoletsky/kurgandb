@@ -1,6 +1,6 @@
 {
   "name": "@artempoletsky/kurgandb",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "",
   "main": "build/src/server.js",
   "bin": "build/src/server.js",
@@ -29,7 +29,7 @@
     "typescript": "^5.3.2"
   },
   "dependencies": {
-    "@artempoletsky/easyrpc": "file:../easyrpc",
+    "@artempoletsky/easyrpc": "^1.2.1",
     "dotenv": "^16.3.2",
     "lodash": "^4.17.21",
     "md5": "^2.3.0",

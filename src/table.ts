@@ -275,7 +275,6 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
   renameField(oldName: string, newName: string) {
     const { fields, tags } = this.scheme;
-    // console.log(oldName, newName);
 
     if (!fields[oldName]) throw new Error(`Field '${oldName}' doesn't exist`);
     if (fields[newName]) throw new Error(`Field '${newName}' already exists`);
@@ -456,9 +455,9 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
 
   addField(fieldName: string, type: FieldType, isHeavy: boolean, predicate?: DocCallback<KeyType, Type, any>) {
-    if (this.scheme.fields[fieldName]) {
-      throw new Error(`field '${fieldName}' already exists`);
-    }
+    if (this.scheme.fields[fieldName])
+      throw new ResponseError(`field '${fieldName}' already exists`);
+
 
     const filesDir = this.getHeavyFieldDir(fieldName);
 
