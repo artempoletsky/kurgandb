@@ -7,6 +7,7 @@ import { Table } from "./table";
 
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 import lodash from "lodash";
+import { logError } from "./utils";
 
 // { } , { }
 const ArgumentsExp = /\{([^\}]*)\}/g
@@ -57,6 +58,11 @@ function parseHead(head: string): {
 const PredicateExp = /^\(([^)]*)\)\s*=>\s*\{([\s\S]*)\}\s*$/;
 
 
+
+function errorCantParse(predicate: string) {
+  return logError("can't parse predicate", predicate);
+}
+
 const HeadSplitExp = /^[^\)]+\)/; //finds head of the function
 const BodyExtractExp = /^[^\{]*\{([\s\S]*)\}\s*$/;
 function parsePredicate(predicate: string): {
@@ -65,15 +71,25 @@ function parsePredicate(predicate: string): {
   args: string[];
 } {
   const splitRes = HeadSplitExp.exec(predicate);
-  if (!splitRes) throw new Error("can't parse predicate");
+  if (!splitRes) throw errorCantParse(predicate);
 
   const head = splitRes[0];
 
-  const bodyUnprepared = predicate.slice(head.length, predicate.length);
+  const bodyUnprepared = predicate.slice(head.length, predicate.length).trim();
   const bodyExtractRes = BodyExtractExp.exec(bodyUnprepared);
-  if (!bodyExtractRes) throw new Error("can't parse predicate");
+  let body: string;
+  if (!bodyExtractRes) {
+    if (bodyUnprepared.startsWith("=>")) {
+      body = "return "+ bodyUnprepared.slice(2, bodyUnprepared.length).trim();
+    } else {
+      throw errorCantParse(predicate)
+    }
+  } else {
+    body = bodyExtractRes[1].trim();
+  }
 
-  const body = bodyExtractRes[1].trim();
+
+
 
   const { args, isAsync } = parseHead(head);
 
@@ -152,9 +168,9 @@ export async function remoteQuery
   if (!payload) payload = {} as Payload;
 
   const address = process.env.KURGANDB_REMOTE_ADDRESS;
-  if (!address) {
-    throw new Error("There is no remote address specified to connect to!");
-  }
+  if (!address)
+    throw logError("There is no remote address specified to connect to!", "");
+
 
   const remoteQueryAPI = getAPIMethod<FQuery>(address, "query", {
     // cache: "no-store"

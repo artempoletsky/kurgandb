@@ -8,6 +8,7 @@ import { allIsSaved } from "./virtual_fs";
 import _ from "lodash";
 import { $, PlainObject, md5 } from "./globals";
 import z from "zod";
+import { logError } from "./utils";
 
 
 
@@ -45,10 +46,11 @@ export async function query(args: AQuery) {
       _,
       $
     });
-  } catch (err) {
+  } catch (err: any) {
     if (err instanceof ResponseError) {
       throw err;
     } else {
+      logError(err);
       throw new ResponseError(`Query has failed with error: ${err}`);
     }
   }
@@ -80,8 +82,12 @@ export async function registerQuery(args: ARegisterQuery) {
   const hash = generateQueryHash(args);
   const constructorArgs = [...args.predicateArgs, args.predicateBody];
   const Construnctor = args.isAsync ? AsyncFunction : Function;
+  try {
+    QueriesCache[hash] = new Construnctor(...constructorArgs) as QueryImplementation;
+  } catch (err: any) {
+    throw logError(err);
+  }
 
-  QueriesCache[hash] = new Construnctor(...constructorArgs) as QueryImplementation;
   return hash;
 }
 

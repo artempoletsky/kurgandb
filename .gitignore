@@ -4,3 +4,4 @@
 /.env
 /test_data/
 /kurgandb_data/
+/kurgandb_log/

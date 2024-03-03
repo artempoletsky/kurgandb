@@ -107,3 +107,48 @@ export function perfEndLog(name: string) {
 export function perfDur(name: string): number {
   return Math.floor(-PerfMeasuerements[name] * 100) / 100;
 }
+
+
+function formatNumber(num: number) {
+  return ('0' + num).slice(-2);
+}
+
+export function getDateString(date: Date) {
+  return `${formatNumber(date.getUTCDate())}.${formatNumber(date.getUTCMonth())}.${date.getUTCFullYear()}`;
+}
+
+export function getTimeString(date: Date) {
+  return `${formatNumber(date.getHours())}:${formatNumber(date.getMinutes())}:${formatNumber(date.getSeconds())}` +
+    ` (${formatNumber(date.getUTCHours())}:${formatNumber(date.getUTCMinutes())}:${formatNumber(date.getUTCSeconds())})`;
+}
+
+export function writeIntoLogFile(message: string, details: string, logLevel: "error" | "info" | "warning" = "error") {
+  const dir = process.cwd() + "/kurgandb_log";
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+  const date = new Date();
+  const dateString = getDateString(date);
+  const timeString = getTimeString(date);
+  const filename = `${dir}/${dateString}.txt`;
+
+  const separator = "\r\n====================================================================================\r\n";
+  let fileContents = fs.existsSync(filename) ? fs.readFileSync(filename, "utf8") : "";
+
+  fileContents += separator;
+  fileContents += `${timeString}: ${logLevel}\r\n\r\n`;
+  fileContents += `${message} \r\n\r\n`;
+  fileContents += `${details} \r\n`;
+
+  fs.writeFileSync(filename, fileContents);
+}
+
+export function logError(message: string, details?: string): Error
+export function logError(err: Error): Error
+export function logError(arg1: string | Error, arg2?: string): Error {
+  if (typeof arg1 == "string") {
+    writeIntoLogFile(arg1, arg2 || "", "error");
+    return new Error(arg1);
+  }
+
+  writeIntoLogFile(arg1.message, arg1.stack || "");
+  return arg1;
+}

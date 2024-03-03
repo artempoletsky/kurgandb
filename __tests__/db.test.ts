@@ -32,6 +32,21 @@ describe("Predicate parser", () => {
       await db;
     });
     expect(q3.isAsync).toBe(true);
+
+
+    const q4 = predicateToQuery<any, any, any>(({ }, { }, { db: e }) => Object.keys(e.getTables()));
+    expect(q4.isAsync).toBe(false);
+    expect(q4.predicateArgs[0]).toBe("{}");
+    expect(q4.predicateArgs[1]).toBe("{}");
+    expect(q4.predicateArgs[2]).toBe("{ db: e }");
+    expect(q4.predicateBody).toBe("return Object.keys(e.getTables())");
+
+    const constructorArgs = [...q4.predicateArgs, q4.predicateBody];
+    const fn = new Function(...constructorArgs);
+
+    expect(fn({}, {}, {
+      db: DataBase
+    })).toBeDefined();
   });
 });
 

@@ -4,6 +4,7 @@ import { standAloneQuery as query } from "../src/client";
 import { DataBase } from "../src/db";
 import { $ } from "../src/globals";
 import { allIsSaved } from "../src/virtual_fs";
+import { writeIntoLogFile } from "../src/utils";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -74,6 +75,15 @@ describe("Utility functions", () => {
     }, undefined);
 
     expect(id).toBe("1");
+  });
+
+  xtest("log", async () => {
+    writeIntoLogFile("Hello log", `asdasd asd
+    asdlaskdasd
+    asdkalsjdaksd
+    asdjkasldj
+    asdklasjdl;asd
+    `);
   });
 
   afterAll(async () => {
