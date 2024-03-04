@@ -28,10 +28,20 @@ type QueryImplementation = (tables: AllTablesDict, payload: PlainObject, scope: 
 
 
 
+export function getCurrentRequestDetails(): string {
+  const source = QueriesSourceCache[currentQueryHash];;
+  const async = source.isAsync ? "async " : "";
+  return `${async} (${source.predicateArgs.join(", ")}) {
+  ${source.predicateBody}
+}`
+}
+
+let currentQueryHash: string = "";
 
 export async function query(args: AQuery) {
 
-  let queryImplementation = QueriesCache[args.queryId];
+  currentQueryHash = args.queryId;
+  let queryImplementation = QueriesCache[currentQueryHash];
   if (!queryImplementation) {
     // console.log(QUERY_REGISTER_REQUIRED_MESSAGE, args.queryId);
 
@@ -47,10 +57,10 @@ export async function query(args: AQuery) {
       $
     });
   } catch (err: any) {
-    if (err instanceof ResponseError) {
+    if (err.response && err.message && err.statusCode) {
       throw err;
     } else {
-      logError(err);
+      logError(err.message, getCurrentRequestDetails());
       throw new ResponseError(`Query has failed with error: ${err}`);
     }
   }
@@ -71,6 +81,7 @@ const ZRegisterQuery = z.object({
 export type ARegisterQuery = z.infer<typeof ZRegisterQuery>;
 
 const QueriesCache: Record<string, QueryImplementation> = {};
+const QueriesSourceCache: Record<string, ARegisterQuery> = {};
 
 
 function generateQueryHash({ isAsync, predicateArgs, predicateBody }: ARegisterQuery) {
@@ -84,10 +95,12 @@ export async function registerQuery(args: ARegisterQuery) {
   const Construnctor = args.isAsync ? AsyncFunction : Function;
   try {
     QueriesCache[hash] = new Construnctor(...constructorArgs) as QueryImplementation;
+
   } catch (err: any) {
-    throw logError(err);
+    throw new ResponseError("Query construction has failed: {...}", [err.message]);
   }
 
+  QueriesSourceCache[hash] = args;
   return hash;
 }
 

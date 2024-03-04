@@ -1,6 +1,8 @@
 import type { TDocument } from "./document";
 import md5_fun from "md5";
 import { TableScheme } from "./table";
+import type { LogEntry } from "./db";
+import type { Table } from "./table";
 
 
 export const FieldTypes = ["string", "number", "date", "boolean", "json"] as const;
@@ -12,6 +14,9 @@ export const FieldTags = ["primary", "unique", "index", "memory", "textarea", "h
 export type FieldTag = typeof FieldTags[number];
 
 export type PlainObject = Record<string, any>;
+
+export type { LogEntry as LogEntry };
+export type { Table as Table };
 
 
 export function randomIndex(length: number, exclude: Set<number> = new Set()): number {
