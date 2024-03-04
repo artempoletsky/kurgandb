@@ -13,6 +13,8 @@ import { ResponseError } from "@artempoletsky/easyrpc";
 
 export const SCHEME_PATH = "scheme.json";
 
+import { exec } from "child_process";
+
 export type TCreateTable<Type> = {
   name: string
   settings?: Partial<TableSettings>
@@ -297,6 +299,12 @@ export class DataBase {
 
     }
     return result;
+  }
+
+  static CI() {
+    setTimeout(() => {
+      exec("bash ./CI.sh");
+    }, 200);
   }
 }
 
