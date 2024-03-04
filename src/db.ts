@@ -47,11 +47,16 @@ let workingDirectory: string;
 let initialized = false;
 export class DataBase {
 
-  
-  public static get version() : string {
+
+  public static get versionString(): string {
+    return `KurganDB v${pkg.version}`;
+  }
+
+
+  public static get version(): string {
     return pkg.version;
   }
-  
+
 
   public static get workingDirectory(): string {
     if (!workingDirectory) {

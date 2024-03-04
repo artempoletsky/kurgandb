@@ -10,6 +10,25 @@ DataBase.init();
 
 const PORT = process.env.KURGANDB_SERVER_PORT || 8080
 
+
+async function request(requestStr: string, method: string): Promise<[any, number]> {
+  let requestObject: any;
+
+  if (method == "POST") {
+    try {
+      requestObject = JSON.parse(requestStr);
+    } catch (error) {
+      return [{
+        message: "Unable to parse request body",
+      }, 400];
+    }
+
+    return await POST(requestObject);
+  } else {
+    return [DataBase.versionString, 200];
+  }
+}
+
 http.createServer(function (req, res) {
   if (req.method == "OPTIONS") {
     res.writeHead(204, {
@@ -38,24 +57,13 @@ http.createServer(function (req, res) {
     .on('end', async () => {
       bodystr = Buffer.concat(body).toString();
 
-      let requestObject = JSON.parse(bodystr);
+      const [postResult, status] = await request(bodystr, req.method || "GET");
+      res.statusCode = status;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.write(JSON.stringify(postResult));
 
-      if (req.method == "POST") {
-        let [postResult, status] = await POST(requestObject);
-        res.statusCode = status;
-
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        // res.writeHead(200, {
-        //   'Content-Type': 'application/json',
-        //   'Access-Control-Allow-Origin': '*'
-        // });
-        res.write(JSON.stringify(postResult));
-      }
       res.end();
-      // res.on('error', err => {
-      //   console.error(err);
-      // });
     });
 
 
@@ -64,5 +72,5 @@ http.createServer(function (req, res) {
 
 // const version = require('../package.json').version;
 
-console.info(`KurganDB v${DataBase.version} is listening on '${PORT}'`);
+console.info(`${DataBase.versionString} is listening on '${PORT}'`);
 console.info(`Working directory: ${DataBase.workingDirectory}`);
