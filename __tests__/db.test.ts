@@ -58,6 +58,19 @@ describe("db", () => {
     await allIsSaved();
   });
 
+  xtest("reads logs list", async () => {
+    const logs = DataBase.getLogsList();
+    expect(logs[0]).toBe("03.02.2024");
+    // console.log(log);
+  });
+
+
+  xtest("reads logs", async () => {
+    const log = DataBase.getLog("03.02.2024");
+    expect(log.length).toBe(4);
+    // console.log(log);
+  });
+
   test("creates a table", async () => {
     const result = await query(({ }, { tableName }, { db }) => {
       db.createTable({

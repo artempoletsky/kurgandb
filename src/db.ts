@@ -1,14 +1,15 @@
 import { rimraf } from "rimraf";
 
 import { Table, TableScheme } from "./table";
-import { mkdirSync, rfs, wfs } from "./utils";
+import { LOGS_DIRECTORY, LOG_DELIMITER, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
-import fs from "fs";
+import fs, { existsSync } from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
 import { FieldTag, FieldType } from "./globals";
 import _ from "lodash";
 
 import pkg from "../package.json";
+import { ResponseError } from "@artempoletsky/easyrpc";
 
 export const SCHEME_PATH = "scheme.json";
 
@@ -45,6 +46,14 @@ const Tables: AllTablesDict = {}
 
 let workingDirectory: string;
 let initialized = false;
+
+export type LogEntry = {
+  level: "error" | "warning" | "info";
+  message: string;
+  details: string;
+  time: string;
+  timeUTC: string;
+}
 export class DataBase {
 
 
@@ -239,6 +248,55 @@ export class DataBase {
     });
 
     rimraf.sync(`${this.workingDirectory}/${name}`);
+  }
+
+  static getLogsList(): string[] {
+    if (!fs.existsSync(LOGS_DIRECTORY)) return [];
+    let files = fs.readdirSync(LOGS_DIRECTORY);
+    files = files.filter(f => f.endsWith(".txt")).map(f => f.slice(0, f.length - 4));
+    return files;
+  }
+
+  static getLog(fileName: string): LogEntry[] {
+    const fullPath = `${LOGS_DIRECTORY}/${fileName}.txt`;
+    if (!fs.existsSync(fullPath)) throw new ResponseError("fileName", "{...} doesn't exist", [fileName]);
+    const fileContents = fs.readFileSync(fullPath, "utf8");
+    const recordsRaw = fileContents.split(LOG_DELIMITER);
+    const result: LogEntry[] = [];
+
+    for (const rec of recordsRaw) {
+      const lines = rec.split("\n").map(l => l.trim());
+      const first = lines.shift();
+      if (!first) continue;
+      // 10:44:33 (05:44:33): error
+      const firstMatch = /(\d\d:\d\d:\d\d) \((\d\d:\d\d:\d\d)\): (\S+)/.exec(first);
+      if (!firstMatch) continue;
+      const time = firstMatch[1];
+      const timeUTC = firstMatch[2];
+      const level = firstMatch[3];
+
+      lines.shift();
+      const second = lines.shift();
+      if (!second) continue;
+
+      const message = second.trim();
+
+      const details = lines.join("\r\n").trim();
+
+      // console.log(second);
+      // const match = /^([^\n]+)\n([^\n]+)\n([\s\S]+)$/.exec(rec)
+      // console.log(match);
+
+      result.push({
+        message,
+        level: level as any,
+        details,
+        time,
+        timeUTC,
+      });
+
+    }
+    return result;
   }
 }
 

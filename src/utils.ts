@@ -122,18 +122,21 @@ export function getTimeString(date: Date) {
     ` (${formatNumber(date.getUTCHours())}:${formatNumber(date.getUTCMinutes())}:${formatNumber(date.getUTCSeconds())})`;
 }
 
+export const LOG_DELIMITER =  "\r\n====================================================================================\r\n";
+export const LOGS_DIRECTORY = process.cwd() + "/kurgandb_log";
+
 export function writeIntoLogFile(message: string, details: string, logLevel: "error" | "info" | "warning" = "error") {
-  const dir = process.cwd() + "/kurgandb_log";
+  const dir = LOGS_DIRECTORY;
   if (!fs.existsSync(dir)) fs.mkdirSync(dir);
   const date = new Date();
   const dateString = getDateString(date);
   const timeString = getTimeString(date);
   const filename = `${dir}/${dateString}.txt`;
 
-  const separator = "\r\n====================================================================================\r\n";
+  
   let fileContents = fs.existsSync(filename) ? fs.readFileSync(filename, "utf8") : "";
 
-  fileContents += separator;
+  fileContents += LOG_DELIMITER;
   fileContents += `${timeString}: ${logLevel}\r\n\r\n`;
   fileContents += `${message} \r\n\r\n`;
   fileContents += `${details} \r\n`;
