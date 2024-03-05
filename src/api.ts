@@ -63,7 +63,11 @@ export async function query(args: AQuery) {
     if (err.response && err.message && err.statusCode) {
       throw err;
     } else {
-      logError(err.message, getCurrentRequestDetails() + "\r\n" + JSON.stringify(args.payload));
+      logError(err.message,
+        getCurrentRequestDetails() + "\r\n"
+        + JSON.stringify(args.payload) + "\r\n"
+        + err.stack + "\r\n"
+      );
       throw new ResponseError({
         message: `Query has failed with error: ${err}`,
         statusCode: 500,
