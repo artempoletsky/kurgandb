@@ -27,13 +27,16 @@ const AsyncFunction: FunctionConstructor = async function () { }.constructor as 
 type QueryImplementation = (tables: AllTablesDict, payload: PlainObject, scope: CallbackScope) => any;
 
 
-
-export function getCurrentRequestDetails(): string {
-  const source = QueriesSourceCache[currentQueryHash];;
+export function queryToString(source: ARegisterQuery): string {
+  if (!source) return "undefined";
   const async = source.isAsync ? "async " : "";
   return `${async} (${source.predicateArgs.join(", ")}) {
   ${source.predicateBody}
 }`
+}
+
+export function getCurrentRequestDetails(): string {
+  return queryToString(QueriesSourceCache[currentQueryHash]);
 }
 
 let currentQueryHash: string = "";
@@ -61,7 +64,10 @@ export async function query(args: AQuery) {
       throw err;
     } else {
       logError(err.message, getCurrentRequestDetails() + "\r\n" + JSON.stringify(args.payload));
-      throw new ResponseError(`Query has failed with error: ${err}`);
+      throw new ResponseError({
+        message: `Query has failed with error: ${err}`,
+        statusCode: 500,
+      });
     }
   }
 
@@ -97,6 +103,7 @@ export async function registerQuery(args: ARegisterQuery) {
     QueriesCache[hash] = new Construnctor(...constructorArgs) as QueryImplementation;
 
   } catch (err: any) {
+    logError("Query construction failed", err.message + "\r\n\r\n" + queryToString(args));
     throw new ResponseError("Query construction has failed: {...}", [err.message]);
   }
 
