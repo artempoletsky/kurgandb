@@ -301,11 +301,6 @@ export class DataBase {
     return result;
   }
 
-  static CI() {
-    setTimeout(() => {
-      exec("bash ./CI.sh");
-    }, 200);
-  }
 }
 
 // DataBase.loadAllTables();
