@@ -1,5 +1,5 @@
 import type { TDocument } from "./document";
-import md5_fun from "md5";
+import md5 from "md5";
 import { TableScheme } from "./table";
 import type { LogEntry } from "./db";
 import type { Table } from "./table";
@@ -70,7 +70,7 @@ function full<KeyType extends string | number, Type>(doc: TDocument<KeyType, Typ
   return doc.omit();
 }
 
-export const md5 = md5_fun;
+export { md5 as md5 };
 
 export function encodePassword(password: string, method: "md5" = "md5") {
   return md5(password);

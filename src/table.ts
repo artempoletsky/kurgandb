@@ -1,7 +1,7 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
 import { Document, TDocument } from "./document";
-import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie } from "./utils";
+import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError } from "./utils";
 
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
@@ -11,39 +11,19 @@ import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
 import { FieldTag, FieldType, $, PlainObject } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
-
-// setFlagsFromString('--expose_gc');
-
-export function parseFunctionArguments(args: string): string[] {
-  args = args.replace(/\s/g, "");
-  if (args == "") return [];
-
-  const ArgExp = /{[^}]*}/g;
-  const execRes = args.match(ArgExp);
-
-  if (!execRes) throw new Error("can't parse arguments");
-  return execRes;
-}
-
-export function packEventListener(handler: (...args: any[]) => void): string[] {
-  const MainExp = /^[^(]*\(([^)]*)\)[^{]*\{([\s\S]*)\}\s*$/
-
-  const execRes = MainExp.exec(handler.toString());
-
-  if (!execRes) throw new Error("can't parse function");
-  const body = execRes[2].trim();
-
-  function parseArguments(str: string) {
+import { ParsedFunction, parseFunction } from "./function";
 
 
-    // console.log(str);
+
+export function packEventListener(handler: (...args: any[]) => void): ParsedFunction {
+  let parsed: ParsedFunction;
+  try {
+    parsed = parseFunction(handler);
+  } catch (error) {
+    throw logError("Can't parse event listener", handler.toString());
   }
 
-  const args = parseFunctionArguments(execRes[1]);
-
-
-
-  return [...args, body];
+  return parsed;
 }
 
 

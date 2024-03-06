@@ -9,6 +9,7 @@ import _ from "lodash";
 import { $, PlainObject, md5 } from "./globals";
 import z from "zod";
 import { logError } from "./utils";
+import { constructFunction } from "./function";
 
 
 
@@ -22,7 +23,6 @@ const ZQuery = z.object({
 
 export type AQuery = z.infer<typeof ZQuery>;
 
-const AsyncFunction: FunctionConstructor = async function () { }.constructor as FunctionConstructor;
 
 type QueryImplementation = (tables: AllTablesDict, payload: PlainObject, scope: CallbackScope) => any;
 
@@ -101,11 +101,12 @@ function generateQueryHash({ isAsync, predicateArgs, predicateBody }: ARegisterQ
 export async function registerQuery(args: ARegisterQuery) {
 
   const hash = generateQueryHash(args);
-  const constructorArgs = [...args.predicateArgs, args.predicateBody];
-  const Construnctor = args.isAsync ? AsyncFunction : Function;
   try {
-    QueriesCache[hash] = new Construnctor(...constructorArgs) as QueryImplementation;
-
+    QueriesCache[hash] = constructFunction({
+      isAsync: args.isAsync,
+      body: args.predicateBody,
+      args: args.predicateArgs,
+    }) as QueryImplementation;
   } catch (err: any) {
     logError("Query construction failed", err.message + "\r\n\r\n" + queryToString(args));
     throw new ResponseError("Query construction has failed: {...}", [err.message]);

@@ -5,9 +5,10 @@ import { perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/utils";
 import { standAloneQuery as query } from "../src/client";
 import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
-import { Table, getMetaFilepath, packEventListener, parseFunctionArguments } from "../src/table";
+import { Table, getMetaFilepath, packEventListener } from "../src/table";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
+import { constructFunction } from "../src/function";
 
 
 const xdescribe = (...args: any) => { };
@@ -567,16 +568,14 @@ describe("Table", () => {
   });
 
   test("packEventListener", () => {
-    const args = parseFunctionArguments("{ table, meta }, { $, _, db }");
-    expect(args[0]).toBe("{table,meta}");
-    expect(args[1]).toBe("{$,_,db}");
 
     let packed = packEventListener(({ table, meta }, { $, _, db }) => {
       meta.test = "123";
     });
 
     // expect(packed[0]).toBe("{ table, meta }");
-    let unpacked = new Function(...packed);
+
+    let unpacked = constructFunction(packed);
     // console.log(unpacked(123));
 
     expect(unpacked).toThrowError();
