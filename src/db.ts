@@ -126,11 +126,11 @@ export class DataBase {
     return Tables;
   }
 
-  static getTable<KeyType extends string | number, Type, MetaObject = {}>(name: string): Table<KeyType, Type, MetaObject> {
+  static getTable<T, idT extends string | number, MetaT = {}>(name: string): Table<T, idT, MetaT> {
     if (!Tables[name]) {
       // const meta = rfs(getMetaFilepath(name));
       let dbScheme: SchemeFile = rfs(SCHEME_PATH);
-      Tables[name] = new Table<KeyType, Type, MetaObject>(name, dbScheme.tables[name]);
+      Tables[name] = new Table<T, idT, MetaT>(name, dbScheme.tables[name]);
     }
 
     return Tables[name] as any;
@@ -146,8 +146,8 @@ export class DataBase {
     return !!this.getScheme(tableName);
   }
 
-  static createTable<KeyType extends string | number, Type, MetaObject = {}>
-    ({ name, fields, settings: rawSettings, tags }: TCreateTable<Type>): Table<KeyType, Type, MetaObject> {
+  static createTable<T, idT extends string | number, MetaT = {}>
+    ({ name, fields, settings: rawSettings, tags }: TCreateTable<T>): Table<T, idT, MetaT> {
     if (this.doesTableExist(name)) {
       throw new Error(`Table '${name}' already exists`);
     }
@@ -179,7 +179,7 @@ export class DataBase {
     for (const fieldName in tags) {
       const fieldTags = tags[fieldName];
       const tagsSet = new Set(fieldTags);
-      const type = fields[<keyof Type>fieldName];
+      const type = fields[<keyof T>fieldName];
 
 
       if (tagsSet.has("index") || tagsSet.has("unique")) {
@@ -234,7 +234,7 @@ export class DataBase {
       pretty: true
     });
 
-    return this.getTable<KeyType, Type, MetaObject>(name);
+    return this.getTable<T, idT, MetaT>(name);
   }
 
   static removeTable(name: string) {

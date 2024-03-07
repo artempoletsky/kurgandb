@@ -34,12 +34,12 @@ export function twoArgsToFilters<KeyType extends string | number>(args: any[]): 
   return [idFilter, partitionFilter];
 }
 
-export default class TableQuery<idT extends string | number, T, LightT = T, VisibleT = T> {
-  protected table: Table<idT, T, any, any, LightT, VisibleT>;
+export default class TableQuery<T, idT extends string | number, LightT, VisibleT> {
+  protected table: Table<T, idT, any, any, LightT, VisibleT>;
   protected indices: IndicesRecord;
   protected mainDict: FragmentedDictionary<idT>;
 
-  protected filters: RecordCallback<idT, T, boolean, LightT, VisibleT>[] = [];
+  protected filters: RecordCallback<T, idT, boolean, LightT, VisibleT>[] = [];
   protected _offset: number = 0;
   protected _limit: number | undefined;
 
@@ -49,7 +49,7 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
   protected partitionFilter: PartitionFilter<any> | undefined;
   protected whereField: string | undefined;
 
-  constructor(table: Table<idT, T, any, any, LightT, VisibleT>, indices: IndicesRecord, mainDict: FragmentedDictionary<idT>) {
+  constructor(table: Table<T, idT, any, any, LightT, VisibleT>, indices: IndicesRecord, mainDict: FragmentedDictionary<idT>) {
     this.table = table;
     this.indices = indices;
     this.mainDict = mainDict;
@@ -110,7 +110,7 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
     });
   }
 
-  filter(predicate: RecordCallback<idT, T, boolean, LightT, VisibleT>): typeof this {
+  filter(predicate: RecordCallback<T, idT, boolean, LightT, VisibleT>): typeof this {
     this.filters.push(predicate);
     return this;
   }
@@ -119,11 +119,11 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
    *  @param useTableRecord return a predicate that uses TableRecord instead of raw data array
    */
   getFilterFunction(): undefined | ((data: any[], id: idT) => boolean)
-  getFilterFunction(useTableRecord: true): undefined | ((rec: TRecord<idT, T, LightT, VisibleT>) => boolean)
+  getFilterFunction(useTableRecord: true): undefined | ((rec: TRecord<T, idT, LightT, VisibleT>) => boolean)
   getFilterFunction(useTableRecord = false): any {
     if (!this.filter.length) return undefined;
     if (useTableRecord) {
-      return (rec: TRecord<idT, T, LightT, VisibleT>) => {
+      return (rec: TRecord<T, idT, LightT, VisibleT>) => {
         for (let i = 0; i < this.filters.length; i++) {
           let filter = this.filters[i];
 
@@ -135,7 +135,7 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
       }
     }
     return (data: any[], id: idT) => {
-      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<idT, T, LightT, VisibleT>;
+      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<T, idT, LightT, VisibleT>;
       for (let i = 0; i < this.filters.length; i++) {
         let filter = this.filters[i];
 
@@ -178,12 +178,12 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
     return [idFilter, partitionFilter];
   }
 
-  select<ReturnType = VisibleT>(predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>): ReturnType[] {
+  select<ReturnType = VisibleT>(predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType[] {
     if (this._orderBy !== undefined) {
       return this.orderedSelect(predicate);
     }
     const select = (data: any[], id: idT) => {
-      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<idT, T, LightT, VisibleT>;
+      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<T, idT, LightT, VisibleT>;
       if (predicate) {
         return predicate(rec);
       }
@@ -225,10 +225,10 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
     return this.limit(pageSize);
   }
 
-  update(predicate: RecordCallback<idT, T, void, LightT, VisibleT>): void {
+  update(predicate: RecordCallback<T, idT, void, LightT, VisibleT>): void {
 
     const update = (data: any[], id: idT) => {
-      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<idT, T, LightT, VisibleT>;
+      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<T, idT, LightT, VisibleT>;
       predicate(rec);
       return rec.$serialize();
     }
@@ -286,7 +286,7 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
     throw new Error(`${name} is an invalid index`);
   }
 
-  protected orderedSelect<ReturnType = T>(predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>): ReturnType[] {
+  protected orderedSelect<ReturnType = T>(predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType[] {
     if (this._orderBy === undefined) {
       this.throwInvalidIndex(undefined);
       return [];
@@ -319,7 +319,7 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
           openedPartitions[partId] = mainDict.openPartition(partId);
         }
         const partition = openedPartitions[partId];
-        const rec: TRecord<idT, T, LightT, VisibleT> = new TableRecord(partition.get(id), id, table, indices) as any;
+        const rec: TRecord<T, idT, LightT, VisibleT> = new TableRecord(partition.get(id), id, table, indices) as any;
         if (filter && !filter(rec)) continue;
         found++;
 

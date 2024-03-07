@@ -23,7 +23,7 @@ describe("Table index", () => {
   }
 
 
-  let test_words: Table<number, TestWord, any>;
+  let test_words: Table<TestWord, number, any>;
 
   const testInsert: TestWord[] = [
     { id: 2, level: "a1", word: "b" },
@@ -45,7 +45,7 @@ describe("Table index", () => {
     }
 
 
-    test_words = DataBase.createTable<number, TestWord, any>({
+    test_words = DataBase.createTable<TestWord, number, any>({
       name: "test_words",
       fields: {
         id: "number",
@@ -128,7 +128,7 @@ describe("Table index", () => {
 
     let a2IndexIds = test_words.indexIds("level", "a2");
     expect(a2IndexIds.length).toBe(2);
-    
+
     expect(a2IndexIds[0]).toBe(5);
     expect(a2IndexIds[1]).toBe(6);
 
@@ -150,7 +150,7 @@ describe("Table index", () => {
     expect(g.word).toBe("g");
 
     expect(test_words.indexIds("word", "g").length).toBe(0);
-    
+
 
     // debugger;
     a2IndexIds = test_words.indexIds("level", "a2");
@@ -169,8 +169,8 @@ describe("Table index", () => {
     expect(a2Select.length).toBe(1);
 
     const a2 = a2Select[0];
-    console.log(a2);
 
+    expect(a2.level).toBe("a2");
     expect(a2.id).toBe(5);
     expect(a2.word).toBe("f");
 

@@ -49,18 +49,20 @@ export function mkdirSync(dirname: string) {
  * @param dirname 
  */
 export function rmie(name: string) {
-  if (existsSync(name)) {
+  rimraf.sync(abs(name));
 
-    // unlinkSync(name);
-    if (name.endsWith("/")) {
-      // console.log(name);?
+  // if (existsSync(name)) {
 
-      rimraf.sync(abs(name));
-      // fs.rmdirSync();
-    } else {
-      unlinkSync(abs(name));
-    }
-  }
+  //   // unlinkSync(name);
+  //   if (name.endsWith("/")) {
+  //     // console.log(name);?
+
+  //     rimraf.sync(abs(name));
+  //     // fs.rmdirSync();
+  //   } else {
+  //     unlinkSync(abs(name));
+  //   }
+  // }
 }
 
 

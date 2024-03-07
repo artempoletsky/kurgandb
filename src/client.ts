@@ -70,7 +70,7 @@ async function registerOrCall(predicate: Predicate<any, any, any>, payload: any,
 }
 
 export async function remoteQuery
-  <Tables extends Record<string, Table<any, any, any>>, Payload, ReturnType>
+  <Tables, Payload, ReturnType>
   (predicate: Predicate<Tables, Payload, ReturnType>, payload?: Payload)
   : Promisify<ReturnType> {
   if (!payload) payload = {} as Payload;

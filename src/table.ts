@@ -39,7 +39,7 @@ export type TableScheme = {
 
 export type IndicesRecord = Record<string, FragmentedDictionary<string | number, any>>
 
-export type RecordCallback<idT extends string | number, T, ReturnType, LightT, VisibleT> = (record: TRecord<idT, T, LightT, VisibleT>) => ReturnType;
+export type RecordCallback<T, idT extends string | number, ReturnType, LightT, VisibleT> = (record: TRecord<T, idT, LightT, VisibleT>) => ReturnType;
 
 
 
@@ -62,33 +62,33 @@ export function getMetaFilepath(tableName: string): string {
 }
 
 
-export type RecordsChangeEvent<KeyType extends string | number, Type, MetaType, InsertT, LightT, VisibleT> = CallbackScope & {
-  records: Type[];
-  meta: MetaType;
-  field: keyof Type;
-  oldValue: any;
-  newValue: any;
-  table: Table<KeyType, Type, MetaType, InsertT, LightT, VisibleT>;
-}
-
-export type RecordsInsertEvent<idT extends string | number, T, MetaT, InsertT, LightT, VisibleT> = CallbackScope & {
+export type RecordsChangeEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope & {
   records: T[];
   meta: MetaT;
-  table: Table<idT, T, MetaT, InsertT, LightT, VisibleT>;
+  field: keyof T;
+  oldValue: any;
+  newValue: any;
+  table: Table<T, idT, MetaT, InsertT, LightT, VisibleT>;
 }
 
-export type RecordsRemoveEvent<KeyType extends string | number, Type, MetaType, InsertT, LightT, VisibleT> = CallbackScope & {
-  records: Type[];
-  meta: MetaType;
-  table: Table<KeyType, Type, MetaType, InsertT, LightT, VisibleT>;
+export type RecordsInsertEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope & {
+  records: T[];
+  meta: MetaT;
+  table: Table<T, idT, MetaT, InsertT, LightT, VisibleT>;
 }
 
-export type TableOpenEvent<KeyType extends string | number, Type, MetaType, InsertT, LightT, VisibleT> = CallbackScope & {
-  meta: MetaType;
-  table: Table<KeyType, Type, MetaType, InsertT, LightT, VisibleT>;
+export type RecordsRemoveEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope & {
+  records: T[];
+  meta: MetaT;
+  table: Table<T, idT, MetaT, InsertT, LightT, VisibleT>;
 }
 
-export class Table<idT extends string | number = string | number, T = any, MetaT = {}, InsertT = T, LightT = T, VisibleT = T> {
+export type TableOpenEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope & {
+  meta: MetaT;
+  table: Table<T, idT, MetaT, InsertT, LightT, VisibleT>;
+}
+
+export class Table<T = unknown, idT extends string | number = string | number, MetaT = {}, InsertT = T, LightT = T, VisibleT = T> {
   protected mainDict: FragmentedDictionary<idT, any[]>;
   protected indices: IndicesRecord;
   protected memoryFields: Record<string, SortedDictionary<idT, any>>;
@@ -105,6 +105,7 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
   protected _dirtyIndexPartitions: Map<number, boolean> = new Map();
 
   constructor(name: string, scheme: TableScheme) {
+
     this.primaryKey = "id";
     this.name = name;
     this.scheme = scheme;
@@ -216,22 +217,23 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
   }
 
   protected createQuery() {
-    return new TableQuery<idT, T, LightT, VisibleT>(this, this.indices, this.mainDict);
+
+    return new TableQuery<T, idT, LightT, VisibleT>(this, this.indices, this.mainDict);
   }
 
-  whereRange(fieldName: keyof T, min: any, max: any): TableQuery<idT, T, LightT, VisibleT> {
+  whereRange(fieldName: keyof T, min: any, max: any): TableQuery<T, idT, LightT, VisibleT> {
     return this.createQuery().whereRange(fieldName as any, min, max);
   }
 
   where<FieldType extends string | number>(fieldName: keyof T,
     idFilter: IDFilter<FieldType>,
-    partitionFilter?: PartitionFilter<FieldType>): TableQuery<idT, T, LightT, VisibleT>
-  where<FieldType extends string | number>(fieldName: keyof T, ...values: FieldType[]): TableQuery<idT, T, LightT, VisibleT>
+    partitionFilter?: PartitionFilter<FieldType>): TableQuery<T, idT, LightT, VisibleT>
+  where<FieldType extends string | number>(fieldName: keyof T, ...values: FieldType[]): TableQuery<T, idT, LightT, VisibleT>
   where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
     return this.createQuery().where<FieldType>(fieldName, ...args);
   }
 
-  filter(predicate: RecordCallback<idT, T, boolean, LightT, VisibleT>) {
+  filter(predicate: RecordCallback<T, idT, boolean, LightT, VisibleT>) {
     return this.createQuery().filter(predicate);
   }
 
@@ -420,7 +422,7 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
   }
 
 
-  addField<ReturnType = any>(fieldName: string, type: FieldType, isHeavy: boolean, predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>) {
+  addField<ReturnType = any>(fieldName: string, type: FieldType, isHeavy: boolean, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>) {
     if (this.scheme.fields[fieldName])
       throw new ResponseError(`field '${fieldName}' already exists`);
 
@@ -433,7 +435,7 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
     else {
       const definedPredicate = predicate || (() => getDefaultValueForType(type));
       this.insertRecordColumn(this._indexFieldName.length, (id, arr) => {
-        return definedPredicate(new TableRecord(arr, id, this, this.indices) as TRecord<idT, T, LightT, VisibleT>);
+        return definedPredicate(new TableRecord(arr, id, this, this.indices) as TRecord<T, idT, LightT, VisibleT>);
       });
     }
 
@@ -710,7 +712,7 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
         ...o,
         [this.primaryKey]: ids[i]
       } as T));
-      const e: RecordsInsertEvent<idT, T, MetaT, InsertT, LightT, VisibleT> = {
+      const e: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT> = {
         records: inserted,
         table: this,
         meta: this.meta,
@@ -828,16 +830,16 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
   }
 
   at(id: idT): VisibleT
-  at<ReturnType = T>(id: idT, predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>): ReturnType
-  public at<ReturnType>(id: idT, predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>) {
+  at<ReturnType = T>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType
+  public at<ReturnType>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>) {
     const res = this.where(this.primaryKey as any, id).limit(1).select(predicate);
     if (res.length == 0) throw this.errorWrongId(id);
     return res[0];
   }
 
   atIndex(index: number): VisibleT | null
-  atIndex<ReturnType = T>(index: number, predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>): ReturnType | null
-  public atIndex<ReturnType>(index: number, predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>) {
+  atIndex<ReturnType = T>(index: number, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType | null
+  public atIndex<ReturnType>(index: number, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>) {
     const id = this.mainDict.keyAtIndex(index);
     if (id === undefined) return null;
     return this.at(id, predicate);
@@ -925,10 +927,10 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
     }
   }
 
-  registerEventListener(handlerId: string, eventName: "tableOpen", handler: (event: TableOpenEvent<idT, T, MetaT, InsertT, LightT, VisibleT>) => void): void
-  registerEventListener(handlerId: string, eventName: "recordsRemove", handler: (event: RecordsRemoveEvent<idT, T, MetaT, InsertT, LightT, VisibleT>) => void): void
-  registerEventListener(handlerId: string, eventName: "recordsInsert", handler: (event: RecordsInsertEvent<idT, T, MetaT, InsertT, LightT, VisibleT>) => void): void
-  registerEventListener(handlerId: string, eventName: "recordsChange", handler: (event: RecordsChangeEvent<idT, T, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(handlerId: string, eventName: "tableOpen", handler: (event: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(handlerId: string, eventName: "recordsRemove", handler: (event: RecordsRemoveEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(handlerId: string, eventName: "recordsInsert", handler: (event: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(handlerId: string, eventName: "recordsChange", handler: (event: RecordsChangeEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
   registerEventListener(handlerId: string, eventName: string, handler: (event: any) => void): void {
     let listeners = this.events[eventName];
     const $serviceListeners = this.mainDict.meta.custom.$serviceListeners || {};
@@ -945,7 +947,7 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
       const meta = {
         ...this.meta
       };
-      const e: TableOpenEvent<idT, T, MetaT, InsertT, LightT, VisibleT> = {
+      const e: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT> = {
         $,
         _,
         db: DataBase,
@@ -972,10 +974,10 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
     this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
   }
 
-  triggerEvent(eventName: "tableOpen", event: TableOpenEvent<idT, T, MetaT, InsertT, LightT, VisibleT>): void
-  triggerEvent(eventName: "recordsRemove", event: RecordsRemoveEvent<idT, T, MetaT, InsertT, LightT, VisibleT>): void
-  triggerEvent(eventName: "recordsInsert", event: RecordsInsertEvent<idT, T, MetaT, InsertT, LightT, VisibleT>): void
-  triggerEvent(eventName: "recordsChange", event: RecordsChangeEvent<idT, T, MetaT, InsertT, LightT, VisibleT>): void
+  triggerEvent(eventName: "tableOpen", event: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT>): void
+  triggerEvent(eventName: "recordsRemove", event: RecordsRemoveEvent<T, idT, MetaT, InsertT, LightT, VisibleT>): void
+  triggerEvent(eventName: "recordsInsert", event: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT>): void
+  triggerEvent(eventName: "recordsChange", event: RecordsChangeEvent<T, idT, MetaT, InsertT, LightT, VisibleT>): void
   triggerEvent(eventName: EventName, event: any): void {
     const listeners = this.events[eventName];
     if (!listeners) return;

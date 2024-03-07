@@ -3,22 +3,22 @@ import { TableScheme, Table, IndicesRecord } from "./table";
 import { DataBase } from "./db";
 import { FieldType, PlainObject } from "./globals";
 
-export type TRecord<idT extends string | number, T, LightT = T, VisibleT = T> = TableRecord<idT, T, LightT, VisibleT> & T;
+export type TRecord<T, idT extends string | number, LightT = T, VisibleT = T> = TableRecord<T, idT, LightT, VisibleT> & T;
 
-export class TableRecord<idT extends string | number, T, LightT = T, VisibleT = T> {
+export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
   protected _id: idT;
   protected _indices: IndicesRecord;
   protected _data: any[] = [];
   protected _dates: Record<string, Date> = {};
 
-  protected _table: Table<idT, T, any, any, LightT, VisibleT>;
+  protected _table: Table<T, idT, any, any, LightT, VisibleT>;
 
 
   public get $id(): idT {
     return this._id;
   }
 
-  constructor(data: any[], id: idT, table: Table<idT, T, any, any, LightT, VisibleT>, indices: IndicesRecord) {
+  constructor(data: any[], id: idT, table: Table<T, idT, any, any, LightT, VisibleT>, indices: IndicesRecord) {
     this._indices = indices;
 
     this._table = table;
@@ -27,7 +27,7 @@ export class TableRecord<idT extends string | number, T, LightT = T, VisibleT = 
 
     this._data = data;
 
-    let proxy = new Proxy<TableRecord<idT, T, LightT, VisibleT>>(this, {
+    let proxy = new Proxy<TableRecord<T, idT, LightT, VisibleT>>(this, {
       set: (target: any, key: string & keyof T, value: any) => {
         this.$set(key, value);
         return true;
