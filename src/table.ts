@@ -140,6 +140,8 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.loadMemoryIndices();
     this.updateFieldIndices();
     this.activateEventListeners();
+
+    this.triggerEvent("tableOpen");
   }
 
 
