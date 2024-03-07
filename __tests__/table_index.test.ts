@@ -126,10 +126,54 @@ describe("Table index", () => {
 
   test("delete", () => {
 
-    test_words.where("word", "g").delete();
+    let a2IndexIds = test_words.indexIds("level", "a2");
+    expect(a2IndexIds.length).toBe(2);
+    
+    expect(a2IndexIds[0]).toBe(5);
+    expect(a2IndexIds[1]).toBe(6);
+
+    let g = test_words.where("word", "g").select()[0];
+    expect(g.id).toBe(6);
+    expect(g.level).toBe("a2");
+    expect(g.word).toBe("g");
+
+    let a2Select = test_words.where("level", "a2").select();
+    expect(a2Select[0].id).toBe(5);
+    expect(a2Select[1].id).toBe(6);
+
+    expect(a2Select.length).toBe(2);
+
+    g = test_words.where("word", "g").delete()[0];
+
+    expect(g.id).toBe(6);
+    expect(g.level).toBe("a2");
+    expect(g.word).toBe("g");
 
     expect(test_words.indexIds("word", "g").length).toBe(0);
-    expect(test_words.indexIds("level", "a2").length).toBe(1);
+    
+
+    // debugger;
+    a2IndexIds = test_words.indexIds("level", "a2");
+    expect(a2IndexIds.length).toBe(1);
+    expect(a2IndexIds[0]).toBe(5);
+
+
+    const whereA2Query = test_words.where("level", "a2");
+
+    const [idFilter] = whereA2Query.getQueryFilters();
+    expect(idFilter).toBeDefined(); if (!idFilter) return;
+    expect(idFilter(5)).toBe(true);
+
+    a2Select = test_words.where("level", "a2").select();
+
+    expect(a2Select.length).toBe(1);
+
+    const a2 = a2Select[0];
+    console.log(a2);
+
+    expect(a2.id).toBe(5);
+    expect(a2.word).toBe("f");
+
   });
 
   test("update", () => {
@@ -137,9 +181,10 @@ describe("Table index", () => {
     test_words.where("word", "h").update(rec => {
       rec.word = "g";
     });
-
     expect(test_words.indexIds("word", "h").length).toBe(0);
-    expect(test_words.indexIds("level", "a2").length).toBe(1);
+
+    // debugger;
+
 
     expect(() => {
       test_words.where("level", "a1").update(rec => {

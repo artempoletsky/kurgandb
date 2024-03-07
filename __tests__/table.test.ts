@@ -166,14 +166,14 @@ describe("Table", () => {
     expect(arr).toBeDefined();
     if (!arr) return;
     expect(arr[0]).toBe(123);
-    indexDict.remove(["blablabla"]);
+    indexDict.remove("blablabla");
     expect(indexDict.getOne("blablabla")).toBe(undefined);
 
 
     t.storeIndexValue("name", 456, "foo123");
     indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
     expect(indexDict.getOne("foo123")).toBeDefined();
-    indexDict.remove(["foo123"]);
+    indexDict.remove("foo123");
 
     const foos = indexDict.getOne("foo");
     expect(foos).toBeDefined();

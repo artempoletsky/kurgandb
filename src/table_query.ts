@@ -9,12 +9,6 @@ import { abortOperation, stopTrackingOperation, trackOperation } from "./virtual
 
 
 
-type WhereFilter<KeyType extends string | number, Type> = {
-  fieldName: keyof Type & string,
-  ranges: WhereRanges<KeyType>
-}
-
-
 function idFilterFromSet<KeyType extends string | number>(ids: KeyType[]): IDFilter<KeyType> {
   return id => ids.includes(id);
 }
@@ -45,7 +39,6 @@ export default class TableQuery<idT extends string | number, T, LightT = T, Visi
   protected indices: IndicesRecord;
   protected mainDict: FragmentedDictionary<idT>;
 
-  protected whereFilter: WhereFilter<string | number, T> | undefined;
   protected filters: RecordCallback<idT, T, boolean, LightT, VisibleT>[] = [];
   protected _offset: number = 0;
   protected _limit: number | undefined;

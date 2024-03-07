@@ -406,7 +406,7 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
     this.editRanges(FragmentedDictionary.idsToRanges(ids), predicate, 0);
   }
 
-  remove(ids: KeyType[]) {
+  remove(...ids: KeyType[]) {
     this.iterateRanges({
       ranges: ids.map(id => [id, id]),
       update: () => undefined,
@@ -676,7 +676,7 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
       update,
       select,
       limit,
-      offset
+      offset, 
     } = Object.assign({
 
       limit: 0,

@@ -590,20 +590,20 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
       if (newValue !== undefined && indexDict.getOne(newValue)) throw new ResponseError(`Attempting to create a duplicate in the unique ${this.printField(fieldName)}`);
 
       if (oldValue !== undefined) {
-        indexDict.remove([oldValue]);
+        indexDict.remove(oldValue);
       }
       if (newValue !== undefined) {
         indexDict.setOne(newValue, recID);
       }
     } else {
       if (oldValue !== undefined) {
-        const arr: idT[] = indexDict.getOne(oldValue) || [];
+        const arr: idT[] = (indexDict.getOne(oldValue) || []).slice(0);
         // arr.push(id);
         arr.splice(arr.indexOf(recID), 1);
         if (arr.length) {
           indexDict.setOne(oldValue, arr);
         } else {
-          indexDict.remove([oldValue]);
+          indexDict.remove(oldValue);
         }
       }
 
@@ -756,7 +756,6 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
   }
 
   removeColumnFromIndex<IndexType extends string | number>(fieldName: string, indexData: Map<IndexType, idT[]>) {
-    const column = Array.from(indexData.keys());
     const indexDict: FragmentedDictionary<IndexType, any> = this.indices[fieldName] as any;
     if (!indexDict) throw this.errorFieldNotIndex(fieldName);
     const isUnique = this.fieldHasAnyTag(fieldName, "unique");
@@ -766,9 +765,9 @@ export class Table<idT extends string | number = string | number, T = any, MetaT
       update: (val: idT[], indexId) => {
         if (isUnique)
           return undefined;
-        const toRemove = indexData.get(indexId);
+        const toRemove = indexData.get(indexId) as idT[];
 
-        val = val.filter(recordId => toRemove?.includes(recordId));
+        val = val.filter(recordId => !toRemove.includes(recordId));
         if (val.length == 0) return undefined;
         return val;
       },

@@ -345,7 +345,7 @@ describe("Fragmented dictionary", () => {
   });
 
   test("removes items", () => {
-    letters.remove(["b", "a"]);
+    letters.remove("b", "a");
     expect(letters.getOne("a")).toBe(undefined);
     expect(letters.getOne("b")).toBe(undefined);
   });
@@ -396,12 +396,12 @@ describe("Fragmented dictionary", () => {
     numbers = FragmentedDictionary.reset(numbers);
     numbers.insertSortedDict(SortedDictionary.fromLenght(40));
 
-    numbers.remove([40, 39, 38, 37, 36]);
+    numbers.remove(40, 39, 38, 37, 36);
 
     expect(numbers.end).toBe(35);
     expect(numbers.length).toBe(35);
 
-    numbers.remove([1, 2, 3]);
+    numbers.remove(1, 2, 3);
 
     expect(numbers.start).toBe(4);
     expect(numbers.length).toBe(32);
