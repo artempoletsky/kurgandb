@@ -1,6 +1,6 @@
 import { TableRecord, TRecord } from "./record";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
-import { RecordCallback, IndicesRecord, Table } from "./table";
+import { RecordCallback, IndicesRecord, Table, RecordsRemoveEvent } from "./table";
 
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
@@ -255,17 +255,24 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
   delete() {
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
-    const removed: LightT[] = []
+    const removed: LightT[] = [];
+
+    const hasHeavyRemoveListener = this.table.hasEventListener("recordsRemove");
+    const removedFull: T[] = [];
 
     const operationID = trackOperation();
+    let ids: idT[];
     try {
-      const [, ids] = this.mainDict.where({
+      [, ids] = this.mainDict.where({
         idFilter,
         partitionFilter,
         filter: this.getFilterFunction(),
         update: (data: any[], id: idT) => {
           let rec = new TableRecord(data, id, this.table, this.indices);
           removed.push(rec.$light());
+          if (hasHeavyRemoveListener) {
+            removedFull.push(rec.$full());
+          }
           return undefined;
         },
         limit: this._limit || 0,
@@ -273,12 +280,21 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
       });
 
       this.table.removeFromIndex(removed);
-      this.table.removeHeavyFilesForEachID(ids);
     } catch (err) {
       abortOperation(operationID);
       throw err;
     }
     stopTrackingOperation(operationID);
+    this.table.removeHeavyFilesForEachID(ids);
+    if (hasHeavyRemoveListener)
+      this.table.triggerEvent("recordsRemove", {
+        records: removedFull
+      });
+
+
+    this.table.triggerEvent("recordsRemoveLight", {
+      records: removed,
+    });
     return removed;
   }
 

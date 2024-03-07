@@ -20,11 +20,14 @@ describe("Table events", () => {
     id: number;
     level: string;
   }
+
+  type TestWordInsert = Omit<TestWord, "id">;
+
   type TestWordsMeta = {
     levelsLen: Record<string, number>
   }
 
-  let test_words: Table<string, TestWord, TestWordsMeta>;
+  let test_words: Table<TestWord, string, TestWordsMeta, TestWordInsert>;
   beforeAll(async () => {
     await allIsSaved();
 
@@ -35,7 +38,7 @@ describe("Table events", () => {
     }
 
 
-    test_words = DataBase.createTable<string, TestWord, TestWordsMeta>({
+    test_words = DataBase.createTable<TestWord, string, TestWordsMeta>({
       name: "test_words",
       fields: {
         id: "number",
@@ -49,15 +52,15 @@ describe("Table events", () => {
 
 
     test_words.insertMany([
-      { level: "a1", },
-      { level: "a1", },
-      { level: "a1", },
-      { level: "a1", },
-      { level: "a2", },
-      { level: "a2", },
-      { level: "b1", },
-      { level: "c1", },
-    ] as any)
+      { level: "a1" },
+      { level: "a1" },
+      { level: "a1" },
+      { level: "a1" },
+      { level: "a2" },
+      { level: "a2" },
+      { level: "b1" },
+      { level: "c1" },
+    ])
   });
 
   test("packEventListener", () => {
@@ -112,7 +115,9 @@ describe("Table events", () => {
       $.aggregateDictionary(meta.levelsLen, levels, true);
     });
 
-    const id = test_words.insert({ level: "a1" } as any);
+    expect(test_words.meta.levelsLen.a1).toBe(4);
+
+    const id = test_words.insert({ level: "a1" });
 
     expect(test_words.meta.levelsLen.a1).toBe(5);
 
@@ -126,19 +131,21 @@ describe("Table events", () => {
 
   test("recordsChange", () => {
 
-    test_words.registerEventListener("levelsLen", "recordsChange", ({ field, oldValue, newValue, meta }) => {
-      if (field == "level") {
-        meta.levelsLen[oldValue]--;
-        meta.levelsLen[newValue] = meta.levelsLen[newValue] ? meta.levelsLen[newValue] + 1 : 1;
-      }
+    test_words.registerEventListener<string>("levelsLen", "recordChange:level", ({ oldValue, newValue, meta }) => {
+      meta.levelsLen[oldValue]--;
+      meta.levelsLen[newValue]++;
     });
 
-    test_words.where("id", "car").update(doc => {
-      doc.level = "a2";
+    expect(test_words.meta.levelsLen.a1).toBe(5);
+    expect(test_words.meta.levelsLen.a2).toBe(2);
+    expect(test_words.hasEventListener("recordChange:level")).toBe(true);
+
+    test_words.where("id", 4).update(rec => {
+      rec.level = "a2";
     });
 
     expect(test_words.meta.levelsLen.a1).toBe(4);
-    expect(test_words.meta.levelsLen.a2).toBe(1);
+    expect(test_words.meta.levelsLen.a2).toBe(3);
   });
 
   afterAll(async () => {

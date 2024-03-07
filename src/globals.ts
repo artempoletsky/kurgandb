@@ -15,7 +15,7 @@ export type FieldTag = typeof FieldTags[number];
 
 export type PlainObject = Record<string, any>;
 
-export const EventNames = ["tableOpen", "recordsRemove", "recordsInsert", "recordsChange"] as const;
+export const EventNames = ["tableOpen", "recordsRemove", "recordsRemoveLight", "recordsInsert", "recordChange"] as const;
 
 export type EventName = typeof EventNames[number];
 
@@ -49,29 +49,29 @@ export function randomIndices(length: number, count: number) {
 }
 
 function pick<Type>(...fields: (keyof Type)[]) {
-  return (doc: TRecord<any, Type>) => {
-    return doc.$pick(...fields as string[]);
+  return (rec: TRecord<Type, any>) => {
+    return rec.$pick(...fields as string[]);
   }
 }
 
 function omit<Type>(...fields: (keyof Type)[]) {
-  return (doc: TRecord<any, Type>) => {
-    return doc.$omit(...fields as string[]);
+  return (rec: TRecord<Type, any>) => {
+    return rec.$omit(...fields as string[]);
   }
 }
 
-function primary<KeyType extends string | number, Type>(doc: TRecord<KeyType, Type>) {
-  return doc.$id;
+function primary<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
+  return rec.$id;
 }
 
 function field<Type>(fieldName: keyof Type): any {
-  return (doc: TRecord<any, Type>) => {
-    return doc.$get(fieldName as string);
+  return (rec: TRecord<Type, any>) => {
+    return rec.$get(fieldName as string);
   }
 }
 
-function full<KeyType extends string | number, Type>(doc: TRecord<KeyType, Type>) {
-  return doc.$omit();
+function full<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
+  return rec.$omit();
 }
 
 export { md5 as md5 };

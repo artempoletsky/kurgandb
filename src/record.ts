@@ -67,10 +67,23 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     let newValue: any = TableRecord.storeValueOfType(value, type as any);
 
     if (tags.includes("heavy")) {
+      const hasChangeListener = this._table.hasEventListener("recordChange:" + fieldName);
+      let oldValue: any;
+      if (hasChangeListener) {
+        oldValue = this.$get(fieldName);
+      }
       if (type == "json") {
         fs.writeFileSync(this.$getExternalFilename(fieldName), JSON.stringify(value));
       } else {
         fs.writeFileSync(this.$getExternalFilename(fieldName), value);
+      }
+      if (hasChangeListener) {
+        this._table.triggerEvent("recordChange", {
+          newValue,
+          oldValue,
+          record: this as any,
+          fieldName,
+        })
       }
       return;
     }
@@ -85,6 +98,14 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     }
 
     this._data[indexField] = newValue;
+
+    
+    this._table.triggerEvent("recordChange", {
+      newValue,
+      oldValue: currentValue,
+      record: this as any,
+      fieldName,
+    })
   }
 
   protected fieldPrint(fieldName: keyof T & string, value: any) {
