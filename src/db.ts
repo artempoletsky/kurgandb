@@ -147,7 +147,7 @@ export class DataBase {
   }
 
   static createTable<T, idT extends string | number, MetaT = {}>
-    ({ name, fields, settings: rawSettings, tags }: TCreateTable<T>): Table<T, idT, MetaT> {
+    ({ name, fields, settings: rawSettings, tags }: TCreateTable<T>): Table<T, idT, MetaT, any, any, any> {
     if (this.doesTableExist(name)) {
       throw new Error(`Table '${name}' already exists`);
     }

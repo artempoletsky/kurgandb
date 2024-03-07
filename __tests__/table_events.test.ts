@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 
 import { standAloneQuery as query } from "../src/client";
 import { DataBase } from "../src/db";
-import { Table, getMetaFilepath, packEventListener } from "../src/table";
+import { Table, TableOpenEvent, getMetaFilepath, packEventListener } from "../src/table";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { constructFunction } from "../src/function";
@@ -27,7 +27,7 @@ describe("Table events", () => {
     levelsLen: Record<string, number>
   }
 
-  let test_words: Table<TestWord, string, TestWordsMeta, TestWordInsert>;
+  let test_words: Table<TestWord, number, TestWordsMeta, TestWordInsert, TestWord, TestWord>;
   beforeAll(async () => {
     await allIsSaved();
 
@@ -38,7 +38,7 @@ describe("Table events", () => {
     }
 
 
-    test_words = DataBase.createTable<TestWord, string, TestWordsMeta>({
+    test_words = DataBase.createTable<TestWord, number, TestWordsMeta>({
       name: "test_words",
       fields: {
         id: "number",
@@ -84,17 +84,27 @@ describe("Table events", () => {
   test("tableOpen", () => {
     // test_words.where("level", .);
 
-
-    test_words.registerEventListener("levelsLen", "tableOpen", ({ table, meta, $ }) => {
+    const callback = ({ table, meta, $ }: TableOpenEvent<TestWord, number, TestWordsMeta, TestWordInsert, TestWord, TestWord>) => {
       const keys = table.indexKeys<string>("level");
       meta.levelsLen = $.dictFromKeys(keys, level => table.indexIds("level", level).length);
-    });
+    };
+    test_words.registerEventListener("levelsLen", "tableOpen", callback);
 
     expect(test_words.meta).toHaveProperty("levelsLen");
     expect(test_words.meta.levelsLen.a1).toBe(4);
     expect(test_words.meta.levelsLen.a2).toBe(2);
     expect(test_words.meta.levelsLen.b1).toBe(1);
     expect(test_words.meta.levelsLen.c1).toBe(1);
+
+    let listeners = test_words.getRegisteredEventListeners();
+
+    expect(listeners.levelsLen.tableOpen.body).toBeDefined();
+
+    test_words.unregisterEventListener("levelsLen", "tableOpen");
+    listeners = test_words.getRegisteredEventListeners();
+    expect(listeners.levelsLen).toBeUndefined();
+
+    test_words.registerEventListener("levelsLen", "tableOpen", callback);
   });
 
 
@@ -108,7 +118,7 @@ describe("Table events", () => {
       $.aggregateDictionary(meta.levelsLen, levels);
     });
 
-    test_words.registerEventListener("levelsLen", "recordsRemove", ({ records, meta, $ }) => {
+    test_words.registerEventListener("levelsLen", "recordsRemoveLight", ({ records, meta, $ }) => {
       const levels = $.reduceDictionary(records, (levels: Record<string, number>, rec) => {
         levels[rec.level] = (levels[rec.level] || 0) + 1;
       });
@@ -146,6 +156,35 @@ describe("Table events", () => {
 
     expect(test_words.meta.levelsLen.a1).toBe(4);
     expect(test_words.meta.levelsLen.a2).toBe(3);
+  });
+
+  test("events browsing", async () => {
+    const events = await query(({ test_words }: { test_words: Table<TestWord, number, TestWordInsert> }, { }, { }) => {
+      return test_words.getRegisteredEventListeners();
+    }, {});
+    // console.log(events);
+    expect(events.levelsLen.tableOpen.args[0]).toBe("{ table, meta, $ }");
+    expect(events.levelsLen.recordsRemoveLight.args[0]).toBe("{ records, meta, $ }");
+    expect(events.levelsLen.recordsInsert.args[0]).toBe("{ records, meta, $ }");
+
+    // expect(events[])
+  });
+
+  test("unsubscribing", () => {
+    test_words.unregisterEventListener("levelsLen");
+
+    expect(test_words.indexIds("level", "a1").length).toBe(4);
+    expect(test_words.indexIds("level", "a2").length).toBe(3);
+
+    test_words.where("id", 4).update(rec => {
+      rec.level = "a1";
+    });
+
+    expect(test_words.meta.levelsLen.a1).toBe(4);
+    expect(test_words.meta.levelsLen.a2).toBe(3);
+
+    expect(test_words.indexIds("level", "a1").length).toBe(5);
+    expect(test_words.indexIds("level", "a2").length).toBe(2);
   });
 
   afterAll(async () => {

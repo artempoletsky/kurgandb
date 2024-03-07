@@ -1,8 +1,8 @@
 import type { TRecord } from "./record";
 import md5 from "md5";
 import { TableScheme } from "./table";
-import type { LogEntry } from "./db";
-import type { Table } from "./table";
+export type { LogEntry as LogEntry } from "./db";
+export type { Table as Table } from "./table";
 
 
 export const FieldTypes = ["string", "number", "date", "boolean", "json"] as const;
@@ -19,8 +19,6 @@ export const EventNames = ["tableOpen", "recordsRemove", "recordsRemoveLight", "
 
 export type EventName = typeof EventNames[number];
 
-export type { LogEntry as LogEntry };
-export type { Table as Table };
 
 
 export function randomIndex(length: number, exclude: Set<number> = new Set()): number {

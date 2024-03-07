@@ -11,7 +11,7 @@ import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
 import { FieldTag, FieldType, $, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
-import { ParsedFunction, parseFunction } from "./function";
+import { ParsedFunction, constructFunction, parseFunction } from "./function";
 
 
 
@@ -42,6 +42,7 @@ export type IndicesRecord = Record<string, FragmentedDictionary<string | number,
 export type RecordCallback<T, idT extends string | number, ReturnType, LightT, VisibleT> = (record: TRecord<T, idT, LightT, VisibleT>) => ReturnType;
 
 
+export type RegistedEvents = Record<string, Record<string, ParsedFunction>>;
 
 export type IndexFlags = {
   isUnique: boolean,
@@ -138,6 +139,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.memoryFields = {};
     this.loadMemoryIndices();
     this.updateFieldIndices();
+    this.activateEventListeners();
   }
 
 
@@ -940,19 +942,43 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
-  registerEventListener(handlerId: string, eventName: "tableOpen", handler: (event: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
-  registerEventListener(handlerId: string, eventName: "recordsRemove", handler: (event: RecordsRemoveEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
-  registerEventListener(handlerId: string, eventName: "recordsInsert", handler: (event: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
-  registerEventListener<FieldT>(handlerId: string, eventName: string, handler: (event: RecordChangeEvent<T, idT, MetaT, InsertT, LightT, VisibleT, FieldT>) => void): void
-  registerEventListener(handlerId: string, eventName: string, handler: (event: any) => void): void {
+  activateEventListeners() {
+    const $serviceListeners = this.mainDict.meta.custom.$serviceListeners || {};
+    const { events } = this;
+    for (const namespaceId in $serviceListeners) {
+      const listeners = $serviceListeners[namespaceId];
+      for (const eventName in listeners) {
+        const fn = constructFunction(listeners[eventName]);
+        const namespace = events[eventName] || {};
+        namespace[namespaceId] = fn;
+        events[eventName] = namespace;
+      }
+    }
+  }
+
+
+  registerEventListener(namespaceId: string, eventName: "tableOpen",
+    handler: (event: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(namespaceId: string, eventName: "recordsRemove",
+    handler: (event: RecordsRemoveEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(namespaceId: string, eventName: "recordsRemoveLight",
+    handler: (event: RecordsRemoveLightEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener(namespaceId: string, eventName: "recordsInsert",
+    handler: (event: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+  registerEventListener<FieldT>(namespaceId: string, eventName: string,
+    handler: (event: RecordChangeEvent<T, idT, MetaT, InsertT, LightT, VisibleT, FieldT>) => void): void
+  registerEventListener(namespaceId: string, eventName: string,
+    handler: (event: any) => void): void {
     let listeners = this.events[eventName];
     const $serviceListeners = this.mainDict.meta.custom.$serviceListeners || {};
     if (!listeners) {
       listeners = this.events[eventName] = {};
-      $serviceListeners[eventName] = {};
     }
-    listeners[handlerId] = handler;
-    $serviceListeners[handlerId] = packEventListener(handler);
+    if (!$serviceListeners[namespaceId]) {
+      $serviceListeners[namespaceId] = {};
+    }
+    listeners[namespaceId] = handler;
+    $serviceListeners[namespaceId][eventName] = packEventListener(handler);
     this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
 
     // trigger it immedietly after registration
@@ -973,17 +999,26 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
-  unregisterEventListener(handlerId: string, eventName?: EventName) {
+  getRegisteredEventListeners(): RegistedEvents {
+    return this.mainDict.meta.custom.$serviceListeners;
+  }
+
+  unregisterEventListener(namespaceId: string, eventName?: string): void
+  unregisterEventListener(namespaceId: string, eventName?: EventName): void
+  unregisterEventListener(namespaceId: string, eventName?: string) {
     const { events } = this;
     if (eventName === undefined) {
       for (const name in events) {
-        this.unregisterEventListener(handlerId, name as any);
+        this.unregisterEventListener(namespaceId, name as any);
       }
       return;
     }
-    delete events[eventName][handlerId];
+    delete events[eventName][namespaceId];
     const { $serviceListeners } = this.mainDict.meta.custom;
-    delete $serviceListeners[eventName][handlerId];
+    delete $serviceListeners[namespaceId][eventName];
+    if (Object.keys($serviceListeners[namespaceId]).length == 0) {
+      delete $serviceListeners[namespaceId];
+    }
     this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
   }
 
