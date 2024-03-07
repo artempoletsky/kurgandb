@@ -5,7 +5,7 @@ import { DataBase } from "../src/db";
 import { Table, TableOpenEvent, getMetaFilepath, packEventListener } from "../src/table";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
-import { constructFunction } from "../src/function";
+import { constructFunction, parseFunction } from "../src/function";
 
 
 const xdescribe = (...args: any) => { };
@@ -81,14 +81,16 @@ describe("Table events", () => {
     expect(arg.meta.test).toBe("123");
   });
 
+
+  const tableOpenCallback = ({ table, meta, $ }: TableOpenEvent<TestWord, number, TestWordsMeta, TestWordInsert, TestWord, TestWord>) => {
+    const keys = table.indexKeys<string>("level");
+    meta.levelsLen = $.dictFromKeys(keys, level => table.indexIds("level", level).length);
+  };
+
   test("tableOpen", () => {
     // test_words.where("level", .);
 
-    const callback = ({ table, meta, $ }: TableOpenEvent<TestWord, number, TestWordsMeta, TestWordInsert, TestWord, TestWord>) => {
-      const keys = table.indexKeys<string>("level");
-      meta.levelsLen = $.dictFromKeys(keys, level => table.indexIds("level", level).length);
-    };
-    test_words.registerEventListener("levelsLen", "tableOpen", callback);
+    test_words.registerEventListener("levelsLen", "tableOpen", tableOpenCallback);
 
     expect(test_words.meta).toHaveProperty("levelsLen");
     expect(test_words.meta.levelsLen.a1).toBe(4);
@@ -104,7 +106,7 @@ describe("Table events", () => {
     listeners = test_words.getRegisteredEventListeners();
     expect(listeners.levelsLen).toBeUndefined();
 
-    test_words.registerEventListener("levelsLen", "tableOpen", callback);
+    test_words.registerEventListener("levelsLen", "tableOpen", tableOpenCallback);
   });
 
 
@@ -185,6 +187,15 @@ describe("Table events", () => {
 
     expect(test_words.indexIds("level", "a1").length).toBe(5);
     expect(test_words.indexIds("level", "a2").length).toBe(2);
+  });
+
+  test("register parsed", () => {
+
+    const parsed = parseFunction(tableOpenCallback);
+    test_words.registerEventListenerParsed("levelsLen", "tableOpen", parsed);
+
+    expect(test_words.meta.levelsLen.a1).toBe(5);
+    expect(test_words.meta.levelsLen.a2).toBe(2);
   });
 
   afterAll(async () => {

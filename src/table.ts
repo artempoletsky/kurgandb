@@ -42,7 +42,7 @@ export type IndicesRecord = Record<string, FragmentedDictionary<string | number,
 export type RecordCallback<T, idT extends string | number, ReturnType, LightT, VisibleT> = (record: TRecord<T, idT, LightT, VisibleT>) => ReturnType;
 
 
-export type RegistedEvents = Record<string, Record<string, ParsedFunction>>;
+export type RegisteredEvents = Record<string, Record<string, ParsedFunction>>;
 
 export type IndexFlags = {
   isUnique: boolean,
@@ -955,6 +955,11 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
+  registerEventListenerParsed(namespaceId: string, eventName: EventName, fun: ParsedFunction): void
+  registerEventListenerParsed(namespaceId: string, eventName: string, fun: ParsedFunction): void
+  registerEventListenerParsed(namespaceId: string, eventName: string, fun: ParsedFunction) {
+    this.registerEventListener(namespaceId, eventName, constructFunction(fun) as any);
+  }
 
   registerEventListener(namespaceId: string, eventName: "tableOpen",
     handler: (event: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
@@ -997,7 +1002,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
-  getRegisteredEventListeners(): RegistedEvents {
+  getRegisteredEventListeners(): RegisteredEvents {
     return this.mainDict.meta.custom.$serviceListeners;
   }
 

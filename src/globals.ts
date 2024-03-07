@@ -1,8 +1,9 @@
 
 import md5 from "md5";
 import { TableScheme } from "./table";
-export type { LogEntry as LogEntry } from "./db";
-export type { Table as Table } from "./table";
+export type { LogEntry } from "./db";
+export type { Table, TableScheme, RegisteredEvents } from "./table";
+export type { TRecord } from "./record";
 
 
 export const FieldTypes = ["string", "number", "date", "boolean", "json"] as const;
