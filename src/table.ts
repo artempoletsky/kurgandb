@@ -9,7 +9,7 @@ import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
-import { FieldTag, FieldType, $, PlainObject } from "./globals";
+import { FieldTag, FieldType, $, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { ParsedFunction, parseFunction } from "./function";
 
@@ -38,18 +38,8 @@ export type TableScheme = {
 
 
 export type DocumentData = Record<string, any[]>;
-export type Partition<Type> = {
-  isDirty: boolean
-  documents: DocumentData
-  fileName: string
-  id: number
-  size: number
-  meta: PartitionMeta<Type>
-}
-
 
 export type IndicesRecord = Record<string, FragmentedDictionary<string | number, any>>
-export type MainDict<KeyType extends string | number> = FragmentedDictionary<KeyType, any[]>
 
 export type DocCallback<KeyType extends string | number, Type, ReturnType> = (doc: TDocument<KeyType, Type>) => ReturnType;
 
@@ -74,36 +64,36 @@ export function getMetaFilepath(tableName: string): string {
 }
 
 
-export type DocumentChangeEvent<KeyType extends string | number, Type, MetaType> = {
-  docData: Type,
-  meta: MetaType,
-  field: keyof Type,
-  oldValue: any,
-  newValue: any,
-  table: Table<KeyType, Type, MetaType>,
+export type RecordsChangeEvent<KeyType extends string | number, Type, MetaType> = CallbackScope & {
+  records: Type[];
+  meta: MetaType;
+  field: keyof Type;
+  oldValue: any;
+  newValue: any;
+  table: Table<KeyType, Type, MetaType>;
 }
 
-export type DocumentInsertEvent<KeyType extends string | number, Type, MetaType> = {
-  docData: Type,
-  meta: MetaType,
-  table: Table<KeyType, Type, MetaType>,
+export type RecordsInsertEvent<KeyType extends string | number, Type, MetaType> = CallbackScope & {
+  records: Type[];
+  meta: MetaType;
+  table: Table<KeyType, Type, MetaType>;
 }
 
-export type DocumentRemoveEvent<KeyType extends string | number, Type, MetaType> = {
-  docData: Type,
-  meta: MetaType,
-  table: Table<KeyType, Type, MetaType>,
+export type RecordsRemoveEvent<KeyType extends string | number, Type, MetaType> = CallbackScope & {
+  records: Type[];
+  meta: MetaType;
+  table: Table<KeyType, Type, MetaType>;
 }
 
-export type TableOpenEvent<KeyType extends string | number, Type, MetaType> = {
-  meta: MetaType,
-  table: Table<KeyType, Type, MetaType>,
+export type TableOpenEvent<KeyType extends string | number, Type, MetaType> = CallbackScope & {
+  meta: MetaType;
+  table: Table<KeyType, Type, MetaType>;
 }
 
-export class Table<KeyType extends string | number, Type, MetaType = {}> {
-  protected mainDict: MainDict<KeyType>;
+export class Table<IDType extends string | number = string | number, Type = any, MetaType = {}> {
+  protected mainDict: FragmentedDictionary<IDType, any[]>;
   protected indices: IndicesRecord;
-  protected memoryFields: Record<string, SortedDictionary<KeyType, any>>;
+  protected memoryFields: Record<string, SortedDictionary<IDType, any>>;
   protected _fieldNameIndex: Record<string, number> = {};
   protected _indexFieldName: string[] = [];
   protected customPrimaryKey: string | undefined;
@@ -170,13 +160,11 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     return true;
   }
 
-  protected forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, flags: IndexFlags, tags: FieldTag[]) => void) {
+  protected forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, tags: Set<FieldTag>) => void) {
     for (const fieldName in this.scheme.tags) {
-      const tags = this.scheme.tags[fieldName];
-      if (this.fieldHasAnyTag(<keyof Type & string>fieldName, "unique", "index")) {
-        predicate(fieldName, this.indices[fieldName], {
-          isUnique: tags.includes("unique")
-        }, tags);
+      const tags = new Set(this.scheme.tags[fieldName]);
+      if (tags.has("index") || tags.has("unique")) {
+        predicate(fieldName, this.indices[fieldName], tags);
       }
     }
   }
@@ -230,22 +218,22 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
   }
 
   protected createQuery() {
-    return new TableQuery<KeyType, Type>(this, this.indices, this.mainDict);
+    return new TableQuery<IDType, Type>(this, this.indices, this.mainDict);
   }
 
-  whereRange(fieldName: (keyof Type | "id") & string, min: any, max: any): TableQuery<KeyType, Type> {
+  whereRange(fieldName: (keyof Type | "id") & string, min: any, max: any): TableQuery<IDType, Type> {
     return this.createQuery().whereRange(fieldName as any, min, max);
   }
 
   where<FieldType extends string | number>(fieldName: keyof Type | "id",
     idFilter: IDFilter<FieldType>,
-    partitionFilter?: PartitionFilter<FieldType>): TableQuery<KeyType, Type>
-  where<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): TableQuery<KeyType, Type>
+    partitionFilter?: PartitionFilter<FieldType>): TableQuery<IDType, Type>
+  where<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): TableQuery<IDType, Type>
   where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
     return this.createQuery().where<FieldType>(fieldName, ...args);
   }
 
-  filter(predicate: DocCallback<KeyType, Type, boolean>): TableQuery<KeyType, Type> {
+  filter(predicate: DocCallback<IDType, Type, boolean>): TableQuery<IDType, Type> {
     return this.createQuery().filter(predicate);
   }
 
@@ -356,7 +344,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     this.indices[fieldName] = Table.createIndexDictionary(this.name, fieldName, tags, type);
 
 
-    const indexData: Map<string | number, KeyType[]> = new Map();
+    const indexData: Map<string | number, IDType[]> = new Map();
     // const ids: KeyType[] = [];
     // const col: string[] | number[] = [];
     const fIndex = this._fieldNameIndex[fieldName];
@@ -380,9 +368,9 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
   }
 
   protected fillIndexData
-    <ColType extends string | number>(
-      indexData: Map<ColType, KeyType[]>,
-      value: ColType, id: KeyType, throwUnique?: string) {
+    <IndexType extends string | number>(
+      indexData: Map<IndexType, IDType[]>,
+      value: IndexType, id: IDType, throwUnique?: string) {
     const toPush = indexData.get(value);
 
     if (throwUnique && toPush) {
@@ -434,7 +422,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
   }
 
 
-  addField(fieldName: string, type: FieldType, isHeavy: boolean, predicate?: DocCallback<KeyType, Type, any>) {
+  addField(fieldName: string, type: FieldType, isHeavy: boolean, predicate?: DocCallback<IDType, Type, any>) {
     if (this.scheme.fields[fieldName])
       throw new ResponseError(`field '${fieldName}' already exists`);
 
@@ -447,7 +435,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     else {
       const definedPredicate = predicate || (() => getDefaultValueForType(type));
       this.insertDocColumn(this._indexFieldName.length, (id, arr) => {
-        return definedPredicate(new Document<KeyType, Type>(arr, id, this, this.indices) as TDocument<KeyType, Type>);
+        return definedPredicate(new Document<IDType, Type>(arr, id, this, this.indices) as TDocument<IDType, Type>);
       });
     }
 
@@ -485,7 +473,14 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     return `/${this.name}/heavy/${fieldName}/`;
   }
 
-  getHeavyFieldFilepath(id: number | string, type: FieldType, fieldName: string): string {
+  /**
+   * 
+   * @param id the record ID
+   * @param type the type of the field
+   * @param fieldName the name of the field
+   * @returns a relative path to the heavy field contents
+   */
+  getHeavyFieldFilepath(id: IDType, type: FieldType, fieldName: string): string {
     return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "json" ? "json" : "txt"}`;
   }
 
@@ -523,22 +518,67 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     if (returnAsDict) return result;
   }
 
-  removeIdFromIndex(docID: KeyType, data: any[]) {
-    this.forEachIndex((fieldName) => {
-      const value = data[this._fieldNameIndex[fieldName]];
-      this.unstoreIndexValue(fieldName, docID, value);
+  buildIndexDataForRecords(records: Type[]) {
+    const result: Record<string, Map<string | number, IDType[]>> = {}
+
+    const rrs: PlainObject[] = records as any;
+    const idsSet = new Set<IDType>();
+    const ids: IDType[] = [];
+
+    for (const rec of rrs) {
+      const id = rec[this.primaryKey];
+      if (idsSet.has(id))
+        throw this.errorValueNotUnique(this.primaryKey, id);
+
+      idsSet.add(id);
+      ids.push(id);
+    }
+
+    this.forEachIndex((fieldName, dict, tags) => {
+      const map = new Map<string | number, IDType[]>();
+      for (let i = 0; i < ids.length; i++) {
+        const val = rrs[i][fieldName];
+        const id = ids[i];
+        if (map.has(val)) {
+          if (tags.has("unique")) throw this.errorValueNotUnique(fieldName, val);
+          (<IDType[]>map.get(val)).push(id);
+        } else {
+          map.set(val, [id]);
+        }
+      }
+      result[fieldName] = map;
+    });
+
+    return result;
+  }
+
+  removeFromIndex(records: Type[]) {
+    const indexData = this.buildIndexDataForRecords(records);
+    for (const key in indexData) {
+      this.removeColumnFromIndex(key, indexData[key]);
+    }
+  }
+
+  removeHeavyFilesForEachID(ids: IDType[]) {
+    this.forEachField((fieldName, type, tags) => {
+      if (tags.has("heavy")) {
+        for (const id of ids) {
+          const path = this.getHeavyFieldFilepath(id, type, fieldName);
+          rmie(path);
+        }
+      }
     });
   }
 
-  storeIndexValue(fieldName: string, docID: KeyType, value: string | number) {
+  storeIndexValue(fieldName: string, docID: IDType, value: string | number) {
     this.changeIndexValue(fieldName, docID, undefined, value);
   }
 
-  unstoreIndexValue(fieldName: string, docID: KeyType, value: string | number) {
+  unstoreIndexValue(fieldName: string, docID: IDType, value: string | number) {
     this.changeIndexValue(fieldName, docID, value, undefined);
   }
 
-  changeIndexValue(fieldName: string, docID: KeyType, oldValue: undefined | string | number, newValue: undefined | string | number) {
+  changeIndexValue(fieldName: string, docID: IDType, oldValue: undefined | string | number, newValue: undefined | string | number) {
     if (oldValue == newValue) return;
     const indexDict = this.indices[fieldName];
     if (!indexDict) {
@@ -558,7 +598,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
       }
     } else {
       if (oldValue !== undefined) {
-        const arr: KeyType[] = indexDict.getOne(oldValue) || [];
+        const arr: IDType[] = indexDict.getOne(oldValue) || [];
         // arr.push(id);
         arr.splice(arr.indexOf(docID), 1);
         if (arr.length) {
@@ -569,7 +609,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
       }
 
       if (newValue !== undefined) {
-        const arr: KeyType[] = indexDict.getOne(newValue) || [];
+        const arr: IDType[] = indexDict.getOne(newValue) || [];
         arr.push(docID);
         indexDict.setOne(newValue, arr);
       }
@@ -578,12 +618,30 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
 
   canInsertUnique<ColumnType extends string | number>(fieldName: string, column: ColumnType[], throwError: boolean = false): boolean {
-    const indexDict: FragmentedDictionary<ColumnType, string | number> = this.indices[fieldName] as any;
+    const indexDict: FragmentedDictionary<ColumnType> = fieldName == this.primaryKey ? this.mainDict : this.indices[fieldName] as any;
     if (!indexDict) throw this.errorFieldNotIndex(fieldName);
 
-    const found = indexDict.hasAnyId(column);
+    let set = new Set();
 
-    if (!found) return true;
+    let found: ColumnType | false = false;
+    set = new Set<ColumnType>();
+
+    for (const val of column) {
+      if (set.has(val)) {
+        found = val;
+        break;
+      }
+      set.add(val);
+    }
+
+    if (found !== false) {
+      if (throwError) throw this.errorValueNotUnique(fieldName, found);
+      return false;
+    }
+
+    found = indexDict.hasAnyId(column);
+
+    if (found === false) return true;
     if (throwError) throw this.errorValueNotUnique(fieldName, found);
     return false;
   }
@@ -595,7 +653,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     return new ResponseError(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
-  public insertMany(data: Type[]): KeyType[] {
+  public insertMany(data: Type[]): IDType[] {
     const storable: PlainObject[] = [];
 
     // perfStart("make storable");
@@ -608,29 +666,22 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     // perfEndLog("make storable");
 
     const indexColumns: Record<string, any[]> = {};
-    this.forEachIndex((fieldName, indexDict, { isUnique }) => {
+    this.forEachIndex((fieldName, indexDict, tags) => {
       const col = indexColumns[fieldName] = storable.map(o => o[fieldName]);
-      if (isUnique) {
+      if (tags.has("unique")) {
         this.canInsertUnique(fieldName, col, true);
       }
     });
 
-    let ids: KeyType[];
+    let ids: IDType[];
     const values = storable.map(o => this.flattenObject(o));
 
     if (this.autoId) {
       ids = this.mainDict.insertArray(values);
     } else {
-      ids = storable.map(o => {
-        const val = <KeyType>o[this.primaryKey];
-        delete o[this.primaryKey];
-        return val;
-      });
+      ids = storable.map(o => <IDType>o[this.primaryKey]);
 
-      const exisiting = this.mainDict.hasAnyId(ids);
-      if (exisiting !== false) {
-        throw this.errorValueNotUnique(this.primaryKey, exisiting);
-      }
+      this.canInsertUnique(this.primaryKey, ids, true);
 
       this.mainDict.insertMany(ids, values);
     }
@@ -648,22 +699,41 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
 
     // perfStart("indicies update");
     this.forEachIndex((fieldName) => {
-      const indexData: Map<string | number, KeyType[]> = new Map();
+      const indexData: Map<string | number, IDType[]> = new Map();
       for (let i = 0; i < ids.length; i++) {
         this.fillIndexData(indexData, indexColumns[fieldName][i], ids[i]);
       }
       this.insertColumnToIndex(fieldName, indexData);
     });
+
+    if (this.hasEventListener("recordsInsert")) {
+      const inserted: Type[] = storable.map((o, i) => ({
+        ...o,
+        [this.primaryKey]: ids[i]
+      } as Type));
+      const e: RecordsInsertEvent<IDType, Type, MetaType> = {
+        records: inserted,
+        table: this,
+        meta: this.meta,
+        $,
+        _,
+        db: DataBase,
+        ResponseError,
+      }
+
+      this.triggerEvent("recordsInsert", e);
+    }
+
     // perfEndLog("indicies update");
     return ids;
   }
 
 
   protected errorFieldNotIndex(fieldName: string) {
-    return new Error(`${this.printField(fieldName)} is not an index!`);
+    return new ResponseError(`{...} is not an index!`, [this.printField(fieldName)]);
   }
 
-  insertColumnToIndex<ColType extends string | number>(fieldName: string, indexData: Map<ColType, KeyType[]>) {
+  insertColumnToIndex<ColType extends string | number>(fieldName: string, indexData: Map<ColType, IDType[]>) {
     const column = Array.from(indexData.keys());
     const indexDict: FragmentedDictionary<ColType, any> = this.indices[fieldName] as any;
     if (!indexDict) throw this.errorFieldNotIndex(fieldName);
@@ -672,21 +742,42 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
       const ids = Array.from(indexData.values()).map(arr => arr[0]);
       indexDict.insertMany(column, ids);
     } else {
-      indexDict.iterateRanges({
-        ranges: Array.from(indexData.keys()).map(v => [v, v]),
-        update: (arr, id) => {
-          const toPush = indexData.get(id);
+      indexDict.where({
+        // ranges: Array.from(indexData.keys()).map(v => [v, v]),
+        idFilter: id => indexData.has(id),
+        update: (arr: IDType[], id) => {
+          const toPush: IDType[] = indexData.get(id) as any;
           indexData.delete(id);
-          return arr.concat.apply(arr, toPush);
+          return arr.concat.apply(arr, toPush).sort();
         },
       });
 
-      indexDict.insertMany(Array.from(indexData.keys()), Array.from(indexData.values()));
+      indexDict.insertMany(Array.from(indexData.keys()), Array.from(indexData.values()).map(arr => arr.sort()));
     }
   }
 
+  removeColumnFromIndex<IndexType extends string | number>(fieldName: string, indexData: Map<IndexType, IDType[]>) {
+    const column = Array.from(indexData.keys());
+    const indexDict: FragmentedDictionary<IndexType, any> = this.indices[fieldName] as any;
+    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
+    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
+
+    indexDict.where({
+      idFilter: (id) => indexData.has(id),
+      update: (val: IDType[], indexId) => {
+        if (isUnique)
+          return undefined;
+        const toRemove = indexData.get(indexId);
+
+        val = val.filter(recordId => toRemove?.includes(recordId));
+        if (val.length == 0) return undefined;
+        return val;
+      },
+    });
+  }
+
   // insert<Type extends PlainObject>(data: Type): Document<Type>
-  public insert(data: PlainObject & Type): KeyType {
+  public insert(data: PlainObject & Type): IDType {
     return this.insertMany([data])[0];
   }
 
@@ -725,7 +816,7 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     return lightValues;
   }
 
-  protected insertDocColumn(fieldIndex: number, predicate: (id: KeyType, arr: any[]) => any) {
+  protected insertDocColumn(fieldIndex: number, predicate: (id: IDType, arr: any[]) => any) {
     this.mainDict.editRanges([[undefined, undefined]], (arr, id) => {
       const newArr = [...arr];
       newArr.splice(fieldIndex, 0, predicate(id, newArr));
@@ -733,21 +824,21 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     }, 0);
   }
 
-  protected errorWrongId(id: KeyType) {
+  protected errorWrongId(id: IDType) {
     return new ResponseError(`id '${id}' doesn't exists at ${this.printField()}`);
   }
 
-  at(id: KeyType): Type
-  at<ReturnType = Type>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType
-  public at<ReturnType>(id: KeyType, predicate?: DocCallback<KeyType, Type, ReturnType>) {
+  at(id: IDType): Type
+  at<ReturnType = Type>(id: IDType, predicate?: DocCallback<IDType, Type, ReturnType>): ReturnType
+  public at<ReturnType>(id: IDType, predicate?: DocCallback<IDType, Type, ReturnType>) {
     const res = this.where(this.primaryKey as any, id).limit(1).select(predicate);
     if (res.length == 0) throw this.errorWrongId(id);
     return res[0];
   }
 
   atIndex(index: number): Type | null
-  atIndex<ReturnType = Type>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType | null
-  public atIndex<ReturnType>(index: number, predicate?: DocCallback<KeyType, Type, ReturnType>) {
+  atIndex<ReturnType = Type>(index: number, predicate?: DocCallback<IDType, Type, ReturnType>): ReturnType | null
+  public atIndex<ReturnType>(index: number, predicate?: DocCallback<IDType, Type, ReturnType>) {
     const id = this.mainDict.keyAtIndex(index);
     if (id === undefined) return null;
     return this.at(id, predicate);
@@ -790,11 +881,20 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     return this.getFieldsWithAnyTags("heavy");
   }
 
+  indexKeys<IndexKeytype extends string | number = string | number>(fieldName?: string & (keyof Type | "id")): IndexKeytype[] {
+    if (!fieldName) fieldName = this.primaryKey as (keyof Type & string);
+
+    let index: FragmentedDictionary<IndexKeytype, any> = (fieldName == this.primaryKey) ? this.mainDict as any : this.indices[fieldName];
+    if (!index) throw this.errorFieldNotIndex(fieldName);
+
+    return index.keys();
+  }
+
   indexIds<FieldType extends string | number>(fieldName: keyof Type | "id",
     idFilter: IDFilter<FieldType>,
-    partitionFilter?: PartitionFilter<FieldType>): KeyType[]
-  indexIds<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): KeyType[]
-  indexIds<FieldType extends string | number>(fieldName: any, ...args: any[]) {
+    partitionFilter?: PartitionFilter<FieldType>): IDType[]
+  indexIds<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): IDType[]
+  indexIds(fieldName: any, ...args: any[]) {
     const index = this.indices[fieldName];
     if (!index) throw this.errorFieldNotIndex(fieldName);
 
@@ -826,13 +926,13 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     }
   }
 
-  registerEventListener(handlerId: string, eventName: "tableOpen", handler: (event: TableOpenEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
-  registerEventListener(handlerId: string, eventName: "documentRemove", handler: (event: DocumentRemoveEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
-  registerEventListener(handlerId: string, eventName: "documentInsert", handler: (event: DocumentInsertEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
-  registerEventListener(handlerId: string, eventName: "documentChange", handler: (event: DocumentChangeEvent<KeyType, Type, MetaType>, scope: CallbackScope) => void): void
-  registerEventListener(handlerId: string, eventName: string, handler: (event: any, scope: CallbackScope) => void): void {
+  registerEventListener(handlerId: string, eventName: "tableOpen", handler: (event: TableOpenEvent<IDType, Type, MetaType>) => void): void
+  registerEventListener(handlerId: string, eventName: "recordsRemove", handler: (event: RecordsRemoveEvent<IDType, Type, MetaType>) => void): void
+  registerEventListener(handlerId: string, eventName: "recordsInsert", handler: (event: RecordsInsertEvent<IDType, Type, MetaType>) => void): void
+  registerEventListener(handlerId: string, eventName: "recordsChange", handler: (event: RecordsChangeEvent<IDType, Type, MetaType>) => void): void
+  registerEventListener(handlerId: string, eventName: string, handler: (event: any) => void): void {
     let listeners = this.events[eventName];
-    const { $serviceListeners } = this.mainDict.meta.custom;
+    const $serviceListeners = this.mainDict.meta.custom.$serviceListeners || {};
     if (!listeners) {
       listeners = this.events[eventName] = {};
       $serviceListeners[eventName] = {};
@@ -840,25 +940,26 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     listeners[handlerId] = handler;
     $serviceListeners[handlerId] = packEventListener(handler);
     this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
+
+    // trigger it immedietly after registration
     if (eventName == "tableOpen") {
       const meta = {
         ...this.meta
       };
-      const e: TableOpenEvent<KeyType, Type, MetaType> = {
+      const e: TableOpenEvent<IDType, Type, MetaType> = {
+        $,
+        _,
+        db: DataBase,
+        ResponseError,
         meta,
         table: this,
       };
-      handler(e, {
-        $: $,
-        _: _,
-        db: DataBase,
-        ResponseError,
-      });
+      handler(e);
       this.mainDict.meta.custom.$table = meta;
     }
   }
 
-  unregisterEventListener(handlerId: string, eventName: "documentRemove" | "documentInsert" | "documentChange" | undefined) {
+  unregisterEventListener(handlerId: string, eventName?: EventName) {
     const { events } = this;
     if (eventName === undefined) {
       for (const name in events) {
@@ -872,11 +973,11 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
   }
 
-  triggerEvent(eventName: "tableOpen", handler: (event: TableOpenEvent<KeyType, Type, MetaType>) => void): void
-  triggerEvent(eventName: "documentRemove", handler: (event: DocumentRemoveEvent<KeyType, Type, MetaType>) => void): void
-  triggerEvent(eventName: "documentInsert", handler: (event: DocumentInsertEvent<KeyType, Type, MetaType>) => void): void
-  triggerEvent(eventName: "documentChange", handler: (event: DocumentChangeEvent<KeyType, Type, MetaType>) => void): void
-  triggerEvent(eventName: string, event: any): void {
+  triggerEvent(eventName: "tableOpen", event: TableOpenEvent<IDType, Type, MetaType>): void
+  triggerEvent(eventName: "recordsRemove", event: RecordsRemoveEvent<IDType, Type, MetaType>): void
+  triggerEvent(eventName: "recordsInsert", event: RecordsInsertEvent<IDType, Type, MetaType>): void
+  triggerEvent(eventName: "recordsChange", event: RecordsChangeEvent<IDType, Type, MetaType>): void
+  triggerEvent(eventName: EventName, event: any): void {
     const listeners = this.events[eventName];
     if (!listeners) return;
     for (const handlerId in listeners) {
@@ -886,6 +987,10 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
         db: DataBase,
       });
     }
+  }
+
+  hasEventListener(eventName: EventName) {
+    return !!this.events[eventName];
   }
 
   toggleFieldHeavy(fieldName: string) {
@@ -920,20 +1025,20 @@ export class Table<KeyType extends string | number, Type, MetaType = {}> {
     this.saveScheme();
   }
 
-  has(...ids: KeyType[]) {
+  has(...ids: IDType[]) {
     return this.mainDict.hasAllIds(ids);
   }
 
 
-  getFreeId(): KeyType {
+  getFreeId(): IDType {
     if (this.mainDict.settings.keyType == "string") {
       let idCandidiate = "new_id";
       let tries = 0;
-      while (this.has(<KeyType>idCandidiate)) {
+      while (this.has(<IDType>idCandidiate)) {
         tries++;
         idCandidiate = "new_id_" + tries;
       }
-      return idCandidiate as KeyType;
+      return idCandidiate as IDType;
     } else {
       throw new Error("not implemented yet");
     }

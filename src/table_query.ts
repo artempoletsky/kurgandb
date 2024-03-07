@@ -1,9 +1,11 @@
 import { Document, TDocument } from "./document";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
-import { DocCallback, IndicesRecord, MainDict, Table } from "./table";
+import { DocCallback, IndicesRecord, Table } from "./table";
 
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
+import { $ } from "./globals";
+import { abortOperation, stopTrackingOperation, trackOperation } from "./virtual_fs";
 
 
 // export type UpdatePredicate<Type> = (doc: TDocument<Type>) => void;
@@ -43,7 +45,7 @@ export function twoArgsToFilters<KeyType extends string | number>(args: any[]): 
 export default class TableQuery<KeyType extends string | number, Type> {
   protected table: Table<KeyType, Type>;
   protected indices: IndicesRecord;
-  protected mainDict: MainDict<KeyType>;
+  protected mainDict: FragmentedDictionary<KeyType>;
 
   protected whereFilter: WhereFilter<string | number, Type> | undefined;
   protected filters: DocCallback<KeyType, Type, boolean>[] = [];
@@ -56,7 +58,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
   protected partitionFilter: PartitionFilter<any> | undefined;
   protected whereField: string | undefined;
 
-  constructor(table: Table<KeyType, Type, any>, indices: IndicesRecord, mainDict: MainDict<KeyType>) {
+  constructor(table: Table<KeyType, Type, any>, indices: IndicesRecord, mainDict: FragmentedDictionary<KeyType>) {
     this.table = table;
     this.indices = indices;
     this.mainDict = mainDict;
@@ -233,40 +235,59 @@ export default class TableQuery<KeyType extends string | number, Type> {
 
     const update = (data: any[], id: KeyType) => {
       const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
-      if (!predicate) {
-        throw new Error("Update predicate is undefined");
-      }
       predicate(doc);
       return doc.serialize();
     }
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
 
-    this.mainDict.where({
-      idFilter,
-      partitionFilter,
-      filter: this.getFilterFunction(),
-      update,
-      limit: this._limit || 0,
-      offset: this._offset || 0,
-    });
+    const operationID = trackOperation();
+    try {
+      this.mainDict.where({
+        idFilter,
+        partitionFilter,
+        filter: this.getFilterFunction(),
+        update,
+        limit: this._limit || 0,
+        offset: this._offset || 0,
+      });
+    } catch (err) {
+      abortOperation(operationID);
+      throw err;
+    }
+    stopTrackingOperation(operationID);
   }
 
   delete() {
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
-    const res = this.mainDict.where({
-      idFilter,
-      partitionFilter,
-      filter: this.getFilterFunction(),
-      update: (data: any[], id: KeyType) => {
-        this.table.removeIdFromIndex(id, data); //TODO: refactor me
-        return undefined;
-      },
-      limit: this._limit || 0,
-      offset: this._offset || 0,
-    });
-    return res[1];
+    const removed: Type[] = []
+
+    const operationID = trackOperation();
+    try {
+      const [, ids] = this.mainDict.where({
+        idFilter,
+        partitionFilter,
+        filter: this.getFilterFunction(),
+        update: (data: any[], id: KeyType) => {
+          let doc = new Document(data, id, this.table, this.indices);
+          removed.push(doc.light());
+          // doc.omit();
+          // this.table.removeIdFromIndex(id, data); //TODO: refactor me
+          return undefined;
+        },
+        limit: this._limit || 0,
+        offset: this._offset || 0,
+      });
+
+      this.table.removeFromIndex(removed);
+      this.table.removeHeavyFilesForEachID(ids);
+    } catch (err) {
+      abortOperation(operationID);
+      throw err;
+    }
+    stopTrackingOperation(operationID);
+    return removed;
   }
 
   throwInvalidIndex(name: string | undefined) {

@@ -1,6 +1,6 @@
 import fs, { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 
-import { debounce } from "lodash";
+import _, { debounce } from "lodash";
 import { rimraf } from "rimraf";
 
 const CWD = process.cwd();
@@ -65,6 +65,38 @@ export function mkdirSync(name: string) {
   fs.mkdirSync(`${ROOT}/${name}`, { recursive: true });
 }
 
+export function trackOperation(): string {
+  const id = _.uniqueId("virtualFSTrack");
+  for (const name in CACHE) {
+    const file = CACHE[name];
+    file.forceSave();
+  }
+  return id;
+}
+
+export function stopTrackingOperation(id: string) {
+
+}
+
+export function abortOperation(id: string) {
+  for (const name in CACHE) {
+    const file = CACHE[name];
+    file.abortSaving();
+  }
+}
+// export function abortSaving(name?: string) {
+//   if (!name) {
+//     for (const name in CACHE) {
+//       abortSaving(name);
+//     }
+//     return;
+//   }
+//   const file = CACHE[name];
+//   if (file) {
+//     file.abortSaving();
+//   }
+// }
+
 
 
 class VirtualFile {
@@ -86,18 +118,7 @@ class VirtualFile {
 
     this.debouncedRemoveFromCache = debounce(() => {
       delete CACHE[this._relativePath];
-      if (this._dataIsDirty) {
-        const data = this._data;
-        if (data !== undefined) {
-          writeFileSync(this.absolutePath, JSON.stringify(data));
-          this._existsFS = true;
-        } else {
-          this._existsFS = false;
-          if (fs.existsSync(this.absolutePath)) {
-            rmSync(this.absolutePath);
-          }
-        }
-      }
+      this.forceSave();
       this._savedPromise = undefined;
       this.onRemove();
     }, 50);
@@ -200,6 +221,28 @@ class VirtualFile {
       return statSync(this.absolutePath).size;
     }
     return 0;
+  }
+
+  forceSave() {
+    if (this._dataIsDirty) {
+      const data = this._data;
+      if (data !== undefined) {
+        writeFileSync(this.absolutePath, JSON.stringify(data));
+        this._existsFS = true;
+      } else {
+        this._existsFS = false;
+        if (fs.existsSync(this.absolutePath)) {
+          rmSync(this.absolutePath);
+        }
+      }
+    }
+    this._dataIsDirty = false;
+  }
+
+  abortSaving() {
+    this._data = undefined;
+    delete CACHE[this._relativePath];
+    this._dataIsDirty = false;
   }
 }
 

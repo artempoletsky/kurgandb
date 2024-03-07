@@ -15,6 +15,10 @@ export type FieldTag = typeof FieldTags[number];
 
 export type PlainObject = Record<string, any>;
 
+export const EventNames = ["tableOpen", "recordsRemove", "recordsInsert", "recordsChange"] as const;
+
+export type EventName = typeof EventNames[number];
+
 export type { LogEntry as LogEntry };
 export type { Table as Table };
 
@@ -76,6 +80,35 @@ export function encodePassword(password: string, method: "md5" = "md5") {
   return md5(password);
 }
 
+export function aggregateDictionary(target: Record<string, number>, summand: Record<string, number>, subtract: boolean = false) {
+  const keys = new Set<string>();
+  const multiplier = subtract ? -1 : 1;
+  for (const key in target) {
+    keys.add(key);
+    target[key] += multiplier * (summand[key] || 0);
+  }
+  for (const key in summand) {
+    if (keys.has(key)) continue;
+    target[key] = (target[key] || 0) + multiplier * summand[key];
+  }
+}
+
+export function dictFromKeys<Type>(keys: string[], predicate: (key: string) => Type): Record<string, Type> {
+  const res: Record<string, Type> = {};
+  for (const key of keys) {
+    res[key] = predicate(key);
+  }
+  return res;
+}
+
+export function reduceDictionary<Type = any, ReturnType = any>
+  (array: Type[], predicate: (result: Record<string, ReturnType>, object: Type, index: number) => void): Record<string, ReturnType> {
+  return array.reduce((res, obj, i) => {
+    predicate(res, obj, i);
+    return res;
+  }, {} as Record<string, ReturnType>);
+}
+
 export const $ = {
   randomIndex,
   randomIndices,
@@ -86,6 +119,9 @@ export const $ = {
   full,
   md5,
   encodePassword,
+  dictFromKeys,
+  aggregateDictionary,
+  reduceDictionary,
 }
 
 

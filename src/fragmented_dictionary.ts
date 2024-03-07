@@ -69,7 +69,7 @@ const DefaultFragmentDictionarySettings: FragmentedDictionarySettings<number> = 
 };
 
 
-export default class FragmentedDictionary<KeyType extends string | number, Type> {
+export default class FragmentedDictionary<KeyType extends string | number = string | number, Type = any> {
   public readonly settings: FragmentedDictionarySettings<KeyType>;
   public meta: FragDictMeta<KeyType>;
 
@@ -806,5 +806,14 @@ export default class FragmentedDictionary<KeyType extends string | number, Type>
     }
 
     return true;
+  }
+
+  keys(): KeyType[] {
+    const { length } = this.meta.partitions;
+    const result: KeyType[] = [];
+    for (let i = 0; i < length; i++) {
+      result.push(...this.readKeysFile(i));
+    }
+    return result;
   }
 }
