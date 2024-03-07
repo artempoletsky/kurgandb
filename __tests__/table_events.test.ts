@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
 
 import { standAloneQuery as query } from "../src/client";
 import { DataBase } from "../src/db";
-import { Table, TableOpenEvent, getMetaFilepath, packEventListener } from "../src/table";
+import { Table, EventTableOpen, getMetaFilepath, packEventListener } from "../src/table";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { constructFunction, parseFunction } from "../src/function";
@@ -82,7 +82,7 @@ describe("Table events", () => {
   });
 
 
-  const tableOpenCallback = ({ table, meta, $ }: TableOpenEvent<TestWord, number, TestWordsMeta, TestWordInsert, TestWord, TestWord>) => {
+  const tableOpenCallback = ({ table, meta, $ }: EventTableOpen<TestWord, number, TestWordsMeta, TestWordInsert, TestWord, TestWord>) => {
     const keys = table.indexKeys<string>("level");
     meta.levelsLen = $.dictFromKeys(keys, level => table.indexIds("level", level).length);
   };

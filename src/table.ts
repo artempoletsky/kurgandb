@@ -63,44 +63,44 @@ export function getMetaFilepath(tableName: string): string {
 }
 
 
-export type TableEventBase<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = {
+export type EventTableBase<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = {
   meta: MetaT;
   table: Table<T, idT, MetaT, InsertT, LightT, VisibleT>;
 }
 
-export type RecordChangeEventCompact<T, idT extends string | number, LightT, VisibleT, FieldT> = {
+export type EventRecordChangeCompact<T, idT extends string | number, LightT, VisibleT, FieldT> = {
   record: TRecord<T, idT, LightT, VisibleT>,
   fieldName: keyof T;
   oldValue: FieldT;
   newValue: FieldT;
 }
 
-export type RecordChangeEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT, FieldT> = RecordChangeEventCompact<T, idT, LightT, VisibleT, FieldT>
+export type EventRecordChange<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT, FieldT> = EventRecordChangeCompact<T, idT, LightT, VisibleT, FieldT>
   & CallbackScope
-  & TableEventBase<T, idT, MetaT, InsertT, LightT, VisibleT>
+  & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
 
-export type RecordsInsertEventCompact<T> = {
+export type EventRecordsInsertCompact<T> = {
   records: T[];
 }
 
-export type RecordsInsertEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = RecordsInsertEventCompact<T>
+export type EventRecordsInsert<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = EventRecordsInsertCompact<T>
   & CallbackScope
-  & TableEventBase<T, idT, MetaT, InsertT, LightT, VisibleT>
+  & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
-export type RecordsRemoveEventCompact<T> = {
+export type EventRecordsRemoveCompact<T> = {
   records: T[];
 }
-export type RecordsRemoveEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = RecordsInsertEventCompact<T>
+export type EventRecordsRemove<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = EventRecordsInsertCompact<T>
   & CallbackScope
-  & TableEventBase<T, idT, MetaT, InsertT, LightT, VisibleT>
+  & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
-export type RecordsRemoveLightEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = RecordsInsertEventCompact<LightT>
+export type EventRecordsRemoveLight<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = EventRecordsInsertCompact<LightT>
   & CallbackScope
-  & TableEventBase<T, idT, MetaT, InsertT, LightT, VisibleT>
+  & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
-export type TableOpenEvent<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope
-  & TableEventBase<T, idT, MetaT, InsertT, LightT, VisibleT>
+export type EventTableOpen<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope
+  & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
 export class Table<T = unknown, idT extends string | number = string | number, MetaT = {}, InsertT = T, LightT = T, VisibleT = T> {
   protected mainDict: FragmentedDictionary<idT, any[]>;
@@ -727,7 +727,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         ...o,
         [this.primaryKey]: ids[i]
       } as T));
-      const e: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT> = {
+      const e: EventRecordsInsert<T, idT, MetaT, InsertT, LightT, VisibleT> = {
         records: inserted,
         table: this,
         meta: this.meta,
@@ -962,15 +962,15 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   registerEventListener(namespaceId: string, eventName: "tableOpen",
-    handler: (event: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+    handler: (event: EventTableOpen<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
   registerEventListener(namespaceId: string, eventName: "recordsRemove",
-    handler: (event: RecordsRemoveEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+    handler: (event: EventRecordsRemove<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
   registerEventListener(namespaceId: string, eventName: "recordsRemoveLight",
-    handler: (event: RecordsRemoveLightEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+    handler: (event: EventRecordsRemoveLight<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
   registerEventListener(namespaceId: string, eventName: "recordsInsert",
-    handler: (event: RecordsInsertEvent<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
+    handler: (event: EventRecordsInsert<T, idT, MetaT, InsertT, LightT, VisibleT>) => void): void
   registerEventListener<FieldT>(namespaceId: string, eventName: string,
-    handler: (event: RecordChangeEvent<T, idT, MetaT, InsertT, LightT, VisibleT, FieldT>) => void): void
+    handler: (event: EventRecordChange<T, idT, MetaT, InsertT, LightT, VisibleT, FieldT>) => void): void
   registerEventListener(namespaceId: string, eventName: string,
     handler: (event: any) => void): void {
     let listeners = this.events[eventName];
@@ -990,7 +990,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       const meta = {
         ...this.meta
       };
-      const e: TableOpenEvent<T, idT, MetaT, InsertT, LightT, VisibleT> = {
+      const e: EventTableOpen<T, idT, MetaT, InsertT, LightT, VisibleT> = {
         $,
         _,
         db: DataBase,
@@ -1026,10 +1026,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   triggerEvent(eventName: "tableOpen"): void
-  triggerEvent(eventName: "recordsRemove", eventData: RecordsRemoveEventCompact<T>): void
-  triggerEvent(eventName: "recordsRemoveLight", eventData: RecordsRemoveEventCompact<LightT>): void
-  triggerEvent(eventName: "recordsInsert", eventData: RecordsInsertEventCompact<T>): void
-  triggerEvent<FieldT>(eventName: string, eventData: RecordChangeEventCompact<T, idT, LightT, VisibleT, FieldT>): void
+  triggerEvent(eventName: "recordsRemove", eventData: EventRecordsRemoveCompact<T>): void
+  triggerEvent(eventName: "recordsRemoveLight", eventData: EventRecordsRemoveCompact<LightT>): void
+  triggerEvent(eventName: "recordsInsert", eventData: EventRecordsInsertCompact<T>): void
+  triggerEvent<FieldT>(eventName: string, eventData: EventRecordChangeCompact<T, idT, LightT, VisibleT, FieldT>): void
   triggerEvent(eventName: string, eventData?: any): void {
     if (eventName == "recordChange") {
       eventName += ":" + eventData.fieldName;

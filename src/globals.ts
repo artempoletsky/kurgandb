@@ -2,7 +2,16 @@
 import md5 from "md5";
 import { TableScheme } from "./table";
 export type { LogEntry } from "./db";
-export type { Table, TableScheme, RegisteredEvents } from "./table";
+export type {
+  Table,
+  TableScheme,
+  RegisteredEvents,
+  EventTableOpen,
+  EventRecordChange,
+  EventRecordsInsert,
+  EventRecordsRemove,
+  EventRecordsRemoveLight
+} from "./table";
 export type { TRecord } from "./record";
 
 

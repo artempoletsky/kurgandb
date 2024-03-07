@@ -1,6 +1,6 @@
 import { TableRecord, TRecord } from "./record";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
-import { RecordCallback, IndicesRecord, Table, RecordsRemoveEvent } from "./table";
+import { RecordCallback, IndicesRecord, Table, EventRecordsRemove } from "./table";
 
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
