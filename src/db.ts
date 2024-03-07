@@ -116,7 +116,7 @@ export class DataBase {
 
   static loadAllTables() {
     let dbScheme: SchemeFile = rfs(SCHEME_PATH);
-    if (!dbScheme?.tables) throw new Error("Scheme IDocument is invalid! The 'tables' key is missing");
+    if (!dbScheme?.tables) throw new Error("Scheme is invalid! The 'tables' key is missing");
     for (const tableName in dbScheme.tables) {
       this.getTable(tableName);
     }
@@ -138,7 +138,7 @@ export class DataBase {
 
   static getScheme(tableName: string): TableScheme | undefined {
     const dbScheme: SchemeFile = rfs(SCHEME_PATH);
-    if (!dbScheme?.tables) throw new Error("Scheme IDocument is invalid! 'tables' missing");
+    if (!dbScheme?.tables) throw new Error("Scheme is invalid! 'tables' missing");
     return dbScheme.tables[tableName];
   }
 

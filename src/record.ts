@@ -1,24 +1,24 @@
 import fs from "fs";
-import { TableScheme, Table, IndicesRecord, MainDict } from "./table";
+import { TableScheme, Table, IndicesRecord } from "./table";
 import { DataBase } from "./db";
 import { FieldType, PlainObject } from "./globals";
 
-export type TDocument<KeyType extends string | number, Type> = Document<KeyType, Type> & Type;
+export type TRecord<idT extends string | number, T, LightT = T, VisibleT = T> = TableRecord<idT, T, LightT, VisibleT> & T;
 
-export class Document<KeyType extends string | number, Type> {
-  protected _id: KeyType;
+export class TableRecord<idT extends string | number, T, LightT = T, VisibleT = T> {
+  protected _id: idT;
   protected _indices: IndicesRecord;
   protected _data: any[] = [];
   protected _dates: Record<string, Date> = {};
 
-  protected _table: Table<KeyType, Type>;
+  protected _table: Table<idT, T, any, any, LightT, VisibleT>;
 
 
-  public get id(): KeyType {
+  public get $id(): idT {
     return this._id;
   }
 
-  constructor(data: any[], id: KeyType, table: Table<KeyType, Type, any>, indices: IndicesRecord) {
+  constructor(data: any[], id: idT, table: Table<idT, T, any, any, LightT, VisibleT>, indices: IndicesRecord) {
     this._indices = indices;
 
     this._table = table;
@@ -27,29 +27,29 @@ export class Document<KeyType extends string | number, Type> {
 
     this._data = data;
 
-    let proxy = new Proxy<Document<KeyType, Type>>(this, {
-      set: (target: any, key: string & keyof Type, value: any) => {
-        this.set(key, value);
+    let proxy = new Proxy<TableRecord<idT, T, LightT, VisibleT>>(this, {
+      set: (target: any, key: string & keyof T, value: any) => {
+        this.$set(key, value);
         return true;
       },
-      get: (target: any, key: string & keyof Type) => {
+      get: (target: any, key: string & keyof T) => {
         if (typeof target[key] == "function") {
           return target[key];
         }
-        if (key == "id") {
+        if (key == "$id") {
           return this._id;
         }
         if (key.startsWith("_")) {
           return target[key];
         }
-        return this.get(key);
+        return this.$get(key);
       }
     });
 
     return proxy;
   }
 
-  set(fieldName: keyof Type & string, value: any): void {
+  $set(fieldName: keyof T & string, value: any): void {
     const { fields } = this._table.scheme;
     const table = this._table;
     const { primaryKey } = this._table;
@@ -64,13 +64,13 @@ export class Document<KeyType extends string | number, Type> {
     if (!type) {
       throw new Error(`There is no '${fieldName}' field in '${table.name}'`);
     }
-    let newValue: any = Document.storeValueOfType(value, type as any);
+    let newValue: any = TableRecord.storeValueOfType(value, type as any);
 
     if (tags.includes("heavy")) {
       if (type == "json") {
-        fs.writeFileSync(this.getExternalFilename(fieldName), JSON.stringify(value));
+        fs.writeFileSync(this.$getExternalFilename(fieldName), JSON.stringify(value));
       } else {
-        fs.writeFileSync(this.getExternalFilename(fieldName), value);
+        fs.writeFileSync(this.$getExternalFilename(fieldName), value);
       }
       return;
     }
@@ -87,11 +87,7 @@ export class Document<KeyType extends string | number, Type> {
     this._data[indexField] = newValue;
   }
 
-  protected partitionClosedErrorMessage(fieldName: string) {
-    return `Partition is closed! ${this.idPrint()}.${fieldName}`;
-  }
-
-  protected fieldPrint(fieldName: keyof Type & string, value: any) {
+  protected fieldPrint(fieldName: keyof T & string, value: any) {
     return `field: ${fieldName}='${value}' in ${this.idPrint()}`;
   }
 
@@ -99,7 +95,7 @@ export class Document<KeyType extends string | number, Type> {
     return `${this._table.name}['${this._id}']`;
   }
 
-  get(fieldName: string): any {
+  $get(fieldName: string): any {
 
     const table = this._table;
     const { fields } = this._table.scheme;
@@ -113,7 +109,7 @@ export class Document<KeyType extends string | number, Type> {
     if (!type) return;
 
     if (tags.includes("heavy")) {
-      return type == "json" ? this.getJSONContent(fieldName) : this.getTextContent(fieldName);
+      return type == "json" ? this.$getJSONContent(fieldName) : this.$getTextContent(fieldName);
     }
 
 
@@ -132,14 +128,14 @@ export class Document<KeyType extends string | number, Type> {
       return this._dates[fieldName];
     }
 
-    return Document.retrieveValueOfType(this._data[fieldIndex], type);
+    return TableRecord.retrieveValueOfType(this._data[fieldIndex], type);
   }
 
   static retrieveValueOfType(value: any, type: FieldType) {
     if (type == "boolean") {
       return !!value;
     }
-    if (type == "date" && typeof value == "string") {
+    if (type == "date") {
       return new Date(value);
       // return new Date(value);
     }
@@ -168,18 +164,18 @@ export class Document<KeyType extends string | number, Type> {
     return value;
   }
 
-  public getTextContent(key: string) {
-    const filename = this.getExternalFilename(key);
-    return fs.existsSync(filename) ? fs.readFileSync(filename, { encoding: "utf8" }) : "";
+  public $getTextContent(key: string) {
+    const filename = this.$getExternalFilename(key);
+    return fs.existsSync(filename) ? fs.readFileSync(filename, "utf8") : "";
   }
 
-  public getJSONContent(key: string) {
-    const text = this.getTextContent(key);
+  public $getJSONContent(key: string) {
+    const text = this.$getTextContent(key);
     if (!text) return null;
     return JSON.parse(text);
   }
 
-  public serialize(): any[] {
+  public $serialize(): any[] {
     const result: any[] = [];
     const table = this._table;
     if (!this._data) throw new Error(`No data: ${this.idPrint()}`);
@@ -199,18 +195,21 @@ export class Document<KeyType extends string | number, Type> {
     return result;
   }
 
-  public toJSON(): Type {
+  public toJSON(): VisibleT {
+    return this.$visible();
+  }
 
+  public $visible(): VisibleT {
     const result: PlainObject = {};
     // const { primaryKey } = this._table;
     // result[primaryKey] = this._id;
 
-    this._table.forEachField((key, type) => {
-      if (!this._table.fieldHasAnyTag(key, "hidden")) {
-        result[key] = this.get(key);
+    this._table.forEachField((key, type, tags) => {
+      if (!tags.has("hidden")) {
+        result[key] = this.$get(key);
       }
     });
-    return result as Type;
+    return result as VisibleT;
   }
 
   static validateData<Type>(data: Type, scheme: TableScheme, excludeId: boolean): false | string {
@@ -239,31 +238,35 @@ export class Document<KeyType extends string | number, Type> {
     return false;
   }
 
-  getExternalFilename(field: string) {
+  $getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
     return DataBase.workingDirectory + this._table.getHeavyFieldFilepath(this._id, type, field);
   }
 
-  pick(...fields: string[]): Type {
+  $pick(...fields: string[]): Partial<T> {
     const result: PlainObject = {};
     this._table.forEachField((key, type) => {
       if (fields.includes(key))
-        result[key] = this.get(key);
+        result[key] = this.$get(key);
     })
-    return result as Type;
+    return result as T;
   }
 
-  omit(...fields: string[]): Type {
+  $full(): T {
+    return this.$omit() as T;
+  }
+
+  $omit(...fields: string[]): Partial<T> {
     const result: PlainObject = {};
     this._table.forEachField((key, type) => {
       if (!fields.includes(key))
-        result[key] = this.get(key);
+        result[key] = this.$get(key);
     })
-    return result as Type;
+    return result as T;
   }
 
-  light(): Type {
-    return this.pick(...this._table.getLightKeys());
+  $light(): LightT {
+    return this.$pick(...this._table.getLightKeys()) as any;
   }
 
 };

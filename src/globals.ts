@@ -1,4 +1,4 @@
-import type { TDocument } from "./document";
+import type { TRecord } from "./record";
 import md5 from "md5";
 import { TableScheme } from "./table";
 import type { LogEntry } from "./db";
@@ -49,29 +49,29 @@ export function randomIndices(length: number, count: number) {
 }
 
 function pick<Type>(...fields: (keyof Type)[]) {
-  return (doc: TDocument<any, Type>) => {
-    return doc.pick(...fields as string[]);
+  return (doc: TRecord<any, Type>) => {
+    return doc.$pick(...fields as string[]);
   }
 }
 
 function omit<Type>(...fields: (keyof Type)[]) {
-  return (doc: TDocument<any, Type>) => {
-    return doc.omit(...fields as string[]);
+  return (doc: TRecord<any, Type>) => {
+    return doc.$omit(...fields as string[]);
   }
 }
 
-function primary<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
-  return doc.id;
+function primary<KeyType extends string | number, Type>(doc: TRecord<KeyType, Type>) {
+  return doc.$id;
 }
 
 function field<Type>(fieldName: keyof Type): any {
-  return (doc: TDocument<any, Type>) => {
-    return doc.get(fieldName as string);
+  return (doc: TRecord<any, Type>) => {
+    return doc.$get(fieldName as string);
   }
 }
 
-function full<KeyType extends string | number, Type>(doc: TDocument<KeyType, Type>) {
-  return doc.omit();
+function full<KeyType extends string | number, Type>(doc: TRecord<KeyType, Type>) {
+  return doc.$omit();
 }
 
 export { md5 as md5 };

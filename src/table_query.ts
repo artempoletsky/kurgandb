@@ -1,6 +1,6 @@
-import { Document, TDocument } from "./document";
+import { TableRecord, TRecord } from "./record";
 import FragmentedDictionary, { IDFilter, PartitionFilter, WhereRanges } from "./fragmented_dictionary";
-import { DocCallback, IndicesRecord, Table } from "./table";
+import { RecordCallback, IndicesRecord, Table } from "./table";
 
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
@@ -8,8 +8,6 @@ import { $ } from "./globals";
 import { abortOperation, stopTrackingOperation, trackOperation } from "./virtual_fs";
 
 
-// export type UpdatePredicate<Type> = (doc: TDocument<Type>) => void;
-// export type SelectPredicate<Type, ReturnType = any> = (doc: TDocument<Type>) => ReturnType;
 
 type WhereFilter<KeyType extends string | number, Type> = {
   fieldName: keyof Type & string,
@@ -42,13 +40,13 @@ export function twoArgsToFilters<KeyType extends string | number>(args: any[]): 
   return [idFilter, partitionFilter];
 }
 
-export default class TableQuery<KeyType extends string | number, Type> {
-  protected table: Table<KeyType, Type>;
+export default class TableQuery<idT extends string | number, T, LightT = T, VisibleT = T> {
+  protected table: Table<idT, T, any, any, LightT, VisibleT>;
   protected indices: IndicesRecord;
-  protected mainDict: FragmentedDictionary<KeyType>;
+  protected mainDict: FragmentedDictionary<idT>;
 
-  protected whereFilter: WhereFilter<string | number, Type> | undefined;
-  protected filters: DocCallback<KeyType, Type, boolean>[] = [];
+  protected whereFilter: WhereFilter<string | number, T> | undefined;
+  protected filters: RecordCallback<idT, T, boolean, LightT, VisibleT>[] = [];
   protected _offset: number = 0;
   protected _limit: number | undefined;
 
@@ -58,19 +56,19 @@ export default class TableQuery<KeyType extends string | number, Type> {
   protected partitionFilter: PartitionFilter<any> | undefined;
   protected whereField: string | undefined;
 
-  constructor(table: Table<KeyType, Type, any>, indices: IndicesRecord, mainDict: FragmentedDictionary<KeyType>) {
+  constructor(table: Table<idT, T, any, any, LightT, VisibleT>, indices: IndicesRecord, mainDict: FragmentedDictionary<idT>) {
     this.table = table;
     this.indices = indices;
     this.mainDict = mainDict;
   }
 
   protected convertRangesToFilter(fieldName: string, mappedRanges: WhereRanges<any>) {
-    return this.filter(doc => {
+    return this.filter(rec => {
       for (const [min, max] of mappedRanges) {
-        if (min !== undefined && min > doc.get(fieldName as any)) {
+        if (min !== undefined && min > rec.$get(fieldName as any)) {
           continue;
         }
-        if (max !== undefined && max < doc.get(fieldName as any)) {
+        if (max !== undefined && max < rec.$get(fieldName as any)) {
           continue;
         }
         return true;
@@ -81,16 +79,16 @@ export default class TableQuery<KeyType extends string | number, Type> {
 
 
   protected convertWhereToFilter<FieldType extends string | number>(fieldName: string, idFilter: IDFilter<FieldType>) {
-    this.filters.push(doc => {
-      return idFilter(doc.get(fieldName));
+    this.filters.push(rec => {
+      return idFilter(rec.$get(fieldName));
     });
     return this;
   }
 
-  where<FieldType extends string | number>(fieldName: keyof Type | "id",
+  where<FieldType extends string | number>(fieldName: keyof T,
     idFilter: IDFilter<FieldType>,
-    partitionFilter?: PartitionFilter<FieldType>): TableQuery<KeyType, Type>
-  where<FieldType extends string | number>(fieldName: keyof Type | "id", ...values: FieldType[]): TableQuery<KeyType, Type>
+    partitionFilter?: PartitionFilter<FieldType>): typeof this
+  where<FieldType extends string | number>(fieldName: keyof T, ...values: FieldType[]): typeof this
   where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
     let [idFilter, partitionFilter] = twoArgsToFilters<FieldType>(args);
 
@@ -106,10 +104,10 @@ export default class TableQuery<KeyType extends string | number, Type> {
 
   whereRange
     <FieldType extends string | number>(
-      fieldName: keyof Type & string,
+      fieldName: keyof T & string,
       min: FieldType | undefined,
       max: FieldType | undefined
-    ): TableQuery<KeyType, Type> {
+    ): typeof this {
     return this.where<any>(fieldName, (val: any) => {
       if (min !== undefined && val < min) return false;
       if (max !== undefined && val > max) return false;
@@ -119,33 +117,36 @@ export default class TableQuery<KeyType extends string | number, Type> {
     });
   }
 
-  filter(predicate: DocCallback<KeyType, Type, boolean>): TableQuery<KeyType, Type> {
+  filter(predicate: RecordCallback<idT, T, boolean, LightT, VisibleT>): typeof this {
     this.filters.push(predicate);
     return this;
   }
 
-  getFilterFunction(): undefined | ((data: any[], id: KeyType) => boolean)
-  getFilterFunction(useDocument: true): undefined | ((doc: TDocument<KeyType, Type>) => boolean)
-  getFilterFunction(useDocument = false): any {
+  /**
+   *  @param useTableRecord return a predicate that uses TableRecord instead of raw data array
+   */
+  getFilterFunction(): undefined | ((data: any[], id: idT) => boolean)
+  getFilterFunction(useTableRecord: true): undefined | ((rec: TRecord<idT, T, LightT, VisibleT>) => boolean)
+  getFilterFunction(useTableRecord = false): any {
     if (!this.filter.length) return undefined;
-    if (useDocument) {
-      return (doc: TDocument<KeyType, Type>) => {
+    if (useTableRecord) {
+      return (rec: TRecord<idT, T, LightT, VisibleT>) => {
         for (let i = 0; i < this.filters.length; i++) {
           let filter = this.filters[i];
 
-          if (!filter(doc)) {
+          if (!filter(rec)) {
             return false;
           }
         }
         return true;
       }
     }
-    return (data: any[], id: KeyType) => {
-      const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
+    return (data: any[], id: idT) => {
+      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<idT, T, LightT, VisibleT>;
       for (let i = 0; i < this.filters.length; i++) {
         let filter = this.filters[i];
 
-        if (!filter(doc)) {
+        if (!filter(rec)) {
           return false;
         }
       }
@@ -153,9 +154,9 @@ export default class TableQuery<KeyType extends string | number, Type> {
     }
   }
 
-  getQueryFilters(): [IDFilter<KeyType> | undefined, PartitionFilter<KeyType> | undefined] {
-    let idFilter: IDFilter<KeyType> | undefined;
-    let partitionFilter: PartitionFilter<KeyType> | undefined;
+  getQueryFilters(): [IDFilter<idT> | undefined, PartitionFilter<idT> | undefined] {
+    let idFilter: IDFilter<idT> | undefined;
+    let partitionFilter: PartitionFilter<idT> | undefined;
     const { whereField, table } = this;
 
     if (whereField) {
@@ -172,7 +173,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
         select: val => val
       })[0];
 
-      let ids: KeyType[];
+      let ids: idT[];
       if (table.fieldHasAnyTag(whereField, "unique")) {
         ids = Object.values(rec);
       } else {
@@ -184,16 +185,16 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return [idFilter, partitionFilter];
   }
 
-  select<ReturnType = Type & { id: number }>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
+  select<ReturnType = VisibleT>(predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>): ReturnType[] {
     if (this._orderBy !== undefined) {
       return this.orderedSelect(predicate);
     }
-    const select = (data: any[], id: KeyType) => {
-      const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
+    const select = (data: any[], id: idT) => {
+      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<idT, T, LightT, VisibleT>;
       if (predicate) {
-        return predicate(doc);
+        return predicate(rec);
       }
-      return doc.toJSON();
+      return rec.toJSON();
     }
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
@@ -210,7 +211,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return Object.values(res[0]);
   }
 
-  orderBy(fieldName: string & (keyof Type | "id"), direction: "ASC" | "DESC" = "ASC") {
+  orderBy(fieldName: string & (keyof T | "id"), direction: "ASC" | "DESC" = "ASC") {
     this._orderBy = fieldName;
     this.orderDirection = direction;
     return this;
@@ -231,12 +232,12 @@ export default class TableQuery<KeyType extends string | number, Type> {
     return this.limit(pageSize);
   }
 
-  update(predicate: DocCallback<KeyType, Type, void>): void {
+  update(predicate: RecordCallback<idT, T, void, LightT, VisibleT>): void {
 
-    const update = (data: any[], id: KeyType) => {
-      const doc = new Document(data, id, this.table, this.indices) as TDocument<KeyType, Type>;
-      predicate(doc);
-      return doc.serialize();
+    const update = (data: any[], id: idT) => {
+      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<idT, T, LightT, VisibleT>;
+      predicate(rec);
+      return rec.$serialize();
     }
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
@@ -261,7 +262,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
   delete() {
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
-    const removed: Type[] = []
+    const removed: LightT[] = []
 
     const operationID = trackOperation();
     try {
@@ -269,11 +270,9 @@ export default class TableQuery<KeyType extends string | number, Type> {
         idFilter,
         partitionFilter,
         filter: this.getFilterFunction(),
-        update: (data: any[], id: KeyType) => {
-          let doc = new Document(data, id, this.table, this.indices);
-          removed.push(doc.light());
-          // doc.omit();
-          // this.table.removeIdFromIndex(id, data); //TODO: refactor me
+        update: (data: any[], id: idT) => {
+          let rec = new TableRecord(data, id, this.table, this.indices);
+          removed.push(rec.$light());
           return undefined;
         },
         limit: this._limit || 0,
@@ -294,7 +293,7 @@ export default class TableQuery<KeyType extends string | number, Type> {
     throw new Error(`${name} is an invalid index`);
   }
 
-  protected orderedSelect<ReturnType = Type>(predicate?: DocCallback<KeyType, Type, ReturnType>): ReturnType[] {
+  protected orderedSelect<ReturnType = T>(predicate?: RecordCallback<idT, T, ReturnType, LightT, VisibleT>): ReturnType[] {
     if (this._orderBy === undefined) {
       this.throwInvalidIndex(undefined);
       return [];
@@ -314,24 +313,24 @@ export default class TableQuery<KeyType extends string | number, Type> {
       allIds = allIds.reverse();
     }
     const isIndexUnique = table.fieldHasAnyTag(orderBy, "unique");
-    const openedPartitions: Record<number, SortedDictionary<KeyType, any[]>> = {};
+    const openedPartitions: Record<number, SortedDictionary<idT, any[]>> = {};
     const result: ReturnType[] = [];
     const filter = this.getFilterFunction(true);
     let found = 0;
 
     for (const ids of allIds) {
-      const idsToiterate: KeyType[] = isIndexUnique ? [ids] : ids;
+      const idsToiterate: idT[] = isIndexUnique ? [ids] : ids;
       for (const id of idsToiterate) {
         const partId = mainDict.findPartitionForId(id);
         if (!openedPartitions[partId]) {
           openedPartitions[partId] = mainDict.openPartition(partId);
         }
         const partition = openedPartitions[partId];
-        const doc: TDocument<KeyType, Type> = new Document(partition.get(id), id, table, indices) as any;
-        if (filter && !filter(doc)) continue;
+        const rec: TRecord<idT, T, LightT, VisibleT> = new TableRecord(partition.get(id), id, table, indices) as any;
+        if (filter && !filter(rec)) continue;
         found++;
 
-        if (found > offset) result.push(predicate ? predicate(doc) : <any>doc.toJSON());
+        if (found > offset) result.push(predicate ? predicate(rec) : <any>rec.toJSON());
         if (limit && (result.length >= limit)) {
           return result;
         }

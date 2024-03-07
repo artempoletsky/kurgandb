@@ -30,6 +30,7 @@ xdescribe("loading index", () => {
 describe("Table", () => {
 
   type SimpleType = {
+    id: number,
     date: Date | string | number,
     bool: boolean,
     name: string,
@@ -38,7 +39,8 @@ describe("Table", () => {
       bar: number
     }
   }
-  let t: Table<number, SimpleType>;
+  type SimpleInsert = Omit<SimpleType, "id">;
+  let t: Table<number, SimpleType, any, SimpleInsert>;
   beforeAll(() => {
     // DataBase.createTable({
     //   name: "posts",
@@ -59,6 +61,7 @@ describe("Table", () => {
     t = DataBase.createTable<number, SimpleType>({
       name: TestTableName,
       fields: {
+        id: "number",
         bool: "boolean",
         date: "date",
         name: "string",
@@ -66,6 +69,7 @@ describe("Table", () => {
         heavy: "json",
       },
       tags: {
+        id: ["primary", "autoinc"],
         name: ["index"],
         heavy: ["heavy"],
       }
