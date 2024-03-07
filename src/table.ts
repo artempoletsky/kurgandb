@@ -1,7 +1,7 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
 import { TRecord, TableRecord } from "./record";
-import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError } from "./utils";
+import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError, $ } from "./utils";
 
 
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
@@ -9,7 +9,7 @@ import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
 import { CallbackScope } from "./client";
-import { FieldTag, FieldType, $, PlainObject, EventName } from "./globals";
+import { FieldTag, FieldType, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { ParsedFunction, constructFunction, parseFunction } from "./function";
 
@@ -734,7 +734,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         $,
         _,
         db: DataBase,
-        ResponseError,
       }
 
       this.triggerEvent("recordsInsert", e);
@@ -990,7 +989,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         $,
         _,
         db: DataBase,
-        ResponseError,
         meta,
         table: this,
       };

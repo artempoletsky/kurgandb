@@ -6,9 +6,9 @@ import { Table } from "./table";
 
 import { allIsSaved } from "./virtual_fs";
 import _ from "lodash";
-import { $, PlainObject, md5 } from "./globals";
+import { PlainObject } from "./globals";
 import z from "zod";
-import { logError } from "./utils";
+import { $, logError } from "./utils";
 import { constructFunction } from "./function";
 
 
@@ -54,10 +54,9 @@ export async function query(args: AQuery) {
   let result: any
   try {
     result = queryImplementation(DataBase.getTables(), args.payload, {
-      ResponseError,
       db: DataBase,
       _,
-      $
+      $,
     });
   } catch (err: any) {
     if (err.response && err.message && err.statusCode) {
@@ -95,7 +94,7 @@ const QueriesSourceCache: Record<string, ARegisterQuery> = {};
 
 
 function generateQueryHash({ isAsync, predicateArgs, predicateBody }: ARegisterQuery) {
-  return md5(isAsync + "|" + predicateArgs.join(",") + "|" + predicateBody);
+  return $.md5(isAsync + "|" + predicateArgs.join(",") + "|" + predicateBody);
 }
 
 export async function registerQuery(args: ARegisterQuery) {

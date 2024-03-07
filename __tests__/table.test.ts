@@ -478,7 +478,7 @@ describe("Table", () => {
   test("ResponseError throw", async () => {
 
 
-    const q = query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { }) => {
+    const q = query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
       return test_words.at("foo1231");
     }, {});
 

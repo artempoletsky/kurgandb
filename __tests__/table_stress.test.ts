@@ -111,7 +111,7 @@ describe("Rich table", () => {
   //   favoriteRandomNumber: 0,
   // };
 
-  let t: Table<number, RichType>;
+  let t: Table<RichType, number>;
   let row: any[];
   describe("filling", () => {
 
@@ -201,7 +201,7 @@ describe("Rich table", () => {
     test("at", async () => {
 
       perfStart("query");
-      const rec = await query(({ jest_test_table }: { jest_test_table: Table<number, RichType> }, { }, { db }) => {
+      const rec = await query(({ jest_test_table }: { jest_test_table: Table<RichType, number> }, { }, { db }) => {
         return jest_test_table.at(9);
       }, undefined);
       perfEnd("query");

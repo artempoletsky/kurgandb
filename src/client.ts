@@ -1,14 +1,14 @@
 
-import { ResponseError } from "@artempoletsky/easyrpc";
-import { AQuery, FQuery, ARegisterQuery, FRegisterQuery, registerQuery, query } from "./api";
+import {  FQuery, ARegisterQuery, FRegisterQuery, registerQuery, query } from "./api";
 import { DataBase } from "./db";
-import { $ } from "./globals";
-import { Table } from "./table";
+import { $ } from "./utils";
+
 
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 import lodash from "lodash";
 import { logError } from "./utils";
 import { parseFunction } from "./function";
+import { Table } from "./globals";
 
 
 
@@ -18,16 +18,15 @@ function errorCantParse(predicate: string) {
 
 
 export type CallbackScope = {
-  db: typeof DataBase
-  $: typeof $
-  _: typeof lodash
-  ResponseError: typeof ResponseError
+  db: typeof DataBase;
+  $: typeof $;
+  _: typeof lodash;
 }
 
 export type Predicate<Tables, Payload, ReturnType> = (tables: Tables, payload: Payload, scope: CallbackScope) => ReturnType;
 
 
-export function predicateToQuery<Tables, Payload, ReturnType>(predicate: Predicate<Tables, Payload, ReturnType>): ARegisterQuery {
+export function predicateToQuery<Tables extends Record<string, Table>, Payload, ReturnType>(predicate: Predicate<Tables, Payload, ReturnType>): ARegisterQuery {
   const parsed = parseFunction(predicate);
 
   return {
@@ -70,7 +69,7 @@ async function registerOrCall(predicate: Predicate<any, any, any>, payload: any,
 }
 
 export async function remoteQuery
-  <Tables, Payload, ReturnType>
+  <Payload, ReturnType, Tables = any>
   (predicate: Predicate<Tables, Payload, ReturnType>, payload?: Payload)
   : Promisify<ReturnType> {
   if (!payload) payload = {} as Payload;

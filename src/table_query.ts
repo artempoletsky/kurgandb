@@ -4,7 +4,6 @@ import { RecordCallback, IndicesRecord, Table, RecordsRemoveEvent } from "./tabl
 
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
-import { $ } from "./globals";
 import { abortOperation, stopTrackingOperation, trackOperation } from "./virtual_fs";
 
 

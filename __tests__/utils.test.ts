@@ -2,9 +2,10 @@ import { describe, expect, test } from "@jest/globals";
 
 import { standAloneQuery as query } from "../src/client";
 import { DataBase } from "../src/db";
-import { $ } from "../src/globals";
+import { $ } from "../src/utils";
 import { allIsSaved } from "../src/virtual_fs";
 import { writeIntoLogFile } from "../src/utils";
+import { Table } from "../src/globals";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -22,7 +23,7 @@ describe("Utility functions", () => {
   beforeAll(() => {
     DataBase.init(process.cwd() + "/test_data");
 
-    const t = DataBase.createTable<string, TestType>({
+    const t = DataBase.createTable<TestType, string>({
       name: tableName,
       fields: {
         id: "string",
@@ -70,9 +71,9 @@ describe("Utility functions", () => {
   });
 
   test("primary", async () => {
-    const id = await query(({ test_utils_table }, { }, { $ }) => {
+    const id = await query(({ test_utils_table }: { test_utils_table: Table<TestType, string> }, { }, { $ }) => {
       return test_utils_table.at("1", $.primary);
-    }, undefined);
+    }, {});
 
     expect(id).toBe("1");
   });

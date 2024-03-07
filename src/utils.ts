@@ -1,7 +1,62 @@
 import fs from "fs";
 import { rimraf } from "rimraf";
 import { DataBase } from "./db";
-import { PlainObject } from "./globals";
+import {
+  PlainObject,
+  randomIndex,
+  randomIndices,
+  encodePassword,
+  dictFromKeys,
+  aggregateDictionary,
+  reduceDictionary
+} from "./globals";
+import type { TRecord } from "./record";
+import md5 from "md5";
+import { ResponseError } from "@artempoletsky/easyrpc";
+
+function pick<Type>(...fields: (keyof Type)[]) {
+  return (rec: TRecord<Type, any>) => {
+    return rec.$pick(...fields as string[]);
+  }
+}
+
+function omit<Type>(...fields: (keyof Type)[]) {
+  return (rec: TRecord<Type, any>) => {
+    return rec.$omit(...fields as string[]);
+  }
+}
+
+function primary<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
+  return rec.$id;
+}
+
+function field<Type>(fieldName: keyof Type): any {
+  return (rec: TRecord<Type, any>) => {
+    return rec.$get(fieldName as string);
+  }
+}
+
+function full<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
+  return rec.$omit();
+}
+
+
+export const $ = {
+  randomIndex,
+  randomIndices,
+  pick,
+  omit,
+  primary,
+  field,
+  full,
+  md5,
+  encodePassword,
+  dictFromKeys,
+  aggregateDictionary,
+  reduceDictionary,
+  ResponseError,
+  log: writeIntoLogFile,
+}
 
 
 type WFSOptions = {
@@ -157,3 +212,4 @@ export function logError(arg1: string | Error, arg2?: string): Error {
   writeIntoLogFile(arg1.message, arg1.stack || "");
   return arg1;
 }
+

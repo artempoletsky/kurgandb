@@ -1,4 +1,4 @@
-import type { TRecord } from "./record";
+
 import md5 from "md5";
 import { TableScheme } from "./table";
 export type { LogEntry as LogEntry } from "./db";
@@ -46,33 +46,6 @@ export function randomIndices(length: number, count: number) {
   return Array.from(exclude.keys());
 }
 
-function pick<Type>(...fields: (keyof Type)[]) {
-  return (rec: TRecord<Type, any>) => {
-    return rec.$pick(...fields as string[]);
-  }
-}
-
-function omit<Type>(...fields: (keyof Type)[]) {
-  return (rec: TRecord<Type, any>) => {
-    return rec.$omit(...fields as string[]);
-  }
-}
-
-function primary<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
-  return rec.$id;
-}
-
-function field<Type>(fieldName: keyof Type): any {
-  return (rec: TRecord<Type, any>) => {
-    return rec.$get(fieldName as string);
-  }
-}
-
-function full<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
-  return rec.$omit();
-}
-
-export { md5 as md5 };
 
 export function encodePassword(password: string, method: "md5" = "md5") {
   return md5(password);
@@ -105,21 +78,6 @@ export function reduceDictionary<Type = any, ReturnType = any>
     predicate(res, obj, i);
     return res;
   }, {} as Record<string, ReturnType>);
-}
-
-export const $ = {
-  randomIndex,
-  randomIndices,
-  pick,
-  omit,
-  primary,
-  field,
-  full,
-  md5,
-  encodePassword,
-  dictFromKeys,
-  aggregateDictionary,
-  reduceDictionary,
 }
 
 
