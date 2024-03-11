@@ -98,7 +98,7 @@ export function abortOperation(id: string) {
 // }
 
 
-
+import path from "path";
 class VirtualFile {
   protected _relativePath: string;
   protected _existsFS: boolean;
@@ -121,7 +121,7 @@ class VirtualFile {
       this.forceSave();
       this._savedPromise = undefined;
       this.onRemove();
-    }, 50);
+    }, 500);
 
     if (defaultData !== undefined && !this._existsFS) {
       this.write(defaultData);
@@ -163,6 +163,10 @@ class VirtualFile {
     if (!this._savedPromise) return Promise.resolve();
 
     return this._savedPromise;
+  }
+
+  public get isSaved(): boolean {
+    return !!this._savedPromise;
   }
 
   read(): any {
@@ -227,7 +231,13 @@ class VirtualFile {
     if (this._dataIsDirty) {
       const data = this._data;
       if (data !== undefined) {
-        writeFileSync(this.absolutePath, JSON.stringify(data));
+        const dir = path.dirname(this.absolutePath);
+        if (!existsSync(dir)) {
+          fs.mkdirSync(dir, {
+            recursive: true
+          });
+        }
+        fs.writeFileSync(this.absolutePath, JSON.stringify(data));
         this._existsFS = true;
       } else {
         this._existsFS = false;

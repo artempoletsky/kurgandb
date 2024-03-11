@@ -193,11 +193,15 @@ export class DataBase {
       }
     }
     // mkdirSync(mainDictDir);
-    FragmentedDictionary.init({
+    const mainDict = FragmentedDictionary.init({
       keyType,
       maxPartitionLength: 5000,
       directory: mainDictDir,
     });
+
+    if (keyType == "int") {
+      mainDict.meta.custom.lastId = 0;
+    }
 
     mkdirSync(`/${name}/heavy/`);
 

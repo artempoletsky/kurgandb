@@ -704,6 +704,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       this.mainDict.insertMany(ids, values);
     }
 
+    if (this.mainDict.settings.keyType == "int") {
+      this.mainDict.meta.custom.lastId = Math.max(ids as any);
+    }
+
     this.forEachField((key, type, tags) => {
       if (tags.has("heavy")) {
         for (let i = 0; i < storable.length; i++) {
@@ -1104,9 +1108,9 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         idCandidiate = "new_id_" + tries;
       }
       return idCandidiate as idT;
-    } else {
-      throw new Error("not implemented yet");
     }
+
+    return this.mainDict.meta.custom.lastId + 1;
   }
 
   getRecordDraft(): T {

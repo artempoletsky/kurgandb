@@ -6,12 +6,13 @@ import { Table, getMetaFilepath, packEventListener } from "../src/table";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { constructFunction } from "../src/function";
+import { rimrafSync } from "rimraf";
 
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
 
-const TestTableName = "jest_test_table_0";
+const TestTableName = "simple";
 
 describe("Table index", () => {
 
@@ -38,11 +39,9 @@ describe("Table index", () => {
   beforeAll(async () => {
     await allIsSaved();
 
+    rimrafSync(process.cwd() + "/test_data");
     DataBase.init(process.cwd() + "/test_data");
 
-    if (DataBase.doesTableExist("test_words")) {
-      DataBase.removeTable("test_words");
-    }
 
 
     test_words = DataBase.createTable<TestWord, number, any>({
@@ -205,10 +204,144 @@ describe("Table index", () => {
 
   });
 
+  type SimpleType = {
+    id: number;
+    date: Date | string | number;
+    bool: boolean;
+    name: string;
+    light: string[];
+    heavy: null | {
+      bar: number
+    };
+  };
+
+  test("indices", async () => {
+
+    const t = DataBase.createTable<SimpleType, number>({
+      name: "simple",
+      fields: {
+        id: "number",
+        bool: "boolean",
+        date: "date",
+        name: "string",
+        light: "json",
+        heavy: "json",
+      },
+      tags: {
+        id: ["primary", "autoinc"],
+        name: ["index"],
+      }
+    });
+
+
+    for (let i = 0; i < 10; i++) {
+      t.insert({
+        date: new Date(),
+        bool: false,
+        name: "foo",
+        light: ["1", "2", "3"],
+        heavy: {
+          bar: Math.random()
+        }
+      });
+    }
+
+    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
+    let indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+
+
+    indexDict.setOne("blablabla", [123]);
+    const arr = indexDict.getOne("blablabla");
+    expect(arr).toBeDefined();
+    if (!arr) return;
+    expect(arr[0]).toBe(123);
+    indexDict.remove("blablabla");
+    expect(indexDict.getOne("blablabla")).toBe(undefined);
+
+
+    t.storeIndexValue("name", 456, "foo123");
+    indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+    expect(indexDict.getOne("foo123")).toBeDefined();
+    indexDict.remove("foo123");
+
+    const foos = indexDict.getOne("foo");
+    expect(foos).toBeDefined();
+    if (!foos) return;
+    expect(foos[0]).toBe(1);
+
+
+    t.insertMany([{
+      bool: true,
+      date: Date.now(),
+      light: ["1", "2", "3"],
+      heavy: null,
+      name: "bar",
+    }, {
+      bool: true,
+      date: Date.now(),
+      light: ["1", "2", "3"],
+      heavy: null,
+      name: "bar",
+    }]);
+
+    const bars = t.where("name", "bar").select();
+
+    expect(bars.length).toBe(2);
+  });
+
+
+
+  test("removes and creates index", async () => {
+    const t = DataBase.getTable<SimpleType, number>("simple");
+    t.removeIndex("name");
+    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
+
+    let bars = t.where("name", "bar").select();
+
+    expect(bars.length).toBe(2);
+
+    expect(() => {
+      t.createIndex("name", true);
+    }).toThrow(`Unique value 'foo' for field '${TestTableName}[id].name' already exists`);
+
+    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
+
+    t.createIndex("name", false);
+    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
+
+    bars = t.where("name", "bar").select();
+
+    expect(bars.length).toBe(2);
+
+    const lastBarID = t.insert({
+      ...t.createDefaultObject(),
+      name: "bar"
+    });
+
+    bars = t.where("name", "bar").select();
+    expect(bars.length).toBe(3);
+
+    t.where("id", lastBarID).delete();
+
+    bars = t.where("name", "bar").select();
+    expect(bars.length).toBe(2);
+
+    const indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+
+    const arr = indexDict.getOne("bar");
+    expect(arr).toBeDefined();
+    if (!arr) return;
+    expect(arr.length).toBe(2);
+    expect(arr.indexOf(lastBarID)).toBe(-1);
+  });
+
   afterAll(async () => {
     await allIsSaved();
     // t.closePartition();
-    DataBase.removeTable("test_words");
-    await allIsSaved();
+    // if (DataBase.doesTableExist("test_words"))
+      DataBase.removeTable("test_words");
+    // if (DataBase.doesTableExist("simple"))
+      DataBase.removeTable("simple");
+    // await allIsSaved();
   });
 });

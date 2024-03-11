@@ -85,6 +85,10 @@ describe("Table", () => {
     expect(t.scheme.fieldsOrderUser.length).toBe(6);
     expect(t.scheme.fieldsOrderUser.includes("id")).toBe(true);
     expect(t.scheme.fieldsOrder.includes("id")).toBe(false);
+
+    for (const fieldName of t.scheme.fieldsOrderUser) {
+      expect(t.scheme.tags[fieldName]).toHaveProperty("length");
+    }
   });
 
   test("makes objects storable", () => {
@@ -157,139 +161,6 @@ describe("Table", () => {
 
   });
 
-  test("indices", () => {
-    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
-    let indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
-
-    indexDict.setOne("blablabla", [123]);
-    const arr = indexDict.getOne("blablabla");
-    expect(arr).toBeDefined();
-    if (!arr) return;
-    expect(arr[0]).toBe(123);
-    indexDict.remove("blablabla");
-    expect(indexDict.getOne("blablabla")).toBe(undefined);
-
-
-    t.storeIndexValue("name", 456, "foo123");
-    indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
-    expect(indexDict.getOne("foo123")).toBeDefined();
-    indexDict.remove("foo123");
-
-    const foos = indexDict.getOne("foo");
-    expect(foos).toBeDefined();
-    if (!foos) return;
-    expect(foos[0]).toBe(1);
-
-
-    t.insert({
-      bool: true,
-      date: Date.now(),
-      light: ["1", "2", "3"],
-      heavy: null,
-      name: "bar",
-    });
-
-    const bars = t.where("name", "bar").select();
-
-    expect(bars.length).toBe(2);
-  });
-
-  test("where", () => {
-    const oneThree = t.where<number>("id", 1, 3).select();
-    expect(oneThree[0].id).toBe(1);
-    expect(oneThree[1].id).toBe(3);
-
-    const notBars = t.where<string>("name", name => name != "bar").select();
-    expect(notBars[0].name).toBe("foo");
-
-  });
-
-  test("filters", () => {
-    const bars = t.filter(doc => doc.name == "bar").select();
-    expect(bars.length).toBe(2);
-  });
-
-  test("removes and creates index", () => {
-    t.removeIndex("name");
-    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
-
-    let bars = t.where("name", "bar").select();
-
-    expect(bars.length).toBe(2);
-
-    expect(() => {
-      t.createIndex("name", true);
-    }).toThrow(`Unique value 'bar' for field '${TestTableName}[id].name' already exists`);
-
-    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
-
-    t.createIndex("name", false);
-    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
-
-    bars = t.where("name", "bar").select();
-
-    expect(bars.length).toBe(2);
-
-    const lastBarID = t.insert({
-      ...t.createDefaultObject(),
-      name: "bar"
-    });
-
-    bars = t.where("name", "bar").select();
-    expect(bars.length).toBe(3);
-
-    t.where("id", lastBarID).delete();
-
-    bars = t.where("name", "bar").select();
-    expect(bars.length).toBe(2);
-
-    const indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
-
-    const arr = indexDict.getOne("bar");
-    expect(arr).toBeDefined();
-    if (!arr) return;
-    expect(arr.length).toBe(2);
-    expect(arr.indexOf(lastBarID)).toBe(-1);
-  });
-
-  test("limit", () => {
-    // t.removeIndex("name");
-    for (let i = 0; i < 4; i++) {
-      t.insert({
-        bool: false,
-        date: Date.now(),
-        light: ["1", "2", "3"],
-        heavy: null,
-        name: "John"
-      });
-    }
-
-    let johns = t.where("name", "John").select();
-    expect(johns.length).toBeGreaterThan(2);
-    johns = t.where("name", "John").limit(2).select();
-    expect(johns.length).toBe(2);
-  });
-
-  test("paginate", () => {
-    t.all().delete();
-    t.insertMany(Array.from(Array(100)).map((und, i) => ({
-      bool: false,
-      date: Date.now(),
-      light: ["1", "2", "3"],
-      heavy: null,
-      name: `Item ${i}`
-    })));
-
-    expect(t.length).toBe(100);
-    const page1 = t.all().paginate(1, 10).select();
-    const page2 = t.all().paginate(2, 10).select();
-    expect(page1.length).toBe(10);
-    expect(page2.length).toBe(10);
-    expect(page1[0].name).toBe("Item 0");
-    expect(page2[0].name).toBe("Item 10");
-    expect(page2[9].name).toBe("Item 19");
-  });
-
   type SimpleFloat = {
     float: number
   };
@@ -318,47 +189,10 @@ describe("Table", () => {
       });
     }
 
-
-
     const zeros = t2.where("float", 0).select();
 
     expect(zeros.length).toBeGreaterThan(0);
 
-  });
-
-  test("order by", () => {
-    t2.all().delete();
-
-    const data: SimpleFloat[] = [];
-    for (let i = 0; i < 100; i++) {
-      data.push({
-        float: i
-      });
-    }
-
-    t2.insertMany(data);
-
-    const evens = t2
-      .all()
-      .orderBy("float", "DESC")
-      .paginate(2, 10)
-      .filter(doc => (doc.float % 2 == 0))
-      .select(doc => doc.float);
-
-    expect(evens.length).toBe(10);
-    expect(evens[0]).toBe(78);
-    expect(evens[9]).toBe(60);
-
-    const odds = t2
-      .whereRange("float", 10, undefined)
-      .orderBy("float")
-      .paginate(1, 10)
-      .filter(doc => (doc.float % 2 == 1))
-      .select(doc => doc.float);
-
-    expect(odds.length).toBe(10);
-    expect(odds[0]).toBe(11);
-    expect(odds[9]).toBe(29);
   });
 
   test("arrays", () => {
@@ -485,6 +319,34 @@ describe("Table", () => {
     await expect(q).rejects.toHaveProperty("message", "id 'foo1231' doesn't exists at 'test_words[id]'");
   });
 
+  test("getFreeId", () => {
+    const test_words = DataBase.getTable<TestWord, string>("test_words");
+    expect(test_words.getFreeId()).toBe("new_id");
+    type Numeric = { id: number; }
+
+    const num_id = DataBase.createTable<Numeric, number>({
+      name: "num_id",
+      fields: {
+        id: "number",
+      },
+      tags: {
+        id: ["primary", "autoinc"],
+      }
+    });
+
+    expect(num_id.getFreeId()).toBe(1);
+
+    let id = num_id.insert({});
+    expect(id).toBe(1);
+    expect(num_id.getFreeId()).toBe(2);
+    id = num_id.insert({ id: 5 });
+    expect(id).toBe(2);
+
+    expect(num_id.getFreeId()).toBe(3);
+    num_id.where("id", 2).delete();
+    expect(num_id.getFreeId()).toBe(3);
+  });
+
 
   afterAll(async () => {
     await allIsSaved();
@@ -492,6 +354,8 @@ describe("Table", () => {
     DataBase.removeTable(TestTableName);
     DataBase.removeTable("arrays");
     DataBase.removeTable("test_words");
+    DataBase.removeTable("num_id");
+    await allIsSaved();
 
   });
 });
