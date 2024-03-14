@@ -36,8 +36,8 @@ function field<Type>(fieldName: keyof Type): any {
   }
 }
 
-function full<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
-  return rec.$omit();
+function full<Type>(rec: TRecord<Type, any, any, any>): Type {
+  return rec.$full();
 }
 
 

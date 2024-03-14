@@ -10,7 +10,8 @@ export type {
   EventRecordChange,
   EventRecordsInsert,
   EventRecordsRemove,
-  EventRecordsRemoveLight
+  EventRecordsRemoveLight,
+  RecordValidator,
 } from "./table";
 export type { TRecord } from "./record";
 

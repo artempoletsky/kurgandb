@@ -57,6 +57,7 @@ export async function query(args: AQuery) {
       db: DataBase,
       _,
       $,
+      z,
     });
   } catch (err: any) {
     if (err.response && err.message && err.statusCode) {

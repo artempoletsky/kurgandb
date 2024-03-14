@@ -272,13 +272,13 @@ describe("Table index", () => {
 
     t.insertMany([{
       bool: true,
-      date: Date.now(),
+      date: new Date(),
       light: ["1", "2", "3"],
       heavy: null,
       name: "bar",
     }, {
       bool: true,
-      date: Date.now(),
+      date: new Date(),
       light: ["1", "2", "3"],
       heavy: null,
       name: "bar",
@@ -314,7 +314,7 @@ describe("Table index", () => {
     expect(bars.length).toBe(2);
 
     const lastBarID = t.insert({
-      ...t.createDefaultObject(),
+      ...t.getRecordDraft(),
       name: "bar"
     });
 

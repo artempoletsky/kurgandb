@@ -6,7 +6,7 @@ export type ParsedFunction = {
   body: string
 }
 
-const HeadSplitExp = /^[^\)]+\)/; //finds head of the function
+const HeadSplitExp = /^[^)=]+[)=]/; //finds head of the function
 const BodyExtractExp = /^[^\{]*\{([\s\S]*)\}\s*$/;
 
 export function parseFunction(fun: string): ParsedFunction
@@ -19,7 +19,10 @@ export function parseFunction(predicate: Function | string): ParsedFunction {
   const splitRes = HeadSplitExp.exec(predicate);
   if (!splitRes) throw new Error(cantParseMessage);
 
-  const head = splitRes[0];
+  let head = splitRes[0];
+  if (head.endsWith("=")) {
+    head = head.slice(0, head.length - 1);
+  }
 
   const bodyUnprepared = predicate.slice(head.length, predicate.length).trim();
   const bodyExtractRes = BodyExtractExp.exec(bodyUnprepared);
@@ -34,7 +37,7 @@ export function parseFunction(predicate: Function | string): ParsedFunction {
     body = bodyExtractRes[1].trim();
   }
 
-  const { args, isAsync } = parseFunctionHead(head);
+  const { args, isAsync } = parseFunctionHead(head.trim());
 
   return {
     isAsync,
@@ -52,8 +55,11 @@ function parseFunctionHead(head: string): {
   // if (!expRes) throw new Error("can't parse arguments for predicate");
 
   // const args = expRes.map(s => s.slice(1, s.length - 1).trim());
-  // console.log(args);
-
+  
+  if (head.match(/^\w+$/)) return {
+    isAsync: false,
+    args: [head],
+  };
   let argsStarted = false;
   let bracesStarted = false;
   const args: string[] = [];

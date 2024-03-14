@@ -6,6 +6,7 @@ import { Table, EventTableOpen, getMetaFilepath, packEventListener } from "../sr
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { constructFunction, parseFunction } from "../src/function";
+import z from "zod";
 
 
 const xdescribe = (...args: any) => { };
@@ -62,6 +63,15 @@ describe("Table events", () => {
       { level: "c1" },
     ])
   });
+
+  test("empty meta", () => {
+    expect(Object.keys(test_words.meta).length).toBe(0);
+    const meta: any = test_words.meta;
+    meta.foo = 1;
+    expect(meta.foo).toBe(1);
+    delete meta.foo;
+    expect(meta.foo).toBe(undefined);
+  })
 
   test("packEventListener", () => {
 

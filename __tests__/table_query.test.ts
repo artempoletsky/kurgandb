@@ -21,7 +21,7 @@ describe("Table", () => {
 
   type SimpleType = {
     id: number,
-    date: Date | string | number,
+    date: Date,
     bool: boolean,
     name: string,
   }
@@ -61,7 +61,7 @@ describe("Table", () => {
     for (let i = 0; i < 5; i++) {
       items.push({
         bool: false,
-        date: Date.now(),
+        date: new Date(),
         name: i % 3 ? "bar" : "foo",
       });
     }
@@ -91,7 +91,7 @@ describe("Table", () => {
     for (let i = 0; i < 4; i++) {
       t.insert({
         bool: false,
-        date: Date.now(),
+        date: new Date(),
         name: "John"
       });
     }
@@ -106,7 +106,7 @@ describe("Table", () => {
     t.all().delete();
     t.insertMany(Array.from(Array(100)).map((und, i) => ({
       bool: false,
-      date: Date.now(),
+      date: new Date(),
       name: `Item ${i}`,
     })));
 

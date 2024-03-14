@@ -6,6 +6,8 @@ import { $ } from "../src/utils";
 import { allIsSaved } from "../src/virtual_fs";
 import { writeIntoLogFile } from "../src/utils";
 import { Table } from "../src/globals";
+import { parseFunction } from "../src/function";
+import { ZodRawShape, z } from "zod";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -93,3 +95,55 @@ describe("Utility functions", () => {
     await allIsSaved();
   });
 });
+
+describe("Function parser/constructor", () => {
+  test("validator", () => {
+    let p = parseFunction((self: any) => {
+      const shape: ZodRawShape = {}
+      for (const fieldName in self.scheme.fields) {
+        const type = self.scheme.fields[fieldName];
+        let rule: any;
+
+        switch (type) {
+          case "boolean": rule = z.boolean(); break;
+          case "date": rule = z.union([z.date(), z.number(), z.string()]); break;
+          case "json": rule = z.any(); break;
+          case "number": rule = z.number(); break;
+          case "string": rule = z.string(); break;
+        }
+
+        shape[fieldName] = rule;
+      }
+
+      return z.object(shape);
+    });
+
+    expect(p.args.length).toBe(1);
+    expect(p.args[0]).toBe("self");
+
+
+    p = parseFunction((self: any, { z }: any) => {
+      const shape: ZodRawShape = {}
+      for (const fieldName in self.scheme.fields) {
+        const type = self.scheme.fields[fieldName];
+        let rule: any;
+
+        switch (type) {
+          case "boolean": rule = z.boolean(); break;
+          case "date": rule = z.date(); break;
+          case "json": rule = z.any(); break;
+          case "number": rule = z.number(); break;
+          case "string": rule = z.string(); break;
+        }
+
+        shape[fieldName] = rule;
+      }
+
+      return z.object(shape);
+    });
+
+    expect(p.args.length).toBe(2);
+    expect(p.args[0]).toBe("self");
+    expect(p.args[1]).toBe("{ z }");
+  })
+})

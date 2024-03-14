@@ -12,6 +12,7 @@ import { CallbackScope } from "./client";
 import { FieldTag, FieldType, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { ParsedFunction, constructFunction, parseFunction } from "./function";
+import z, { ZodEffects, ZodError, ZodObject, ZodRawShape } from "zod";
 
 
 
@@ -26,7 +27,7 @@ export function packEventListener(handler: (...args: any[]) => void): ParsedFunc
   return parsed;
 }
 
-
+export type RecordValidator = (table: Table<any, any, any>, scope: CallbackScope) => ZodObject<any> | ZodEffects<ZodObject<any>>;
 
 export type TableScheme = {
   fields: Record<string, FieldType>
@@ -139,9 +140,20 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.memoryFields = {};
     this.loadMemoryIndices();
     this.updateFieldIndices();
-    this.activateEventListeners();
+    this.unpackEventListeners();
 
+    const meta = this.mainDict.meta.custom;
     this.triggerEvent("tableOpen");
+    if (!meta.userMeta) {
+      meta.userMeta = {};
+    }
+
+    this.validator = 0 as any;//line below will set the validator
+    this.setValidator(meta.validator);
+
+    if (!meta.lastId) {
+      meta.lastId = 0
+    }
   }
 
 
@@ -501,13 +513,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "json" ? "json" : "txt"}`;
   }
 
-  createDefaultObject(): T {
-    const result: PlainObject = {};
-    this.forEachField((fieldName, type) => {
-      result[fieldName] = getDefaultValueForType(type);
-    });
-    return result as T;
-  }
 
   // // /**
   // //  * 
@@ -674,10 +679,32 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   public insertMany(data: InsertT[]): idT[] {
     const storable: PlainObject[] = [];
 
-    // perfStart("make storable");
+    const zObject = this.getZObject();
+
+    const dataFull: T[] = [];
+    let lastId = this.mainDict.meta.custom.lastId;
+    const ids: idT[] = [];
     for (const obj of data) {
-      const validationError = TableRecord.validateData(obj, this.scheme, this.autoId);
-      if (validationError) throw new ResponseError(`insert failed, data is invalid for reason '${validationError}'`);
+
+      if (this.autoId) {
+        lastId++;
+        dataFull.push({
+          ...obj,
+          [this.primaryKey]: lastId,
+        } as T);
+        ids.push(lastId);
+      } else {
+        ids.push((obj as any)[this.primaryKey]);
+        dataFull.push(obj as any);
+      }
+    }
+
+    for (const obj of dataFull) {
+      try {
+        zObject.parse(obj);
+      } catch (zError) {
+        throw new ResponseError(zError as ZodError);
+      }
 
       storable.push(this.makeObjectStorable(obj));
     }
@@ -691,22 +718,13 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       }
     });
 
-    let ids: idT[];
+
     const values = storable.map(o => this.flattenObject(o));
 
-    if (this.autoId) {
-      ids = this.mainDict.insertArray(values);
-    } else {
-      ids = storable.map(o => <idT>o[this.primaryKey]);
+    storable.map(o => <idT>o[this.primaryKey]);
+    this.canInsertUnique(this.primaryKey, ids, true);
+    this.mainDict.insertMany(ids, values);
 
-      this.canInsertUnique(this.primaryKey, ids, true);
-
-      this.mainDict.insertMany(ids, values);
-    }
-
-    if (this.mainDict.settings.keyType == "int") {
-      this.mainDict.meta.custom.lastId = Math.max(ids as any);
-    }
 
     this.forEachField((key, type, tags) => {
       if (tags.has("heavy")) {
@@ -740,11 +758,12 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         $,
         _,
         db: DataBase,
+        z,
       }
 
       this.triggerEvent("recordsInsert", e);
     }
-
+    this.mainDict.meta.custom.lastId = lastId;
     // perfEndLog("indicies update");
     return ids;
   }
@@ -931,30 +950,35 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   public get meta(): MetaT {
-    return this.mainDict.meta.custom.$table;
+    const dictProxy = this.mainDict.meta.custom;
+
+    return new Proxy(dictProxy.userMeta, {
+      deleteProperty(target, p) {
+        delete target[p];
+        dictProxy.userMeta = target;
+        return true;
+      },
+      get(target, key) {
+        return target[key];
+      },
+      set(target, key, value) {
+        target[key] = value;
+        dictProxy.userMeta = target;
+        return true;
+      }
+    });
   }
 
   protected events: Record<string, Record<string, Function>> = {};
 
-  protected unpackEventListeners() {
-    const listeners = this.mainDict.meta.custom.$serviceListeners || {};
-    const { events } = this;
-    for (const eventName in listeners) {
-      events[eventName] = {};
-      for (const handlerId in listeners[eventName]) {
-        events[eventName][handlerId] = new Function(listeners[eventName][handlerId]);
-      }
-    }
-  }
-
-  activateEventListeners() {
-    let $serviceListeners = this.mainDict.meta.custom.$serviceListeners;
-    if (!$serviceListeners) {
-      this.mainDict.meta.custom.$serviceListeners = $serviceListeners = {};
+  unpackEventListeners() {
+    let eventsPacked = this.mainDict.meta.custom.eventsPacked;
+    if (!eventsPacked) {
+      this.mainDict.meta.custom.eventsPacked = eventsPacked = {};
     }
     const { events } = this;
-    for (const namespaceId in $serviceListeners) {
-      const listeners = $serviceListeners[namespaceId];
+    for (const namespaceId in eventsPacked) {
+      const listeners = eventsPacked[namespaceId];
       for (const eventName in listeners) {
         const fn = constructFunction(listeners[eventName]);
         const namespace = events[eventName] || {};
@@ -983,16 +1007,16 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   registerEventListener(namespaceId: string, eventName: string,
     handler: (event: any) => void): void {
     let listeners = this.events[eventName];
-    const $serviceListeners = this.mainDict.meta.custom.$serviceListeners || {};
+    const eventsPacked = this.mainDict.meta.custom.eventsPacked;
     if (!listeners) {
       listeners = this.events[eventName] = {};
     }
-    if (!$serviceListeners[namespaceId]) {
-      $serviceListeners[namespaceId] = {};
+    if (!eventsPacked[namespaceId]) {
+      eventsPacked[namespaceId] = {};
     }
     listeners[namespaceId] = handler;
-    $serviceListeners[namespaceId][eventName] = packEventListener(handler);
-    this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
+    eventsPacked[namespaceId][eventName] = packEventListener(handler);
+    this.mainDict.meta.custom.eventsPacked = eventsPacked;
 
     // trigger it immedietly after registration
     if (eventName == "tableOpen") {
@@ -1005,14 +1029,15 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         db: DataBase,
         meta,
         table: this,
+        z,
       };
       handler(e);
-      this.mainDict.meta.custom.$table = meta;
+      this.mainDict.meta.custom.userMeta = meta;
     }
   }
 
   getRegisteredEventListeners(): RegisteredEvents {
-    return this.mainDict.meta.custom.$serviceListeners;
+    return this.mainDict.meta.custom.eventsPacked;
   }
 
   unregisterEventListener(namespaceId: string, eventName?: string): void
@@ -1026,12 +1051,12 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       return;
     }
     delete events[eventName][namespaceId];
-    const { $serviceListeners } = this.mainDict.meta.custom;
-    delete $serviceListeners[namespaceId][eventName];
-    if (Object.keys($serviceListeners[namespaceId]).length == 0) {
-      delete $serviceListeners[namespaceId];
+    const { eventsPacked } = this.mainDict.meta.custom;
+    delete eventsPacked[namespaceId][eventName];
+    if (Object.keys(eventsPacked[namespaceId]).length == 0) {
+      delete eventsPacked[namespaceId];
     }
-    this.mainDict.meta.custom.$serviceListeners = $serviceListeners;
+    this.mainDict.meta.custom.eventsPacked = eventsPacked;
   }
 
   triggerEvent(eventName: "tableOpen"): void
@@ -1131,4 +1156,45 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     return res as T;
   }
 
+  protected validator: RecordValidator;
+
+  getSavedValidator(): ParsedFunction {
+    return this.mainDict.meta.custom.validator;
+  }
+
+  setValidator(fun?: RecordValidator): void
+  setValidator(fun?: ParsedFunction): void
+  setValidator(fun?: ParsedFunction | RecordValidator) {
+    if (!fun) {
+      this.setValidator((self, { z }) => {
+        const shape: ZodRawShape = {}
+        for (const fieldName in self.scheme.fields) {
+          const type = self.scheme.fields[fieldName];
+          let rule;
+
+          switch (type) {
+            case "boolean": rule = z.boolean(); break;
+            case "date": rule = z.date(); break;
+            case "json": rule = z.any(); break;
+            case "number": rule = z.number(); break;
+            case "string": rule = z.string(); break;
+          }
+
+          shape[fieldName] = rule;
+        }
+        return z.object(shape);
+      });
+      return;
+    }
+    if (typeof fun == "function") {
+      fun = parseFunction(fun);
+    }
+    this.mainDict.meta.custom.validator = fun;
+
+    this.validator = constructFunction(fun) as RecordValidator;
+  }
+
+  getZObject() {
+    return this.validator(this, { db: DataBase, $, _, z });
+  }
 }

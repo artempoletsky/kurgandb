@@ -2,7 +2,7 @@
 import {  FQuery, ARegisterQuery, FRegisterQuery, registerQuery, query } from "./api";
 import { DataBase } from "./db";
 import { $ } from "./utils";
-
+import z from "zod";
 
 import { getAPIMethod } from "@artempoletsky/easyrpc/client";
 import lodash from "lodash";
@@ -18,6 +18,7 @@ function errorCantParse(predicate: string) {
 
 
 export type CallbackScope = {
+  z: typeof z;
   db: typeof DataBase;
   $: typeof $;
   _: typeof lodash;
