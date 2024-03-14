@@ -1056,10 +1056,15 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
-  hasEventListener(eventName: EventName): boolean
-  hasEventListener(eventName: string): boolean
-  hasEventListener(eventName: string | EventName) {
-    return !!this.events[eventName];
+  hasEventListener(eventName: EventName, namespace?: string): boolean
+  hasEventListener(eventName: string, namespace?: string): boolean
+  hasEventListener(eventName: string | EventName, namespace?: string) {
+    const events = this.events[eventName];
+    if (!events) return false;
+
+    if (!namespace) return Object.keys(events).length != 0;
+    
+    return !!events[namespace];
   }
 
   toggleFieldHeavy(fieldName: string) {
