@@ -948,7 +948,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   activateEventListeners() {
-    const $serviceListeners = this.mainDict.meta.custom.$serviceListeners || {};
+    let $serviceListeners = this.mainDict.meta.custom.$serviceListeners;
+    if (!$serviceListeners) {
+      this.mainDict.meta.custom.$serviceListeners = $serviceListeners = {};
+    }
     const { events } = this;
     for (const namespaceId in $serviceListeners) {
       const listeners = $serviceListeners[namespaceId];
@@ -1063,7 +1066,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (!events) return false;
 
     if (!namespace) return Object.keys(events).length != 0;
-    
+
     return !!events[namespace];
   }
 
