@@ -129,8 +129,11 @@ export class DataBase {
   static getTable<T, idT extends string | number, MetaT = {}>(name: string): Table<T, idT, MetaT> {
     if (!Tables[name]) {
       // const meta = rfs(getMetaFilepath(name));
-      let dbScheme: SchemeFile = rfs(SCHEME_PATH);
-      Tables[name] = new Table<T, idT, MetaT>(name, dbScheme.tables[name]);
+
+      let scheme = this.getScheme(name);
+      if (!scheme) throw new ResponseError("Table {...} doesn't exist", [name]);
+
+      Tables[name] = new Table<T, idT, MetaT>(name, scheme);
     }
 
     return Tables[name] as any;
