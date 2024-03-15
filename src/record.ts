@@ -99,7 +99,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
     this._data[indexField] = newValue;
 
-    
+
     this._table.triggerEvent("recordChange", {
       newValue,
       oldValue: currentValue,
@@ -288,6 +288,10 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
   $light(): LightT {
     return this.$pick(...this._table.getLightKeys()) as any;
+  }
+
+  $isValid(): boolean {
+    return this._table.zObject.safeParse(this).success;
   }
 
 };

@@ -12,7 +12,7 @@ import { CallbackScope } from "./client";
 import { FieldTag, FieldType, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { ParsedFunction, constructFunction, parseFunction } from "./function";
-import z, { ZodEffects, ZodError, ZodObject, ZodRawShape } from "zod";
+import zod, { ZodEffects, ZodError, ZodObject, ZodRawShape } from "zod";
 
 
 
@@ -148,8 +148,14 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       meta.userMeta = {};
     }
 
-    this.validator = 0 as any;//line below will set the validator
-    this.setValidator(meta.validator);
+    this._zObject = this.validator = 0 as any;//line below will set the validator
+    try {
+      this.setValidator(meta.validator);  
+    } catch (err:any) {
+      logError(err.message, JSON.stringify(meta.validator));
+      this.setValidator();
+    }
+    
 
     if (!meta.lastId) {
       meta.lastId = 0
@@ -679,7 +685,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   public insertMany(data: InsertT[]): idT[] {
     const storable: PlainObject[] = [];
 
-    const zObject = this.getZObject();
 
     const dataFull: T[] = [];
     let lastId = this.mainDict.meta.custom.lastId;
@@ -701,7 +706,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
     for (const obj of dataFull) {
       try {
-        zObject.parse(obj);
+        this.zObject.parse(obj);
       } catch (zError) {
         throw new ResponseError(zError as ZodError);
       }
@@ -758,7 +763,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         $,
         _,
         db: DataBase,
-        z,
+        z: zod,
       }
 
       this.triggerEvent("recordsInsert", e);
@@ -1029,7 +1034,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         db: DataBase,
         meta,
         table: this,
-        z,
+        z: zod,
       };
       handler(e);
       this.mainDict.meta.custom.userMeta = meta;
@@ -1192,9 +1197,14 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.mainDict.meta.custom.validator = fun;
 
     this.validator = constructFunction(fun) as RecordValidator;
+
+    this._zObject = this.validator(this, { db: DataBase, $, _, z: zod });
   }
 
-  getZObject() {
-    return this.validator(this, { db: DataBase, $, _, z });
+  protected _zObject: ZodObject<any> | ZodEffects<ZodObject<any>>;
+
+  public get zObject() {
+    return this._zObject;
   }
+
 }

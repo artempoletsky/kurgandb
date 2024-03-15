@@ -40,6 +40,17 @@ function full<Type>(rec: TRecord<Type, any, any, any>): Type {
   return rec.$full();
 }
 
+function light<LightT>(rec: TRecord<any, any, LightT, any>): LightT {
+  return rec.$light();
+}
+
+function valid(rec: TRecord<any, any, any, any>): boolean {
+  return rec.$isValid();
+}
+
+function invalid(rec: TRecord<any, any, any, any>): boolean {
+  return !rec.$isValid();
+}
 
 export const $ = {
   randomIndex,
@@ -56,6 +67,9 @@ export const $ = {
   reduceDictionary,
   ResponseError,
   log: writeIntoLogFile,
+  light,
+  valid,
+  invalid,
 }
 
 
