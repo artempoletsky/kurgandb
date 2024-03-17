@@ -78,13 +78,29 @@ describe("Query errors", () => {
       }, {});
     } catch (e: any) {
       const err: ResponseError = e;
-      console.log(err);
       expect(err.message).toBe("id 'foo1231' doesn't exists at 'test_words[word]'");
       expect(err.response.message).toBe("id 'foo1231' doesn't exists at 'test_words[word]'");
       expect(err.response.statusCode).toBe(404);
     }
   });
 
+
+  test("Eval catch", async () => {
+    try {
+      await query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
+        try {
+          eval("variable.foo = 1;");
+        } catch (err: any) {
+          throw new $.ResponseError(err.message);
+        }
+      }, {});
+    } catch (e: any) {
+      const err: ResponseError = e;
+      expect(err.message).toBe("variable is not defined");
+      expect(err.response.message).toBe("variable is not defined");
+      expect(err.response.statusCode).toBe(400);
+    }
+  });
 
 
 
