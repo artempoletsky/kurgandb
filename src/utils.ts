@@ -77,40 +77,40 @@ type WFSOptions = {
   pretty: boolean
 } | undefined;
 
-function abs(path: string) {
+export function absolutePath(path: string) {
   return `${DataBase.workingDirectory}/${path}`;
 }
 export function wfs(filename: string, data: any, options?: WFSOptions) {
   const { pretty = false } = options || {};
 
   if (pretty) {
-    return fs.writeFileSync(abs(filename), JSON.stringify(data, null, 2).replace(/\n/g, "\r\n"));
+    return fs.writeFileSync(absolutePath(filename), JSON.stringify(data, null, 2).replace(/\n/g, "\r\n"));
   } else {
-    return fs.writeFileSync(abs(filename), JSON.stringify(data));
+    return fs.writeFileSync(absolutePath(filename), JSON.stringify(data));
   }
 }
 
 export function rfs(filename: string, asText = false) {
-  const text = fs.readFileSync(abs(filename), { encoding: "utf8" });
+  const text = fs.readFileSync(absolutePath(filename), { encoding: "utf8" });
   if (asText) return text;
   return JSON.parse(text);
 }
 
 export function existsSync(filename: string) {
-  return fs.existsSync(abs(filename));
+  return fs.existsSync(absolutePath(filename));
 }
 
 export function statSync(filename: string) {
-  return fs.statSync(abs(filename));
+  return fs.statSync(absolutePath(filename));
 }
 
 
 export function unlinkSync(filename: string) {
-  fs.unlinkSync(abs(filename));
+  fs.unlinkSync(absolutePath(filename));
 }
 
 export function mkdirSync(dirname: string) {
-  fs.mkdirSync(abs(dirname), { recursive: true });
+  fs.mkdirSync(absolutePath(dirname), { recursive: true });
 }
 
 /**
@@ -118,7 +118,7 @@ export function mkdirSync(dirname: string) {
  * @param dirname 
  */
 export function rmie(name: string) {
-  rimraf.sync(abs(name));
+  rimraf.sync(absolutePath(name));
 
   // if (existsSync(name)) {
 
@@ -140,13 +140,13 @@ export function rmie(name: string) {
  * @param dirname 
  */
 export function mdne(dirname: string) {
-  if (!fs.existsSync(abs(dirname))) {
-    fs.mkdirSync(abs(dirname));
+  if (!fs.existsSync(absolutePath(dirname))) {
+    fs.mkdirSync(absolutePath(dirname));
   }
 }
 
 export function renameSync(oldName: string, newName: string) {
-  return fs.renameSync(abs(oldName), abs(newName));
+  return fs.renameSync(absolutePath(oldName), absolutePath(newName));
 }
 
 

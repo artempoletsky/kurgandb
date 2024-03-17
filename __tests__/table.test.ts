@@ -10,6 +10,7 @@ import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 
 import { TRecord } from "../src/record";
+import { rimraf } from "rimraf";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -150,6 +151,23 @@ describe("Table", () => {
     expect(d1.name).toBe("foo");
     expect(t.at(i2)?.name).toBe("bar");
 
+  });
+
+  test("date insert", () => {
+    const now = Date.now();
+    const nowDate = new Date(now);
+    const nowStr = nowDate.toJSON();
+    let id = t.insert({
+      date: now,
+      bool: true,
+      name: "123",
+      light: [],
+      heavy: null,
+    });
+
+    let date = t.at(id).date as Date;
+    expect(date.getTime()).toBe(now);
+    expect(date.toJSON()).toBe(nowStr);
   });
 
   test("has tag functions", () => {
@@ -350,12 +368,6 @@ describe("Table", () => {
 
   afterAll(async () => {
     await allIsSaved();
-    // t.closePartition();
-    DataBase.removeTable(TestTableName);
-    DataBase.removeTable("arrays");
-    DataBase.removeTable("test_words");
-    DataBase.removeTable("num_id");
-    await allIsSaved();
-
+    rimraf.sync(process.cwd() + "/test_data");
   });
 });

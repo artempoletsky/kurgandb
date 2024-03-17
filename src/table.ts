@@ -1,9 +1,9 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
 import { TRecord, TableRecord } from "./record";
-import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError, $ } from "./utils";
+import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError, $, absolutePath } from "./utils";
 
-
+import fs from "fs";
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
@@ -150,12 +150,12 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
     this._zObject = this.validator = 0 as any;//line below will set the validator
     try {
-      this.setValidator(meta.validator);  
-    } catch (err:any) {
+      this.setValidator(meta.validator);
+    } catch (err: any) {
       logError(err.message, JSON.stringify(meta.validator));
       this.setValidator();
     }
-    
+
 
     if (!meta.lastId) {
       meta.lastId = 0
@@ -736,7 +736,9 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         for (let i = 0; i < storable.length; i++) {
           const value = storable[i][key];
           if (value) {
-            wfs(this.getHeavyFieldFilepath(ids[i], type, key), value);
+            const toStore = type == "json" ? JSON.stringify(value) : value;
+            fs.writeFileSync(absolutePath( this.getHeavyFieldFilepath(ids[i], type, key)), toStore, {});
+            // wfs(this.getHeavyFieldFilepath(ids[i], type, key), value);
           }
         }
       }
@@ -1179,7 +1181,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
           switch (type) {
             case "boolean": rule = z.boolean(); break;
-            case "date": rule = z.date(); break;
+            case "date": rule = z.coerce.date(); break;
             case "json": rule = z.any(); break;
             case "number": rule = z.number(); break;
             case "string": rule = z.string(); break;
