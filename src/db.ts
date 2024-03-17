@@ -131,7 +131,11 @@ export class DataBase {
       // const meta = rfs(getMetaFilepath(name));
 
       let scheme = this.getScheme(name);
-      if (!scheme) throw new ResponseError("Table {...} doesn't exist", [name]);
+      if (!scheme) throw new ResponseError({
+        message: "Table {...} doesn't exist",
+        args: [name],
+        statusCode: 404,
+      });
 
       Tables[name] = new Table<T, idT, MetaT>(name, scheme);
     }

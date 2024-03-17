@@ -872,7 +872,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   protected errorWrongId(id: idT) {
-    return new ResponseError(`id '${id}' doesn't exists at ${this.printField()}`);
+    return new ResponseError({
+      message: `id '${id}' doesn't exists at ${this.printField()}`,
+      statusCode: 404,
+    });
   }
 
   at(id: idT): VisibleT

@@ -327,16 +327,6 @@ describe("Table", () => {
     expect(res.id).toBe("a");
   });
 
-  test("ResponseError throw", async () => {
-
-
-    const q = query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
-      return test_words.at("foo1231");
-    }, {});
-
-    await expect(q).rejects.toHaveProperty("message", "id 'foo1231' doesn't exists at 'test_words[id]'");
-  });
-
   test("getFreeId", () => {
     const test_words = DataBase.getTable<TestWord, string>("test_words");
     expect(test_words.getFreeId()).toBe("new_id");

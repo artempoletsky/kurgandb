@@ -20,6 +20,7 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'virtual_fs.test.ts';
 // currentFile = 'sorteddict.test.ts';
 // currentFile = 'dict.test.ts';
+// currentFile = 'query_errors.test.ts';
 // currentFile = 'table.test.ts';
 // currentFile = 'table_heavy.test.ts';
 // currentFile = 'table_query.test.ts';
