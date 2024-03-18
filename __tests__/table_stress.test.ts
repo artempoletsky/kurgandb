@@ -5,6 +5,7 @@ import { faker } from "@faker-js/faker";
 import { DataBase } from "../src/db";
 import { Table, getMetaFilepath } from "../src/table";
 import { FieldType } from "../src/globals";
+import TableUtils from "../src/table_utilities";
 
 
 const xdescribe = (...args: any) => { };
@@ -221,7 +222,8 @@ describe("Rich table", () => {
     });
 
     test("where", () => {
-      if (!t.fieldHasAnyTag("salary", "index")) {
+      const utils = TableUtils.fromTable(t);
+      if (!utils.fieldHasAnyTag("salary", "index")) {
         perfStart("salaryIndex");
         t.createIndex("salary", false);
         perfEndLog("salaryIndex");
