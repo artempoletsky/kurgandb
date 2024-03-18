@@ -97,7 +97,13 @@ describe("Utility functions", () => {
 });
 
 describe("Function parser/constructor", () => {
-  test("validator", () => {
+
+  test("no arguments", () => {
+    let p = parseFunction(() => { });
+    expect(p.args.length).toBe(0);
+  });
+
+  test("parse", () => {
     let p = parseFunction((self: any) => {
       const shape: ZodRawShape = {}
       for (const fieldName in self.scheme.fields) {

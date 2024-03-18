@@ -13,6 +13,7 @@ import { FieldTag, FieldType, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { ParsedFunction, constructFunction, parseFunction } from "./function";
 import zod, { ZodEffects, ZodError, ZodObject, ZodRawShape } from "zod";
+import TableUtils from "./table_utilities";
 
 
 
@@ -114,6 +115,8 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   protected _indexType: FieldType[] = [];
   protected _indexIndexType: FieldType[] = [];
 
+  protected utils: TableUtils<T, idT>;
+
   public readonly scheme: TableScheme;
   public readonly name: string;
   public readonly primaryKey: string;
@@ -124,19 +127,12 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.primaryKey = "id";
     this.name = name;
     this.scheme = scheme;
-    this.indices = {};
 
-    for (const fieldName in scheme.tags) {
-      // const fieldTags = tags[fieldName];
-      if (this.fieldHasAnyTag(<keyof T & string>fieldName, "index", "unique")) {
-        this.indices[fieldName] = FragmentedDictionary.open(this.getIndexDictDir(fieldName));
-      }
-      if (this.fieldHasAnyTag(<keyof T & string>fieldName, "primary")) {
-        this.primaryKey = fieldName;
-      }
-    }
+    this.primaryKey = TableUtils.getPrimaryKeyFromScheme(scheme);
+    const { indices, mainDict } = TableUtils.getTableDicts<idT>(scheme, name);
+    this.indices = indices;
+    this.mainDict = mainDict;
 
-    this.mainDict = FragmentedDictionary.open(`/${name}/main/`);
     this.memoryFields = {};
     this.loadMemoryIndices();
     this.updateFieldIndices();
@@ -160,11 +156,13 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (!meta.lastId) {
       meta.lastId = 0
     }
+
+    this.utils = new TableUtils(this, this.mainDict, this.indices);
   }
 
 
   public get autoId(): boolean {
-    return this.fieldHasAnyTag(this.primaryKey, "autoinc");
+    return this.utils.fieldHasAnyTag(this.primaryKey, "autoinc");
   }
 
 
@@ -172,43 +170,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (type == "json") throw new Error("wrong type");
     if (type == "string") return "string";
     return "int";
-  }
-
-  static tagsHasFieldNameWithAnyTag(tags: Record<string, FieldTag[]>, fieldName: string, ...tagsToFind: FieldTag[]) {
-    if (!tags[fieldName]) return false;
-    for (const tag of tagsToFind) {
-      if (tags[fieldName].includes(tag)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  static tagsHasFieldNameWithAllTags(tags: Record<string, FieldTag[]>, fieldName: string, ...tagsToFind: FieldTag[]) {
-    if (!tags[fieldName]) return false;
-    for (const tag of tagsToFind) {
-      if (!tags[fieldName].includes(tag)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  protected forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, tags: Set<FieldTag>) => void) {
-    for (const fieldName in this.scheme.tags) {
-      const tags = new Set(this.scheme.tags[fieldName]);
-      if (tags.has("index") || tags.has("unique")) {
-        predicate(fieldName, this.indices[fieldName], tags);
-      }
-    }
-  }
-
-  fieldHasAnyTag(fieldName: string, ...tags: FieldTag[]) {
-    return Table.tagsHasFieldNameWithAnyTag(this.scheme.tags, fieldName, ...tags);
-  }
-
-  fieldHasAllTags(fieldName: string, ...tags: FieldTag[]) {
-    return Table.tagsHasFieldNameWithAllTags(this.scheme.tags, fieldName, ...tags);
   }
 
   protected loadMemoryIndices() {
@@ -252,8 +213,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   protected createQuery() {
-
-    return new TableQuery<T, idT, LightT, VisibleT>(this, this.indices, this.mainDict);
+    return new TableQuery<T, idT, LightT, VisibleT>(this, this.utils);
   }
 
   whereRange(fieldName: keyof T, min: any, max: any): TableQuery<T, idT, LightT, VisibleT> {
@@ -282,12 +242,12 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (!fields[oldName]) throw new Error(`Field '${oldName}' doesn't exist`);
     if (fields[newName]) throw new Error(`Field '${newName}' already exists`);
 
-    if (this.fieldHasAnyTag(oldName as any, "index", "unique", "memory")) {
-      FragmentedDictionary.rename(this.getIndexDictDir(oldName), this.getIndexDictDir(newName));
+    if (this.utils.fieldHasAnyTag(oldName as any, "index", "unique", "memory")) {
+      FragmentedDictionary.rename(this.utils.getIndexDictDir(oldName), this.utils.getIndexDictDir(newName));
     }
 
-    if (this.fieldHasAnyTag(oldName, "heavy")) {
-      renameSync(this.getHeavyFieldDir(oldName), this.getHeavyFieldDir(newName));
+    if (this.utils.fieldHasAnyTag(oldName, "heavy")) {
+      renameSync(this.utils.getHeavyFieldDir(oldName), this.utils.getHeavyFieldDir(newName));
     }
 
     const fieldTags = tags[oldName] || [];
@@ -321,13 +281,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     return this.mainDict.end;
   }
 
-  forEachField(predicate: (fieldName: string, type: FieldType, tags: Set<FieldTag>) => any): void {
-    const fields = this.scheme.fields;
-    for (const key of this.scheme.fieldsOrderUser) {
-      predicate(key, fields[key], new Set(this.scheme.tags[key]));
-    }
-  }
-
   public get length(): number {
     return this.mainDict.length;
   }
@@ -340,11 +293,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       pretty: true
     });
     this.updateFieldIndices();
-  }
-
-  printField(fieldName?: string) {
-    if (!fieldName) return `'${this.name}[${this.primaryKey}]'`;
-    return `field '${this.name}[${this.primaryKey}].${fieldName}'`;
   }
 
   static createIndexDictionary(tableName: string, fieldName: string, tags: FieldTag[], type: FieldType) {
@@ -366,12 +314,9 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     });
 
   }
-  protected throwAlreadyIndex(fieldName: string) {
-    throw new Error(`${this.printField(fieldName)} is already an index!`);
-  }
 
   createIndex(fieldName: string & keyof T, unique: boolean) {
-    if (this.indices[fieldName]) this.throwAlreadyIndex(fieldName);
+    if (this.indices[fieldName]) throw this.utils.errorAlreadyIndex(fieldName);
     const type = this.scheme.fields[fieldName];
 
     const tags: FieldTag[] = this.scheme.tags[fieldName] || [];
@@ -409,7 +354,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     const toPush = indexData.get(value);
 
     if (throwUnique && toPush) {
-      throw this.errorValueNotUnique(throwUnique, value);
+      throw this.utils.errorValueNotUnique(throwUnique, value);
     }
 
     if (!toPush) {
@@ -420,7 +365,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
   removeIndex(name: string) {
-    if (!this.indices[name]) throw new Error(`${this.printField(name)} is not an index field!`);
+    if (!this.indices[name]) throw this.utils.errorFieldNotIndex(name);
 
     this.indices[name].destroy();
     delete this.indices[name];
@@ -433,19 +378,19 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   removeField(fieldName: string) {
     const { fields, tags } = this.scheme;
     const type = fields[fieldName];
-    if (!type) throw new Error(`${this.printField(fieldName)} doesn't exist`);
+    if (!type) throw this.utils.errorFieldDoesntExist(fieldName);
 
 
-    if (fieldName == this.primaryKey) throw new Error(`Can't remove the primary key ${this.printField(fieldName)}! Create a new table instead.`);
+    if (fieldName == this.primaryKey) throw new ResponseError(`Can't remove the primary key ${this.utils.printField(fieldName)}! Create a new table instead.`);
 
-    if (this.fieldHasAnyTag(fieldName, "index", "unique")) {
+    if (this.utils.fieldHasAnyTag(fieldName, "index", "unique")) {
       this.removeIndex(fieldName);
     }
 
-    if (this.fieldHasAnyTag(fieldName, "heavy"))
-      rmie(this.getHeavyFieldDir(fieldName));
+    if (this.utils.fieldHasAnyTag(fieldName, "heavy"))
+      rmie(this.utils.getHeavyFieldDir(fieldName));
     else {
-      this.removeRecordColumn(this._fieldNameIndex[fieldName]);
+      this.utils.removeRecordColumn(this._fieldNameIndex[fieldName]);
     }
 
     delete this.scheme.fields[fieldName];
@@ -462,7 +407,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       throw new ResponseError(`field '${fieldName}' already exists`);
 
 
-    const filesDir = this.getHeavyFieldDir(fieldName);
+    const filesDir = this.utils.getHeavyFieldDir(fieldName);
 
     if (isHeavy) {
       if (!existsSync(filesDir)) mkdirSync(filesDir);
@@ -470,7 +415,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     else {
       const definedPredicate = predicate || (() => getDefaultValueForType(type));
       this.insertRecordColumn(this._indexFieldName.length, (id, arr) => {
-        return definedPredicate(new TableRecord(arr, id, this, this.indices) as TRecord<T, idT, LightT, VisibleT>);
+        return definedPredicate(new TableRecord(arr, id, this, this.utils) as TRecord<T, idT, LightT, VisibleT>);
       });
     }
 
@@ -484,202 +429,14 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.saveScheme();
   }
 
-  throwFieldDoesntExist(fieldName: string) {
-    return new Error(`Field name '${this.printField(fieldName)}' doesn't exist`);
-  }
+
 
   changeFieldIndex(fieldName: string, newIndex: number) {
     const { fieldsOrderUser } = this.scheme;
     const iOf = fieldsOrderUser.indexOf(fieldName);
-    if (iOf == -1) throw this.throwFieldDoesntExist(fieldName);
+    if (iOf == -1) throw this.utils.errorFieldDoesntExist(fieldName);
     fieldsOrderUser.splice(iOf, 1);
     fieldsOrderUser.splice(newIndex, 0, fieldName);
-  }
-
-  getIndexDictDir(fieldName: string) {
-    return `/${this.name}/indices/${fieldName}/`;
-  }
-
-  getMainDictDir() {
-    return `/${this.name}/main/`;
-  }
-
-  getHeavyFieldDir(fieldName: string) {
-    return `/${this.name}/heavy/${fieldName}/`;
-  }
-
-  /**
-   * 
-   * @param id the record ID
-   * @param type the type of the field
-   * @param fieldName the name of the field
-   * @returns a relative path to the heavy field contents
-   */
-  getHeavyFieldFilepath(id: idT, type: FieldType, fieldName: string): string {
-    return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "json" ? "json" : "txt"}`;
-  }
-
-
-  // // /**
-  // //  * 
-  // //  * @param data - data to insert
-  // //  * @param predicate - filing indices function
-  // //  * @returns last inserted id string
-  // //  */
-  // insertSquare(data: any[][]): string[] | number[] {
-  //   return this.mainDict.insertArray(data) as string[] | number[]; //TODO: take the last id from the table instead of the dict
-  // }
-
-  protected removeRecordColumn(fieldIndex: number): void
-  protected removeRecordColumn(fieldIndex: number, returnAsDict: true): PlainObject
-  protected removeRecordColumn(fieldIndex: number, returnAsDict: boolean = false) {
-    const result: Record<string | number, any> = {};
-    this.mainDict.where({
-      update(arr, id) {
-        const newArr = [...arr];
-        if (returnAsDict) {
-          result[id] = newArr[fieldIndex];
-        }
-        newArr.splice(fieldIndex, 1);
-        return newArr;
-      }
-    });
-    if (returnAsDict) return result;
-  }
-
-  buildIndexDataForRecords(records: (LightT | T)[]) {
-    const result: Record<string, Map<string | number, idT[]>> = {}
-
-    const rrs: PlainObject[] = records as any;
-    const idsSet = new Set<idT>();
-    const ids: idT[] = [];
-
-    for (const rec of rrs) {
-      const id = rec[this.primaryKey];
-      if (idsSet.has(id))
-        throw this.errorValueNotUnique(this.primaryKey, id);
-
-      idsSet.add(id);
-      ids.push(id);
-    }
-
-    this.forEachIndex((fieldName, dict, tags) => {
-      const map = new Map<string | number, idT[]>();
-      for (let i = 0; i < ids.length; i++) {
-        const val = rrs[i][fieldName];
-        const id = ids[i];
-        if (map.has(val)) {
-          if (tags.has("unique")) throw this.errorValueNotUnique(fieldName, val);
-          (<idT[]>map.get(val)).push(id);
-        } else {
-          map.set(val, [id]);
-        }
-      }
-      result[fieldName] = map;
-    });
-
-    return result;
-  }
-
-  removeFromIndex(records: (LightT | T)[]) {
-    const indexData = this.buildIndexDataForRecords(records);
-    for (const key in indexData) {
-      this.removeColumnFromIndex(key, indexData[key]);
-    }
-  }
-
-  removeHeavyFilesForEachID(ids: idT[]) {
-    this.forEachField((fieldName, type, tags) => {
-      if (tags.has("heavy")) {
-        for (const id of ids) {
-          const path = this.getHeavyFieldFilepath(id, type, fieldName);
-          rmie(path);
-        }
-      }
-    });
-  }
-
-  storeIndexValue(fieldName: string, recID: idT, value: string | number) {
-    this.changeIndexValue(fieldName, recID, undefined, value);
-  }
-
-  unstoreIndexValue(fieldName: string, recID: idT, value: string | number) {
-    this.changeIndexValue(fieldName, recID, value, undefined);
-  }
-
-  changeIndexValue(fieldName: string, recID: idT, oldValue: undefined | string | number, newValue: undefined | string | number) {
-    if (oldValue == newValue) return;
-    const indexDict = this.indices[fieldName];
-    if (!indexDict) {
-      return;
-    }
-    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
-
-
-    if (isUnique) {
-      if (newValue !== undefined && indexDict.getOne(newValue)) throw new ResponseError(`Attempting to create a duplicate in the unique ${this.printField(fieldName)}`);
-
-      if (oldValue !== undefined) {
-        indexDict.remove(oldValue);
-      }
-      if (newValue !== undefined) {
-        indexDict.setOne(newValue, recID);
-      }
-    } else {
-      if (oldValue !== undefined) {
-        const arr: idT[] = (indexDict.getOne(oldValue) || []).slice(0);
-        // arr.push(id);
-        arr.splice(arr.indexOf(recID), 1);
-        if (arr.length) {
-          indexDict.setOne(oldValue, arr);
-        } else {
-          indexDict.remove(oldValue);
-        }
-      }
-
-      if (newValue !== undefined) {
-        const arr: idT[] = indexDict.getOne(newValue) || [];
-        arr.push(recID);
-        indexDict.setOne(newValue, arr);
-      }
-    }
-  }
-
-
-  canInsertUnique<ColumnType extends string | number>(fieldName: string, column: ColumnType[], throwError: boolean = false): boolean {
-    const indexDict: FragmentedDictionary<ColumnType> = fieldName == this.primaryKey ? this.mainDict : this.indices[fieldName] as any;
-    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
-
-    let set = new Set();
-
-    let found: ColumnType | false = false;
-    set = new Set<ColumnType>();
-
-    for (const val of column) {
-      if (set.has(val)) {
-        found = val;
-        break;
-      }
-      set.add(val);
-    }
-
-    if (found !== false) {
-      if (throwError) throw this.errorValueNotUnique(fieldName, found);
-      return false;
-    }
-
-    found = indexDict.hasAnyId(column);
-
-    if (found === false) return true;
-    if (throwError) throw this.errorValueNotUnique(fieldName, found);
-    return false;
-  }
-
-  protected errorValueNotUnique(fieldName: string, value: any) {
-    if (fieldName == this.primaryKey) {
-      return new ResponseError(`Primary key value '${value}' on ${this.printField()} already exists`)
-    }
-    return new ResponseError(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
   public insertMany(data: InsertT[]): idT[] {
@@ -711,15 +468,15 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         throw new ResponseError(zError as ZodError);
       }
 
-      storable.push(this.makeObjectStorable(obj));
+      storable.push(this.utils.makeObjectStorable(obj));
     }
     // perfEndLog("make storable");
 
     const indexColumns: Record<string, any[]> = {};
-    this.forEachIndex((fieldName, indexDict, tags) => {
+    this.utils.forEachIndex((fieldName, indexDict, tags) => {
       const col = indexColumns[fieldName] = storable.map(o => o[fieldName]);
       if (tags.has("unique")) {
-        this.canInsertUnique(fieldName, col, true);
+        this.utils.canInsertUnique(fieldName, col, true);
       }
     });
 
@@ -727,17 +484,17 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     const values = storable.map(o => this.flattenObject(o));
 
     storable.map(o => <idT>o[this.primaryKey]);
-    this.canInsertUnique(this.primaryKey, ids, true);
+    this.utils.canInsertUnique(this.primaryKey, ids, true);
     this.mainDict.insertMany(ids, values);
 
 
-    this.forEachField((key, type, tags) => {
+    this.utils.forEachField((key, type, tags) => {
       if (tags.has("heavy")) {
         for (let i = 0; i < storable.length; i++) {
           const value = storable[i][key];
           if (value) {
             const toStore = type == "json" ? JSON.stringify(value) : value;
-            fs.writeFileSync(absolutePath( this.getHeavyFieldFilepath(ids[i], type, key)), toStore, {});
+            fs.writeFileSync(absolutePath(this.utils.getHeavyFieldFilepath(ids[i], type, key)), toStore, {});
             // wfs(this.getHeavyFieldFilepath(ids[i], type, key), value);
           }
         }
@@ -745,7 +502,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     });
 
     // perfStart("indicies update");
-    this.forEachIndex((fieldName) => {
+    this.utils.forEachIndex((fieldName) => {
       const indexData: Map<string | number, idT[]> = new Map();
       for (let i = 0; i < ids.length; i++) {
         this.fillIndexData(indexData, indexColumns[fieldName][i], ids[i]);
@@ -776,15 +533,11 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   }
 
 
-  protected errorFieldNotIndex(fieldName: string) {
-    return new ResponseError(`{...} is not an index!`, [this.printField(fieldName)]);
-  }
-
   insertColumnToIndex<ColType extends string | number>(fieldName: string, indexData: Map<ColType, idT[]>) {
     const column = Array.from(indexData.keys());
     const indexDict: FragmentedDictionary<ColType, any> = this.indices[fieldName] as any;
-    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
-    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
+    if (!indexDict) throw this.utils.errorFieldNotIndex(fieldName);
+    const isUnique = this.utils.fieldHasAnyTag(fieldName, "unique");
     if (isUnique) {
       const ids = Array.from(indexData.values()).map(arr => arr[0]);
       indexDict.insertMany(column, ids);
@@ -803,25 +556,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
-  removeColumnFromIndex<IndexType extends string | number>(fieldName: string, indexData: Map<IndexType, idT[]>) {
-    const indexDict: FragmentedDictionary<IndexType, any> = this.indices[fieldName] as any;
-    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
-    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
-
-    indexDict.where({
-      idFilter: (id) => indexData.has(id),
-      update: (val: idT[], indexId) => {
-        if (isUnique)
-          return undefined;
-        const toRemove = indexData.get(indexId) as idT[];
-
-        val = val.filter(recordId => !toRemove.includes(recordId));
-        if (val.length == 0) return undefined;
-        return val;
-      },
-    });
-  }
-
   public insert(data: InsertT): idT {
     return this.insertMany([data])[0];
   }
@@ -831,7 +565,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   expandObject(arr: any[]) {
     const result: PlainObject = {};
     let i = 0;
-    this.forEachField((key, type, tags) => {
+    this.utils.forEachField((key, type, tags) => {
       if (tags.has("heavy")) return;
       // if (type == "boolean") {
       //   result[key] = !!arr[i];
@@ -839,14 +573,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       // }
       result[key] = arr[i];
       i++;
-    });
-    return result;
-  }
-
-  makeObjectStorable(o: T | InsertT | LightT): PlainObject {
-    const result: PlainObject = {};
-    this.forEachField((key, type) => {
-      result[key] = TableRecord.storeValueOfType((<any>o)[key], type as any);
     });
     return result;
   }
@@ -871,18 +597,11 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     });
   }
 
-  protected errorWrongId(id: idT) {
-    return new ResponseError({
-      message: `id '${id}' doesn't exists at ${this.printField()}`,
-      statusCode: 404,
-    });
-  }
-
   at(id: idT): VisibleT
   at<ReturnType = T>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType
   public at<ReturnType>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>) {
     const res = this.where(this.primaryKey as any, id).limit(1).select(predicate);
-    if (res.length == 0) throw this.errorWrongId(id);
+    if (res.length == 0) throw this.utils.errorWrongId(id);
     return res[0];
   }
 
@@ -894,48 +613,11 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     return this.at(id, predicate);
   }
 
-  getFieldsOfType(...types: FieldType[]): string[] {
-    const result: string[] = [];
-    this.forEachField((key, type) => {
-      if (types.includes(type))
-        result.push(key);
-    });
-    return result;
-  }
-
-  getFieldsWithAnyTags(...tags: FieldTag[]): string[] {
-    const result: string[] = [];
-    this.forEachField((key) => {
-      if (this.fieldHasAnyTag(key, ...tags)) {
-        result.push(key);
-      }
-    });
-    return result;
-  }
-
-  getFieldsWithoutAnyTags(...tags: FieldTag[]): string[] {
-    const result: string[] = [];
-    this.forEachField((key) => {
-      if (!this.fieldHasAnyTag(key, ...tags)) {
-        result.push(key);
-      }
-    });
-    return result;
-  }
-
-  getLightKeys(): string[] {
-    return this.getFieldsWithoutAnyTags("heavy");
-  }
-
-  getHeavyKeys(): string[] {
-    return this.getFieldsWithAnyTags("heavy");
-  }
-
   indexKeys<IndexKeytype extends string | number = string | number>(fieldName?: string & (keyof T | "id")): IndexKeytype[] {
     if (!fieldName) fieldName = this.primaryKey as (keyof T & string);
 
     let index: FragmentedDictionary<IndexKeytype, any> = (fieldName == this.primaryKey) ? this.mainDict as any : this.indices[fieldName];
-    if (!index) throw this.errorFieldNotIndex(fieldName);
+    if (!index) throw this.utils.errorFieldNotIndex(fieldName);
 
     return index.keys();
   }
@@ -946,7 +628,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   indexIds<FieldType extends string | number>(fieldName: keyof T | "id", ...values: FieldType[]): idT[]
   indexIds(fieldName: any, ...args: any[]) {
     const index = this.indices[fieldName];
-    if (!index) throw this.errorFieldNotIndex(fieldName);
+    if (!index) throw this.utils.errorFieldNotIndex(fieldName);
 
     const [idFilter, partitionFilter] = twoArgsToFilters(args);
     const res = index.where({
@@ -1158,7 +840,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
   getRecordDraft(): T {
     const res = {} as PlainObject;
-    this.forEachField((fieldName, type, tags) => {
+    this.utils.forEachField((fieldName, type, tags) => {
       if (tags.has("autoinc")) return;
       res[fieldName] = fieldName == this.primaryKey ? this.getFreeId() : getDefaultValueForType(type);
     });

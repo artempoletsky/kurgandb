@@ -27,6 +27,7 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'table_events.test.ts';
 // currentFile = 'table_field.test.ts';
 // currentFile = 'table_index.test.ts';
+// currentFile = 'table_utils.test.ts';
 // currentFile = 'utils.test.ts';
 // currentFile = 'fragmented_dict_stress.test.ts';
 // currentFile = 'table_stress.test.ts';

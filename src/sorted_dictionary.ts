@@ -55,7 +55,7 @@ export default class SortedDictionary<KeyType extends string | number, Type> {
     return this._keys.at(-1);
   }
 
-  get(index: KeyType) {
+  get(index: KeyType): Type | undefined {
     return this.dict[index];
   }
 

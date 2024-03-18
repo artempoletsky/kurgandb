@@ -65,7 +65,7 @@ export function mkdirSync(name: string) {
   fs.mkdirSync(`${ROOT}/${name}`, { recursive: true });
 }
 
-export function trackOperation(): string {
+export function trackTransaction(): string {
   const id = _.uniqueId("virtualFSTrack");
   for (const name in CACHE) {
     const file = CACHE[name];
@@ -74,11 +74,11 @@ export function trackOperation(): string {
   return id;
 }
 
-export function stopTrackingOperation(id: string) {
+export function stopTrackingTransaction(id: string) {
 
 }
 
-export function abortOperation(id: string) {
+export function abortTransaction(id: string) {
   for (const name in CACHE) {
     const file = CACHE[name];
     file.abortSaving();

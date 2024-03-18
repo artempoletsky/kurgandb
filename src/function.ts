@@ -55,7 +55,7 @@ function parseFunctionHead(head: string): {
   // if (!expRes) throw new Error("can't parse arguments for predicate");
 
   // const args = expRes.map(s => s.slice(1, s.length - 1).trim());
-  
+
   if (head.match(/^\w+$/)) return {
     isAsync: false,
     args: [head],
@@ -73,7 +73,9 @@ function parseFunctionHead(head: string): {
     }
 
     if ((c == "," && !bracesStarted) || c == ")") {
-      args.push(currentArg.trim());
+      currentArg = currentArg.trim()
+      if (currentArg)
+        args.push(currentArg);
       currentArg = "";
       if (c == ")") {
         break;

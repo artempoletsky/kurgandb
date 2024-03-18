@@ -2,12 +2,13 @@ import fs from "fs";
 import { TableScheme, Table, IndicesRecord } from "./table";
 import { DataBase } from "./db";
 import { FieldType, PlainObject } from "./globals";
+import TableUtils from "./table_utilities";
 
 export type TRecord<T, idT extends string | number, LightT = T, VisibleT = T> = TableRecord<T, idT, LightT, VisibleT> & T;
 
 export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
   protected _id: idT;
-  protected _indices: IndicesRecord;
+  protected _utils: TableUtils<T, idT>;
   protected _data: any[] = [];
   protected _dates: Record<string, Date> = {};
 
@@ -18,8 +19,8 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     return this._id;
   }
 
-  constructor(data: any[], id: idT, table: Table<T, idT, any, any, LightT, VisibleT>, indices: IndicesRecord) {
-    this._indices = indices;
+  constructor(data: any[], id: idT, table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
+    this._utils = utils;
 
     this._table = table;
 
@@ -52,12 +53,14 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
   $set(fieldName: keyof T & string, value: any): void {
     const { fields } = this._table.scheme;
     const table = this._table;
+    const utils = this._utils;
     const { primaryKey } = this._table;
     const tags = this._table.scheme.tags[fieldName] || [];
 
     if (primaryKey == fieldName) {
       if (value == this._id) return;
-      throw new Error("Not implemented yet");
+      this._id = value;
+      return;
     }
 
     const type = fields[fieldName];
@@ -90,7 +93,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
     const indexField = table.fieldNameIndex[fieldName];
     const currentValue = this._data[indexField];
-    table.changeIndexValue(fieldName, this._id, currentValue, newValue);
+    utils.changeIndexValue(fieldName, this._id, currentValue, newValue);
 
 
     if (type == "date") {
@@ -225,7 +228,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     // const { primaryKey } = this._table;
     // result[primaryKey] = this._id;
 
-    this._table.forEachField((key, type, tags) => {
+    this._utils.forEachField((key, type, tags) => {
       if (!tags.has("hidden")) {
         result[key] = this.$get(key);
       }
@@ -261,12 +264,12 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
   $getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
-    return DataBase.workingDirectory + this._table.getHeavyFieldFilepath(this._id, type, field);
+    return DataBase.workingDirectory + this._utils.getHeavyFieldFilepath(this._id, type, field);
   }
 
   $pick(...fields: string[]): Partial<T> {
     const result: PlainObject = {};
-    this._table.forEachField((key, type) => {
+    this._utils.forEachField((key, type) => {
       if (fields.includes(key))
         result[key] = this.$get(key);
     })
@@ -279,7 +282,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
   $omit(...fields: string[]): Partial<T> {
     const result: PlainObject = {};
-    this._table.forEachField((key, type) => {
+    this._utils.forEachField((key, type) => {
       if (!fields.includes(key))
         result[key] = this.$get(key);
     })
@@ -287,7 +290,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
   }
 
   $light(): LightT {
-    return this.$pick(...this._table.getLightKeys()) as any;
+    return this.$pick(...this._utils.getLightKeys()) as any;
   }
 
   $isValid(): boolean {

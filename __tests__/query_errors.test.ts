@@ -72,8 +72,9 @@ describe("Query errors", () => {
 
 
   test("Wrong record ID", async () => {
+    let result;
     try {
-      await query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
+      result = await query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
         return test_words.at("foo1231");
       }, {});
     } catch (e: any) {
@@ -82,24 +83,32 @@ describe("Query errors", () => {
       expect(err.response.message).toBe("id 'foo1231' doesn't exists at 'test_words[word]'");
       expect(err.response.statusCode).toBe(404);
     }
+    expect(result).toBe(undefined)
   });
 
 
   test("Eval catch", async () => {
+    let result;
+
     try {
-      await query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
+      result = await query(({ test_words }: { test_words: Table<TestWord, string> }, { }, { $ }) => {
+        const queryString = "variable.foo = 1";
         try {
-          eval("variable.foo = 1;");
-        } catch (err: any) {
-          throw new $.ResponseError(err.message);
+          eval(queryString)
+        } catch (err) {
+          throw new $.ResponseError(`Query string contains errors: {...}`, [err + ""]);
         }
+        return 1;
       }, {});
     } catch (e: any) {
       const err: ResponseError = e;
-      expect(err.message).toBe("variable is not defined");
-      expect(err.response.message).toBe("variable is not defined");
+      expect(err.message).toBe("Query string contains errors: {...}");
+      expect(err.response.message).toBe("Query string contains errors: {...}");
+      expect(err.response.args[0]).toBe("ReferenceError: variable is not defined");
       expect(err.response.statusCode).toBe(400);
     }
+    expect(result).toBe(undefined)
+
   });
 
 

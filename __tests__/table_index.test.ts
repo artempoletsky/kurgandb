@@ -7,6 +7,7 @@ import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { constructFunction } from "../src/function";
 import { rimrafSync } from "rimraf";
+import TableUtils from "../src/table_utilities";
 
 
 const xdescribe = (...args: any) => { };
@@ -14,7 +15,7 @@ const xtest = (...args: any) => { };
 
 const TestTableName = "simple";
 
-describe("Table index", () => {
+describe("Table utils", () => {
 
 
   type TestWord = {
@@ -25,6 +26,7 @@ describe("Table index", () => {
 
 
   let test_words: Table<TestWord, number, any>;
+  let utils: TableUtils<TestWord, number>;
 
   const testInsert: TestWord[] = [
     { id: 2, level: "a1", word: "b" },
@@ -57,11 +59,13 @@ describe("Table index", () => {
         level: ["index"],
       }
     });
+
+    utils = TableUtils.fromTable(test_words);
   });
 
   test("buildIndexDataForRecords", () => {
 
-    const data = test_words.buildIndexDataForRecords(testInsert);
+    const data = utils.buildIndexDataForRecords(testInsert);
 
     expect(data.word).toBeDefined();
     expect(data.level).toBeDefined();
@@ -83,14 +87,14 @@ describe("Table index", () => {
     expect(levelMap.size).toBe(4);
 
     expect(() => {
-      test_words.buildIndexDataForRecords([
+      utils.buildIndexDataForRecords([
         { id: 1, word: "a", level: "a", },
         { id: 2, word: "a", level: "a", }
       ]);
     }).toThrowError();
 
     expect(() => {
-      test_words.buildIndexDataForRecords([
+      utils.buildIndexDataForRecords([
         { id: 1, word: "a", level: "a", },
         { id: 1, word: "b", level: "a", }
       ]);
@@ -101,10 +105,10 @@ describe("Table index", () => {
   test("insert", () => {
 
     const wordCol = testInsert.map(r => r.word);
-    expect(test_words.canInsertUnique("word", wordCol)).toBe(true);
+    expect(utils.canInsertUnique("word", wordCol)).toBe(true);
 
     expect(() => {
-      test_words.canInsertUnique("word", wordCol, true)
+      utils.canInsertUnique("word", wordCol, true)
     }).not.toThrow();
 
     test_words.insertMany(testInsert);
@@ -233,6 +237,8 @@ describe("Table index", () => {
       }
     });
 
+    const utils = TableUtils.fromTable(t);
+
 
     for (let i = 0; i < 10; i++) {
       t.insert({
@@ -246,8 +252,8 @@ describe("Table index", () => {
       });
     }
 
-    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
-    let indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+    expect(utils.fieldHasAnyTag("name", "index")).toBe(true);
+    let indexDict = FragmentedDictionary.open<string, number[]>(utils.getIndexDictDir("name"));
 
 
     indexDict.setOne("blablabla", [123]);
@@ -259,8 +265,8 @@ describe("Table index", () => {
     expect(indexDict.getOne("blablabla")).toBe(undefined);
 
 
-    t.storeIndexValue("name", 456, "foo123");
-    indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+    utils.storeIndexValue("name", 456, "foo123");
+    indexDict = FragmentedDictionary.open<string, number[]>(utils.getIndexDictDir("name"));
     expect(indexDict.getOne("foo123")).toBeDefined();
     indexDict.remove("foo123");
 
@@ -293,8 +299,9 @@ describe("Table index", () => {
 
   test("removes and creates index", async () => {
     const t = DataBase.getTable<SimpleType, number>("simple");
+    const utils = TableUtils.fromTable(t);
     t.removeIndex("name");
-    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
+    expect(utils.fieldHasAnyTag("name", "index", "unique")).toBe(false);
 
     let bars = t.where("name", "bar").select();
 
@@ -304,10 +311,10 @@ describe("Table index", () => {
       t.createIndex("name", true);
     }).toThrow(`Unique value 'foo' for field '${TestTableName}[id].name' already exists`);
 
-    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(false);
+    expect(utils.fieldHasAnyTag("name", "index", "unique")).toBe(false);
 
     t.createIndex("name", false);
-    expect(t.fieldHasAnyTag("name", "index")).toBe(true);
+    expect(utils.fieldHasAnyTag("name", "index")).toBe(true);
 
     bars = t.where("name", "bar").select();
 
@@ -326,7 +333,7 @@ describe("Table index", () => {
     bars = t.where("name", "bar").select();
     expect(bars.length).toBe(2);
 
-    const indexDict = FragmentedDictionary.open<string, number[]>(t.getIndexDictDir("name"));
+    const indexDict = FragmentedDictionary.open<string, number[]>(utils.getIndexDictDir("name"));
 
     const arr = indexDict.getOne("bar");
     expect(arr).toBeDefined();

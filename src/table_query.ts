@@ -4,7 +4,8 @@ import { RecordCallback, IndicesRecord, Table, EventRecordsRemove } from "./tabl
 
 import { uniq, flatten } from "lodash";
 import SortedDictionary from "./sorted_dictionary";
-import { abortOperation, stopTrackingOperation, trackOperation } from "./virtual_fs";
+import { abortTransaction, stopTrackingTransaction, trackTransaction } from "./virtual_fs";
+import TableUtils from "./table_utilities";
 
 
 
@@ -12,7 +13,7 @@ function idFilterFromSet<KeyType extends string | number>(ids: KeyType[]): IDFil
   return id => ids.includes(id);
 }
 
-function partitionFilterFromSet<KeyType extends string | number>(ids: KeyType[]): PartitionFilter<KeyType> {
+export function partitionFilterFromSet<KeyType extends string | number>(ids: KeyType[]): PartitionFilter<KeyType> {
   return (start, end) => {
     for (const id of ids) {
       if (start <= id || id <= end) return true;
@@ -35,8 +36,8 @@ export function twoArgsToFilters<KeyType extends string | number>(args: any[]): 
 
 export default class TableQuery<T, idT extends string | number, LightT, VisibleT> {
   protected table: Table<T, idT, any, any, LightT, VisibleT>;
-  protected indices: IndicesRecord;
-  protected mainDict: FragmentedDictionary<idT>;
+
+  protected utils: TableUtils<T, idT>;
 
   protected filters: RecordCallback<T, idT, boolean, LightT, VisibleT>[] = [];
   protected _offset: number = 0;
@@ -48,10 +49,9 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
   protected partitionFilter: PartitionFilter<any> | undefined;
   protected whereField: string | undefined;
 
-  constructor(table: Table<T, idT, any, any, LightT, VisibleT>, indices: IndicesRecord, mainDict: FragmentedDictionary<idT>) {
+  constructor(table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
     this.table = table;
-    this.indices = indices;
-    this.mainDict = mainDict;
+    this.utils = utils;
   }
 
   protected convertRangesToFilter(fieldName: string, mappedRanges: WhereRanges<any>) {
@@ -84,7 +84,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
   where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
     let [idFilter, partitionFilter] = twoArgsToFilters<FieldType>(args);
 
-    if (fieldName != this.table.primaryKey && (this.whereField || !this.table.fieldHasAnyTag(fieldName, "index", "unique"))) {
+    if (fieldName != this.table.primaryKey && (this.whereField || !this.utils.fieldHasAnyTag(fieldName, "index", "unique"))) {
       return this.convertWhereToFilter<FieldType>(fieldName, idFilter);
     }
 
@@ -134,7 +134,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
       }
     }
     return (data: any[], id: idT) => {
-      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<T, idT, LightT, VisibleT>;
+      const rec = new TableRecord(data, id, this.table, this.utils) as TRecord<T, idT, LightT, VisibleT>;
       for (let i = 0; i < this.filters.length; i++) {
         let filter = this.filters[i];
 
@@ -149,14 +149,14 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
   getQueryFilters(): [IDFilter<idT> | undefined, PartitionFilter<idT> | undefined] {
     let idFilter: IDFilter<idT> | undefined;
     let partitionFilter: PartitionFilter<idT> | undefined;
-    const { whereField, table } = this;
+    const { whereField, table, utils } = this;
 
     if (whereField) {
       if (whereField == table.primaryKey) {
         return [this.idFilter, this.partitionFilter];
       }
       if (!this.idFilter) throw new Error("id filter is undefined"); //must be imposible
-      const index = this.indices[whereField];
+      const index = this.utils.indices[whereField];
 
       const rec = index.where({
         idFilter: this.idFilter,
@@ -166,7 +166,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
       })[0];
 
       let ids: idT[];
-      if (table.fieldHasAnyTag(whereField, "unique")) {
+      if (utils.fieldHasAnyTag(whereField, "unique")) {
         ids = Object.values(rec);
       } else {
         ids = uniq(flatten(Object.values(rec)));
@@ -182,7 +182,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
       return this.orderedSelect(predicate);
     }
     const select = (data: any[], id: idT) => {
-      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<T, idT, LightT, VisibleT>;
+      const rec = new TableRecord(data, id, this.table, this.utils) as TRecord<T, idT, LightT, VisibleT>;
       if (predicate) {
         return predicate(rec);
       }
@@ -191,7 +191,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
 
-    const res = this.mainDict.where({
+    const res = this.utils.mainDict.where({
       idFilter,
       partitionFilter,
       filter: this.getFilterFunction(),
@@ -226,17 +226,29 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
 
   update(predicate: RecordCallback<T, idT, void, LightT, VisibleT>): void {
 
+    const newIds: idT[] = [];
+    const oldIds: idT[] = [];
+    const newValues: any[] = [];
+
     const update = (data: any[], id: idT) => {
-      const rec = new TableRecord(data, id, this.table, this.indices) as TRecord<T, idT, LightT, VisibleT>;
+      const rec = new TableRecord(data, id, this.table, this.utils) as TRecord<T, idT, LightT, VisibleT>;
+
       predicate(rec);
-      return rec.$serialize();
+      const newId = rec.$id;
+
+      if (id == newId) return rec.$serialize();
+
+      newIds.push(newId);
+      oldIds.push(id);
+      newValues.push(rec.$serialize());
+      return undefined;
     }
 
     const [idFilter, partitionFilter] = this.getQueryFilters();
 
-    const operationID = trackOperation();
+    const transactionID = trackTransaction();
     try {
-      this.mainDict.where({
+      this.utils.mainDict.where({
         idFilter,
         partitionFilter,
         filter: this.getFilterFunction(),
@@ -244,11 +256,16 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
         limit: this._limit || 0,
         offset: this._offset || 0,
       });
+
+      if (newIds.length) {
+        this.utils.mainDict.insertMany(newIds, newValues);
+        // this.utils.changeIdsIndices(oldIds, newIds);
+      }
     } catch (err) {
-      abortOperation(operationID);
+      abortTransaction(transactionID);
       throw err;
     }
-    stopTrackingOperation(operationID);
+    stopTrackingTransaction(transactionID);
   }
 
   delete() {
@@ -259,15 +276,15 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
     const hasHeavyRemoveListener = this.table.hasEventListener("recordsRemove");
     const removedFull: T[] = [];
 
-    const operationID = trackOperation();
+    const transactionID = trackTransaction();
     let ids: idT[];
     try {
-      [, ids] = this.mainDict.where({
+      [, ids] = this.utils.mainDict.where({
         idFilter,
         partitionFilter,
         filter: this.getFilterFunction(),
         update: (data: any[], id: idT) => {
-          let rec = new TableRecord(data, id, this.table, this.indices);
+          let rec = new TableRecord(data, id, this.table, this.utils);
           removed.push(rec.$light());
           if (hasHeavyRemoveListener) {
             removedFull.push(rec.$full());
@@ -278,13 +295,13 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
         offset: this._offset || 0,
       });
 
-      this.table.removeFromIndex(removed);
+      this.utils.removeFromIndex(removed as Partial<T>[]);
     } catch (err) {
-      abortOperation(operationID);
+      abortTransaction(transactionID);
       throw err;
     }
-    stopTrackingOperation(operationID);
-    this.table.removeHeavyFilesForEachID(ids);
+    stopTrackingTransaction(transactionID);
+    this.utils.removeHeavyFilesForEachID(ids);
     if (hasHeavyRemoveListener)
       this.table.triggerEvent("recordsRemove", {
         records: removedFull
@@ -306,7 +323,8 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
       this.throwInvalidIndex(undefined);
       return [];
     }
-    const { _orderBy: orderBy, mainDict, table, indices, _limit: limit, _offset: offset, orderDirection } = this;
+    const { _orderBy: orderBy, table, _limit: limit, _offset: offset, orderDirection, utils } = this;
+    const { mainDict, indices } = this.utils;
     const index = indices[orderBy];
     if (!index) this.throwInvalidIndex(orderBy);
 
@@ -320,7 +338,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
     if (orderDirection == "DESC") {
       allIds = allIds.reverse();
     }
-    const isIndexUnique = table.fieldHasAnyTag(orderBy, "unique");
+    const isIndexUnique = utils.fieldHasAnyTag(orderBy, "unique");
     const openedPartitions: Record<number, SortedDictionary<idT, any[]>> = {};
     const result: ReturnType[] = [];
     const filter = this.getFilterFunction(true);
@@ -334,7 +352,7 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
           openedPartitions[partId] = mainDict.openPartition(partId);
         }
         const partition = openedPartitions[partId];
-        const rec: TRecord<T, idT, LightT, VisibleT> = new TableRecord(partition.get(id), id, table, indices) as any;
+        const rec: TRecord<T, idT, LightT, VisibleT> = new TableRecord(partition.get(id) as any, id, table, this.utils) as any;
         if (filter && !filter(rec)) continue;
         found++;
 

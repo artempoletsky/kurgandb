@@ -10,6 +10,7 @@ import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 
 import { TRecord } from "../src/record";
+import TableUtils from "../src/table_utilities";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -117,7 +118,8 @@ describe("Table fields", () => {
   });
 
   test("remove", async () => {
-    let dict = FragmentedDictionary.open<number, any[]>(t.getMainDictDir());
+    const utils = TableUtils.fromTable(t);
+    let dict = FragmentedDictionary.open<number, any[]>(utils.getMainDictDir());
     let first = dict.getOne(1);
     expect(first?.length).toBe(4);
 
@@ -130,7 +132,7 @@ describe("Table fields", () => {
     expect(Object.keys(t.scheme.fields).length).toBe(5);
     await allIsSaved();
 
-    dict = FragmentedDictionary.open<number, any[]>(t.getMainDictDir());
+    dict = FragmentedDictionary.open<number, any[]>(utils.getMainDictDir());
 
     first = dict.getOne(1);
     expect(first?.length).toBe(3);

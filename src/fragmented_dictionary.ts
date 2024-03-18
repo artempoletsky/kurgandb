@@ -1,5 +1,6 @@
 import { PlainObject } from "./globals";
 import SortedDictionary from "./sorted_dictionary";
+import { partitionFilterFromSet } from "./table_query";
 
 import vfs, { mkdirSync, existsSync, rmie } from "./virtual_fs";
 
@@ -112,7 +113,9 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
   }
 
   static open<KeyType extends string | number, Type>(directory: string) {
-    const settings = vfs.readFile(`${directory}settings.json`);
+    const filename = `${directory}settings.json`;
+    const settings = vfs.readFile(filename);
+    if (!settings) throw new Error(`Dictionaty at '${filename}' doesn't exist!`);
     settings.directory = directory;
     return new FragmentedDictionary<KeyType, Type>(settings, vfs.readFile(getMetaFilepath(directory)));
   }
@@ -228,12 +231,9 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
   }
 
   getOne(id: KeyType): Type | undefined {
-    const dict = this.iterateRanges({
-      ranges: [[id, id]],
-      limit: 1,
-      select: val => val
-    })[0];
-    return dict[id];
+    const partitionId = this.findPartitionForId(id);
+    const d = this.openPartition(partitionId);
+    return d.get(id);
   }
 
   /**
@@ -407,8 +407,9 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
   }
 
   remove(...ids: KeyType[]) {
-    this.iterateRanges({
-      ranges: ids.map(id => [id, id]),
+    this.where({
+      idFilter: id => ids.includes(id),
+      partitionFilter: partitionFilterFromSet(ids),
       update: () => undefined,
     });
   }
@@ -676,7 +677,7 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
       update,
       select,
       limit,
-      offset, 
+      offset,
     } = Object.assign({
 
       limit: 0,

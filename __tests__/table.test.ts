@@ -92,25 +92,6 @@ describe("Table", () => {
     }
   });
 
-  test("makes objects storable", () => {
-    const storable = t.makeObjectStorable({
-      name: "foo",
-      bool: true,
-      date: new Date(),
-      light: ["1", "2", "3"],
-      heavy: {
-        bar: 123
-      }
-    });
-
-    expect(storable.name).toBe("foo");
-    expect(storable).toHaveProperty("heavy.bar");
-    expect(storable.heavy.bar).toBe(123);
-
-    expect(storable.bool).toBe(1);
-    expect(typeof storable.date).toBe("number");
-  });
-
   test("adds a document", () => {
 
 
@@ -168,15 +149,6 @@ describe("Table", () => {
     let date = t.at(id).date as Date;
     expect(date.getTime()).toBe(now);
     expect(date.toJSON()).toBe(nowStr);
-  });
-
-  test("has tag functions", () => {
-    expect(Table.tagsHasFieldNameWithAnyTag(t.scheme.tags, "name", "index", "unique")).toBe(true);
-    expect(t.fieldHasAnyTag("name", "index", "unique")).toBe(true);
-
-    expect(t.fieldHasAllTags("name", "index", "unique")).toBe(false);
-    expect(t.fieldHasAnyTag("name", "primary")).toBe(false);
-
   });
 
   type SimpleFloat = {

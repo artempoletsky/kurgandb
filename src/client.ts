@@ -81,7 +81,7 @@ export async function remoteQuery
 
 
   const remoteQueryAPI = getAPIMethod<FQuery>(address, "query", {
-    // cache: "no-store"
+    cache: "no-store"
   });
 
   const registerQuery = getAPIMethod<FRegisterQuery>(address, "registerQuery", {

@@ -11,6 +11,7 @@ import { allIsSaved, existsSync } from "../src/virtual_fs";
 
 import { TRecord } from "../src/record";
 import { rimraf } from "rimraf";
+import TableUtils from "../src/table_utilities";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -124,6 +125,7 @@ describe("Table", () => {
     float: number
   };
   let t2: Table<SimpleFloat, number>;
+
   test("reset db", async () => {
     await allIsSaved();
     DataBase.removeTable(TestTableName);
@@ -249,6 +251,27 @@ describe("Table", () => {
 
     expect(test_words.at("a").level).toBe("a1");
     expect(res.id).toBe("a");
+  });
+
+
+  test("change id", async () => {
+    const test_words = DataBase.getTable<TestWord, string>("test_words");
+
+    const utils = TableUtils.fromTable(test_words);
+    expect(utils.mainDict.getOne("a")).toBeDefined();
+
+    test_words.where("id", "a").update(rec => {
+      rec.id = "new_a";
+    });
+
+    console.log(utils.mainDict.getOne("new_a"));
+
+    expect(utils.mainDict.getOne("new_a")).toBeDefined();
+    expect(utils.mainDict.getOne("a")).toBe(undefined);
+    expect(test_words.has("a")).toBe(false);
+    expect(test_words.has("new_a")).toBe(true);
+    const new_a = test_words.at("new_a");
+    expect(new_a.part).toBe("other");
   });
 
   afterAll(async () => {
