@@ -11,6 +11,7 @@ import { allIsSaved, existsSync } from "../src/virtual_fs";
 
 import { TRecord } from "../src/record";
 import { rimraf } from "rimraf";
+import TableUtils from "../src/table_utilities";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -27,7 +28,7 @@ describe("Table heavy", () => {
   type HeavyInsert = Omit<Heavy, "id">;
   let t: Table<Heavy, number, any, HeavyInsert>;
   beforeAll(() => {
-
+    rimraf.sync(process.cwd() + "/test_data");
     DataBase.init(process.cwd() + "/test_data");
 
     if (DataBase.doesTableExist(TestTableName)) {
@@ -57,6 +58,21 @@ describe("Table heavy", () => {
     const rec = t.at(id);
     expect(rec.heavyStr).toBe("foo");
     expect(rec.heavyJson).toBe("foo");
+  });
+
+  test("id change", () => {
+    t.where("id", 1).update(rec => {
+      rec.id = 2;
+    });
+    const rec = t.at(2);
+    expect(rec.heavyStr).toBe("foo");
+    expect(rec.heavyJson).toBe("foo");
+
+    const three = t.insert({
+      heavyJson: "",
+      heavyStr: "",
+    });
+    expect(three).toBe(3);
   });
 
   afterAll(async () => {

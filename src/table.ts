@@ -440,7 +440,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
           const value = storable[i][key];
           if (value) {
             const toStore = type == "json" ? JSON.stringify(value) : value;
-            fs.writeFileSync(absolutePath(this.utils.getHeavyFieldFilepath(ids[i], type, key)), toStore, {});
+            fs.writeFileSync(this.utils.getHeavyFieldFilepath(ids[i], type, key), toStore, {});
             // wfs(this.getHeavyFieldFilepath(ids[i], type, key), value);
           }
         }

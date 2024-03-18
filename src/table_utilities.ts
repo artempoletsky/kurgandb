@@ -4,33 +4,16 @@ import { FieldTag, FieldType, PlainObject, TRecord, Table, TableScheme } from ".
 import { rmie } from "./virtual_fs";
 import { DataBase } from "./db";
 import { TableRecord } from "./record";
+import fs from "fs";
+import { rimraf } from "rimraf";
 
+type IndexData<idT extends string | number> = Record<string, Map<string | number, idT[]>>;
 
 export default class TableUtils<T, idT extends string | number>{
-  public table: Table<T, idT, any, any, any, any>;
-  public mainDict: FragmentedDictionary<idT>;
-  public indices: Record<string, FragmentedDictionary>;
-  public primaryKey: string;
-  public name: string;
-  public scheme: TableScheme;
 
-  constructor(table: Table<T, idT, any, any, any, any>, mainDict: FragmentedDictionary<idT>, indices: Record<string, FragmentedDictionary>) {
-    this.table = table;
-    this.mainDict = mainDict;
-    this.indices = indices;
-    this.primaryKey = table.primaryKey;
-    this.scheme = table.scheme;
-    this.name = table.name;
-  }
-
-  forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, tags: Set<FieldTag>) => void) {
-    const { tags } = this.table.scheme;
-    for (const fieldName in tags) {
-      const tagsSet = new Set(tags[fieldName]);
-      if (tagsSet.has("index") || tagsSet.has("unique")) {
-        predicate(fieldName, this.indices[fieldName], tagsSet);
-      }
-    }
+  printField(fieldName?: string) {
+    if (!fieldName) return `'${this.table.name}[${this.table.primaryKey}]'`;
+    return `field '${this.table.name}[${this.table.primaryKey}].${fieldName}'`;
   }
 
   errorWrongId(id: idT) {
@@ -38,11 +21,6 @@ export default class TableUtils<T, idT extends string | number>{
       message: `id '${id}' doesn't exists at ${this.printField()}`,
       statusCode: 404,
     });
-  }
-
-  printField(fieldName?: string) {
-    if (!fieldName) return `'${this.table.name}[${this.table.primaryKey}]'`;
-    return `field '${this.table.name}[${this.table.primaryKey}].${fieldName}'`;
   }
 
   errorFieldDoesntExist(fieldName: string) {
@@ -64,16 +42,76 @@ export default class TableUtils<T, idT extends string | number>{
     return new ResponseError(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
-  changeIdsIndices(oldIds: idT[], newIds: idT[], records: TRecord<T, idT>[]) {
-    this.forEachIndex((fieldName, dict, tags) => {
-      if (tags.has("unique")) {
 
-      }
-    });
+  public table: Table<T, idT, any, any, any, any>;
+  public mainDict: FragmentedDictionary<idT>;
+  public indices: Record<string, FragmentedDictionary>;
+  public primaryKey: string;
+  public name: string;
+  public scheme: TableScheme;
+
+  constructor(table: Table<T, idT, any, any, any, any>, mainDict: FragmentedDictionary<idT>, indices: Record<string, FragmentedDictionary>) {
+    this.table = table;
+    this.mainDict = mainDict;
+    this.indices = indices;
+    this.primaryKey = table.primaryKey;
+    this.scheme = table.scheme;
+    this.name = table.name;
   }
 
-  buildIndexDataForRecords(records: Partial<T>[]) {
-    const result: Record<string, Map<string | number, idT[]>> = {}
+  updateLastId(newIds: number[]) {
+    const meta = this.mainDict.meta.custom;
+    meta.lastId = Math.max(meta.lastId, ...newIds);
+  }
+
+  forEachIndex(predicate: (fieldName: string, dict: FragmentedDictionary<string | number, any>, tags: Set<FieldTag>) => void) {
+    const { tags } = this.table.scheme;
+    for (const fieldName in tags) {
+      const tagsSet = new Set(tags[fieldName]);
+      if (tagsSet.has("index") || tagsSet.has("unique")) {
+        predicate(fieldName, this.indices[fieldName], tagsSet);
+      }
+    }
+  }
+
+  iterFieldTag(tag: FieldTag) {
+    const keys: string[] = [];
+
+    for (const key in this.scheme.tags) {
+      const tags = this.scheme.tags[key];
+      if (tags.includes(tag)) {
+        keys.push(key);
+      }
+    }
+    let i = 0;
+    return {
+      [Symbol.iterator](): Iterator<string> {
+        return {
+          next() {
+            if (i >= keys.length) return { value: undefined, done: true };
+            return { value: keys[i++], done: false };
+          },
+        };
+      }
+    }
+  }
+
+  renameHeavyFiles(oldIds: idT[], newIds: idT[]) {
+    const types = this.scheme.fields;
+    for (const fieldName of this.iterFieldTag("heavy")) {
+      for (let i = 0; i < oldIds.length; i++) {
+        const oldName = this.getHeavyFieldFilepath(oldIds[i], types[fieldName], fieldName);
+        const newName = this.getHeavyFieldFilepath(newIds[i], types[fieldName], fieldName);
+        fs.renameSync(oldName, newName);
+      }
+    }
+  }
+
+  buildIndexDataForRecords(records: Partial<T>[]): IndexData<idT>
+  buildIndexDataForRecords(records: Partial<T>[], oldIds: idT[]): [IndexData<idT>, IndexData<idT>]
+  buildIndexDataForRecords(records: Partial<T>[], oldIds?: idT[]) {
+    const result: IndexData<idT> = {}
+    const resultOld: IndexData<idT> = {}
 
     const rrs: PlainObject[] = records as any;
     const idsSet = new Set<idT>();
@@ -90,6 +128,7 @@ export default class TableUtils<T, idT extends string | number>{
 
     this.forEachIndex((fieldName, dict, tags) => {
       const map = new Map<string | number, idT[]>();
+      const mapOld = new Map<string | number, idT[]>();
       for (let i = 0; i < ids.length; i++) {
         const val = rrs[i][fieldName];
         const id = ids[i];
@@ -99,17 +138,70 @@ export default class TableUtils<T, idT extends string | number>{
         } else {
           map.set(val, [id]);
         }
+        if (oldIds) {
+          const oldId = oldIds[i];
+          if (mapOld.has(val)) {
+            (<idT[]>mapOld.get(val)).push(oldId);
+          } else {
+            mapOld.set(val, [oldId]);
+          }
+        }
       }
       result[fieldName] = map;
+      resultOld[fieldName] = mapOld;
     });
 
-    return result;
+    return oldIds ? [result, resultOld] : result;
   }
 
-  removeFromIndex(records: Partial<T>[]) {
-    const indexData = this.buildIndexDataForRecords(records);
-    for (const key in indexData) {
-      this.removeColumnFromIndex(key, indexData[key]);
+  insertIndexData(data: IndexData<idT>) {
+    for (const fieldName in data) {
+      const indexData = data[fieldName];
+      const indexDict = this.indices[fieldName];
+
+      if (!indexDict) throw this.errorFieldNotIndex(fieldName);
+      const isUnique = this.fieldHasAnyTag(fieldName, "unique");
+
+      for (const [id, arr] of indexData) {
+        const current = indexDict.getOne(id);
+        if (current && isUnique) throw this.errorValueNotUnique(fieldName, id);
+        if (isUnique) {
+          indexDict.setOne(id, arr[0]);
+          continue;
+        }
+        if (!current) {
+          indexDict.setOne(id, arr);
+        } else {
+          const toInsert = arr.slice(0);
+          toInsert.push(...current)
+          toInsert.sort();
+          indexDict.setOne(id, toInsert);
+        }
+      }
+    }
+  }
+
+  removeIndexData(data: IndexData<idT>) {
+    for (const fieldName in data) {
+      const indexData = data[fieldName];
+      const indexDict = this.indices[fieldName];
+
+      if (!indexDict) throw this.errorFieldNotIndex(fieldName);
+      const isUnique = this.fieldHasAnyTag(fieldName, "unique");
+
+      indexDict.where({
+        idFilter: (id) => indexData.has(id),
+        update: (val: idT[], indexId) => {
+          if (isUnique)
+            return undefined;
+          const toRemove = indexData.get(indexId) as idT[];
+
+          val = val.filter(recordId => !toRemove.includes(recordId));
+          if (val.length == 0) return undefined;
+          return val;
+        },
+      });
+
     }
   }
 
@@ -141,26 +233,6 @@ export default class TableUtils<T, idT extends string | number>{
     return TableUtils.tagsHasFieldNameWithAllTags(this.scheme.tags, fieldName, ...tags);
   }
 
-  removeColumnFromIndex<IndexType extends string | number>(fieldName: string, indexData: Map<IndexType, idT[]>) {
-    const indexDict: FragmentedDictionary<IndexType, any> = this.indices[fieldName] as any;
-    if (!indexDict) throw this.errorFieldNotIndex(fieldName);
-    const isUnique = this.fieldHasAnyTag(fieldName, "unique");
-
-    indexDict.where({
-      idFilter: (id) => indexData.has(id),
-      update: (val: idT[], indexId) => {
-        if (isUnique)
-          return undefined;
-        const toRemove = indexData.get(indexId) as idT[];
-
-        val = val.filter(recordId => !toRemove.includes(recordId));
-        if (val.length == 0) return undefined;
-        return val;
-      },
-    });
-  }
-
-
   getIndexDictDir(fieldName: string) {
     return `/${this.name}/indices/${fieldName}/`;
   }
@@ -178,19 +250,22 @@ export default class TableUtils<T, idT extends string | number>{
  * @param id the record ID
  * @param type the type of the field
  * @param fieldName the name of the field
- * @returns a relative path to the heavy field contents
+ * @returns an absolute path to the heavy field contents
  */
   getHeavyFieldFilepath(id: idT, type: FieldType, fieldName: string): string {
-    return `${this.getHeavyFieldDir(fieldName)}${id}.${type == "json" ? "json" : "txt"}`;
+    return DataBase.workingDirectory + `${this.getHeavyFieldDir(fieldName)}${id}.${type == "json" ? "json" : "txt"}`;
   }
 
 
   removeHeavyFilesForEachID(ids: idT[]) {
+    for (const fieldName of this.iterFieldTag("heavy")) {
+
+    }
     this.forEachField((fieldName, type, tags) => {
       if (tags.has("heavy")) {
         for (const id of ids) {
           const path = this.getHeavyFieldFilepath(id, type, fieldName);
-          rmie(path);
+          rimraf.sync(path);
         }
       }
     });

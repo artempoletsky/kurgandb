@@ -208,6 +208,35 @@ describe("Table utils", () => {
 
   });
 
+
+  test("change id", () => {
+    let b1 = test_words.where("level", "b1").select();
+    expect(b1.length).toBe(1);
+    expect(b1[0].word).toBe("g");
+    expect(b1[0].id).toBe(7);
+
+    test_words.all().update(rec => {
+      rec.id += 100;
+    });
+    let ids = test_words.indexIds("level", "a1");
+    expect(ids.length).toBe(5);
+    expect(ids[0]).toBe(101);
+    expect(ids[1]).toBe(102);
+    expect(ids[2]).toBe(103);
+    expect(ids[3]).toBe(104);
+    expect(ids[4]).toBe(105);
+
+    b1 = test_words.where("level", "b1").select();
+    expect(b1.length).toBe(1);
+    expect(b1[0].word).toBe("g");
+    expect(b1[0].id).toBe(107);
+
+    const c = test_words.where("word", "c").select();
+    expect(c.length).toBe(1);
+    expect(c[0].id).toBe(103);
+    expect(c[0].word).toBe("c");
+  });
+
   type SimpleType = {
     id: number;
     date: Date | string | number;
@@ -346,9 +375,9 @@ describe("Table utils", () => {
     await allIsSaved();
     // t.closePartition();
     // if (DataBase.doesTableExist("test_words"))
-      DataBase.removeTable("test_words");
+    DataBase.removeTable("test_words");
     // if (DataBase.doesTableExist("simple"))
-      DataBase.removeTable("simple");
+    DataBase.removeTable("simple");
     // await allIsSaved();
   });
 });

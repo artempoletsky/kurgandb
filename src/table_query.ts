@@ -226,9 +226,17 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
 
   update(predicate: RecordCallback<T, idT, void, LightT, VisibleT>): void {
 
-    const newIds: idT[] = [];
-    const oldIds: idT[] = [];
-    const newValues: any[] = [];
+    const newIds: {
+      new: idT[];
+      old: idT[];
+      values: any[];
+      records: LightT[];
+    } = {
+      new: [],
+      old: [],
+      values: [],
+      records: [],
+    }
 
     const update = (data: any[], id: idT) => {
       const rec = new TableRecord(data, id, this.table, this.utils) as TRecord<T, idT, LightT, VisibleT>;
@@ -238,9 +246,10 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
 
       if (id == newId) return rec.$serialize();
 
-      newIds.push(newId);
-      oldIds.push(id);
-      newValues.push(rec.$serialize());
+      newIds.new.push(newId);
+      newIds.old.push(id);
+      newIds.values.push(rec.$serialize());
+      newIds.records.push(rec.$light());
       return undefined;
     }
 
@@ -257,9 +266,15 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
         offset: this._offset || 0,
       });
 
-      if (newIds.length) {
-        this.utils.mainDict.insertMany(newIds, newValues);
-        // this.utils.changeIdsIndices(oldIds, newIds);
+      if (newIds.new.length) {
+        this.utils.mainDict.insertMany(newIds.new, newIds.values);
+        const [indexData, oldIndexData] = this.utils.buildIndexDataForRecords(newIds.records as Partial<T>[], newIds.old);
+        this.utils.removeIndexData(oldIndexData);
+        this.utils.insertIndexData(indexData);
+        this.utils.renameHeavyFiles(newIds.old, newIds.new);
+        if (this.table.autoId) {
+          this.utils.updateLastId(newIds.new as number[]);
+        }
       }
     } catch (err) {
       abortTransaction(transactionID);
@@ -295,7 +310,8 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
         offset: this._offset || 0,
       });
 
-      this.utils.removeFromIndex(removed as Partial<T>[]);
+      const indexData = this.utils.buildIndexDataForRecords(removed as Partial<T>[]);
+      this.utils.removeIndexData(indexData);
     } catch (err) {
       abortTransaction(transactionID);
       throw err;

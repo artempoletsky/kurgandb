@@ -264,7 +264,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
   $getExternalFilename(field: string) {
     const type = this._table.scheme.fields[field];
-    return DataBase.workingDirectory + this._utils.getHeavyFieldFilepath(this._id, type, field);
+    return this._utils.getHeavyFieldFilepath(this._id, type, field);
   }
 
   $pick(...fields: string[]): Partial<T> {
