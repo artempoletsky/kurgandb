@@ -12,8 +12,8 @@ describe("Virtual file system", () => {
   const CWD = process.cwd();
   beforeAll(async () => {
     await allIsSaved();
-    rimraf.sync(CWD + "/test_data" + DIR);
-    mkdirSync(CWD + "/test_data" + DIR);
+    rimraf.sync(CWD + "/test_data");
+    mkdirSync(CWD + "/test_data" + DIR, { recursive: true });
     fs.setRootDirectory(CWD + "/test_data");
   });
 
@@ -68,5 +68,6 @@ describe("Virtual file system", () => {
 
   afterAll(async () => {
     await allIsSaved();
+    rimraf.sync(CWD + "/test_data");
   });
 });

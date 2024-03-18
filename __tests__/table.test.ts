@@ -11,6 +11,7 @@ import { allIsSaved, existsSync } from "../src/virtual_fs";
 
 import { TRecord } from "../src/record";
 import { rimraf } from "rimraf";
+import TableUtils from "../src/table_utilities";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -208,7 +209,8 @@ describe("Table", () => {
 
     expect(t.indexFieldName.length).toBe(0);
 
-    const flattened = t.flattenObject(toInsert);
+    const utils = TableUtils.fromTable(t);
+    const flattened = utils.flattenObject(toInsert);
 
 
     expect(flattened.length).toBe(0);

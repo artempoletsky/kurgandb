@@ -362,6 +362,78 @@ export default class TableUtils<T, idT extends string | number>{
     return this.getFieldsWithAnyTags("heavy");
   }
 
+
+  static createIndexDictionary(tableName: string, fieldName: string, tags: FieldTag[], type: FieldType) {
+    const directory = `/${tableName}/indices/${fieldName}/`;
+
+    if (type == "json") throw new Error(`Can't create an index of json type field ${fieldName}`);
+
+    let keyType = fieldTypeToKeyType(type);
+
+    let settings: Record<string, any> = {
+      maxPartitionLenght: 10 * 1000,
+      maxPartitionSize: 0,
+    };
+
+    return FragmentedDictionary.init({
+      directory,
+      keyType,
+      ...settings,
+    });
+
+  }
+
+  fillIndexData
+    <IndexType extends string | number>(
+      indexData: Map<IndexType, idT[]>,
+      value: IndexType, id: idT, throwUnique?: string) {
+    const toPush = indexData.get(value);
+
+    if (throwUnique && toPush) {
+      throw this.errorValueNotUnique(throwUnique, value);
+    }
+
+    if (!toPush) {
+      indexData.set(value, [id]);
+    } else {
+      toPush.push(id);
+    }
+  }
+
+  flattenObject(o: PlainObject): any[] {
+    const lightValues: any[] = [];
+    for (const key of this.scheme.fieldsOrder) {
+      lightValues.push(o[key]);
+    }
+    return lightValues;
+  }
+
+  expandObject(arr: any[]) {
+    const result: PlainObject = {};
+    let i = 0;
+    this.forEachField((key, type, tags) => {
+      if (tags.has("heavy")) return;
+      // if (type == "boolean") {
+      //   result[key] = !!arr[i];
+      //   return;
+      // }
+      result[key] = arr[i];
+      i++;
+    });
+    return result;
+  }
+
+
+  insertRecordColumn(fieldIndex: number, predicate: (id: idT, arr: any[]) => any) {
+    this.mainDict.where({
+      update(arr, id) {
+        const newArr = [...arr];
+        newArr.splice(fieldIndex, 0, predicate(id, newArr));
+        return newArr;
+      }
+    });
+  }
+
   static getPrimaryKeyFromScheme(scheme: TableScheme) {
     for (const fieldName in scheme.tags) {
       const tags = scheme.tags[fieldName];
@@ -371,4 +443,11 @@ export default class TableUtils<T, idT extends string | number>{
     }
     throw new Error("Can't find primary key in the scheme!");
   }
+}
+
+
+export function fieldTypeToKeyType(type: FieldType): "int" | "string" {
+  if (type == "json") throw new Error("wrong type");
+  if (type == "string") return "string";
+  return "int";
 }

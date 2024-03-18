@@ -134,7 +134,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.mainDict = mainDict;
 
     this.memoryFields = {};
-    this.loadMemoryIndices();
     this.updateFieldIndices();
     this.unpackEventListeners();
 
@@ -163,24 +162,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
   public get autoId(): boolean {
     return this.utils.fieldHasAnyTag(this.primaryKey, "autoinc");
-  }
-
-
-  static fieldTypeToKeyType(type: FieldType): "int" | "string" {
-    if (type == "json") throw new Error("wrong type");
-    if (type == "string") return "string";
-    return "int";
-  }
-
-  protected loadMemoryIndices() {
-    const { tags } = this.scheme;
-    for (const fieldName in tags) {
-      const fieldTags = tags[fieldName];
-      if (fieldTags.includes("memory")) {
-        // TODO: implement
-        // this.memoryIndices[fieldName] = this.indices[fieldName].loadAll();
-      }
-    }
   }
 
   protected updateFieldIndices() {
@@ -295,25 +276,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.updateFieldIndices();
   }
 
-  static createIndexDictionary(tableName: string, fieldName: string, tags: FieldTag[], type: FieldType) {
-    const directory = `/${tableName}/indices/${fieldName}/`;
-
-    if (type == "json") throw new Error(`Can't create an index of json type field ${fieldName}`);
-
-    let keyType = this.fieldTypeToKeyType(type);
-
-    let settings: Record<string, any> = {
-      maxPartitionLenght: 10 * 1000,
-      maxPartitionSize: 0,
-    };
-
-    return FragmentedDictionary.init({
-      directory,
-      keyType,
-      ...settings,
-    });
-
-  }
 
   createIndex(fieldName: string & keyof T, unique: boolean) {
     if (this.indices[fieldName]) throw this.utils.errorAlreadyIndex(fieldName);
@@ -321,7 +283,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
     const tags: FieldTag[] = this.scheme.tags[fieldName] || [];
 
-    this.indices[fieldName] = Table.createIndexDictionary(this.name, fieldName, tags, type);
+    this.indices[fieldName] = TableUtils.createIndexDictionary(this.name, fieldName, tags, type);
 
 
     const indexData: Map<string | number, idT[]> = new Map();
@@ -331,7 +293,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.mainDict.iterateRanges({
       filter: (arr, id) => {
         try {
-          this.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
+          this.utils.fillIndexData(indexData, arr[fIndex], id, unique ? fieldName : undefined);
         } catch (error) {
           this.removeIndex(fieldName);
           throw error;
@@ -347,22 +309,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.saveScheme();
   }
 
-  protected fillIndexData
-    <IndexType extends string | number>(
-      indexData: Map<IndexType, idT[]>,
-      value: IndexType, id: idT, throwUnique?: string) {
-    const toPush = indexData.get(value);
-
-    if (throwUnique && toPush) {
-      throw this.utils.errorValueNotUnique(throwUnique, value);
-    }
-
-    if (!toPush) {
-      indexData.set(value, [id]);
-    } else {
-      toPush.push(id);
-    }
-  }
 
   removeIndex(name: string) {
     if (!this.indices[name]) throw this.utils.errorFieldNotIndex(name);
@@ -414,7 +360,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
     else {
       const definedPredicate = predicate || (() => getDefaultValueForType(type));
-      this.insertRecordColumn(this._indexFieldName.length, (id, arr) => {
+      this.utils.insertRecordColumn(this._indexFieldName.length, (id, arr) => {
         return definedPredicate(new TableRecord(arr, id, this, this.utils) as TRecord<T, idT, LightT, VisibleT>);
       });
     }
@@ -481,7 +427,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     });
 
 
-    const values = storable.map(o => this.flattenObject(o));
+    const values = storable.map(o => this.utils.flattenObject(o));
 
     storable.map(o => <idT>o[this.primaryKey]);
     this.utils.canInsertUnique(this.primaryKey, ids, true);
@@ -505,7 +451,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.utils.forEachIndex((fieldName) => {
       const indexData: Map<string | number, idT[]> = new Map();
       for (let i = 0; i < ids.length; i++) {
-        this.fillIndexData(indexData, indexColumns[fieldName][i], ids[i]);
+        this.utils.fillIndexData(indexData, indexColumns[fieldName][i], ids[i]);
       }
       this.insertColumnToIndex(fieldName, indexData);
     });
@@ -556,46 +502,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
   }
 
-  public insert(data: InsertT): idT {
+  insert(data: InsertT): idT {
     return this.insertMany([data])[0];
   }
 
-
-
-  expandObject(arr: any[]) {
-    const result: PlainObject = {};
-    let i = 0;
-    this.utils.forEachField((key, type, tags) => {
-      if (tags.has("heavy")) return;
-      // if (type == "boolean") {
-      //   result[key] = !!arr[i];
-      //   return;
-      // }
-      result[key] = arr[i];
-      i++;
-    });
-    return result;
-  }
-
-  flattenObject(o: PlainObject): any[] {
-    const lightValues: any[] = [];
-
-    this._indexFieldName.forEach((key, i) => {
-      lightValues.push(o[key]);
-    });
-
-    return lightValues;
-  }
-
-  protected insertRecordColumn(fieldIndex: number, predicate: (id: idT, arr: any[]) => any) {
-    this.mainDict.where({
-      update(arr, id) {
-        const newArr = [...arr];
-        newArr.splice(fieldIndex, 0, predicate(id, newArr));
-        return newArr;
-      }
-    });
-  }
 
   at(id: idT): VisibleT
   at<ReturnType = T>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType
@@ -663,7 +573,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
   protected events: Record<string, Record<string, Function>> = {};
 
-  unpackEventListeners() {
+  protected unpackEventListeners() {
     let eventsPacked = this.mainDict.meta.custom.eventsPacked;
     if (!eventsPacked) {
       this.mainDict.meta.custom.eventsPacked = eventsPacked = {};

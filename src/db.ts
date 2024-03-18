@@ -14,6 +14,7 @@ import { ResponseError } from "@artempoletsky/easyrpc";
 export const SCHEME_PATH = "scheme.json";
 
 import { exec } from "child_process";
+import TableUtils, { fieldTypeToKeyType } from "./table_utilities";
 
 export type TCreateTable<Type> = {
   name: string
@@ -190,13 +191,13 @@ export class DataBase {
 
 
       if (tagsSet.has("index") || tagsSet.has("unique")) {
-        Table.createIndexDictionary(name, fieldName, fieldTags, type);
+        TableUtils.createIndexDictionary(name, fieldName, fieldTags, type);
       }
 
       if (tagsSet.has("primary")) {
         if (type !== "string" && type != "number")
           throw new Error(`can't set up field '${fieldName}' of type '${type}' as primary key for '${name}'`);
-        keyType = Table.fieldTypeToKeyType(type);
+        keyType = fieldTypeToKeyType(type);
       }
     }
     // mkdirSync(mainDictDir);
