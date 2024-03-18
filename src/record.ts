@@ -30,6 +30,10 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
     let proxy = new Proxy<TableRecord<T, idT, LightT, VisibleT>>(this, {
       set: (target: any, key: string & keyof T, value: any) => {
+        if (key.startsWith("_")) {
+          target[key] = value;
+          return true;
+        }
         this.$set(key, value);
         return true;
       },
@@ -59,6 +63,9 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
 
     if (primaryKey == fieldName) {
       if (value == this._id) return;
+      if (utils.mainDict.hasAnyId([value])) {
+        throw utils.errorValueNotUnique(primaryKey, value);
+      }
       this._id = value;
       return;
     }

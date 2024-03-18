@@ -115,6 +115,10 @@ describe("Table fields", () => {
     expect(t.scheme.tags).not.toHaveProperty("name");
     expect(t.scheme.tags.bar.includes("index")).toBe(true);
     expect(Object.keys(t.scheme.fields).length).toBe(6);
+
+    expect(() => {
+      t.renameField("bar", "123");
+    }).toThrow("Field name must start with a Latin letter!");
   });
 
   test("remove", async () => {
@@ -144,12 +148,28 @@ describe("Table fields", () => {
   });
 
   test("add", async () => {
-    t.addField("123", "number", false, e => Math.random());
-    expect(t.scheme.fields).toHaveProperty("123");
-    
+    t.addField("qwe", "number", false, e => Math.random());
+    expect(t.scheme.fields).toHaveProperty("qwe");
+
     const d: any = t.at(1);
-    expect(d["123"]).toBeLessThan(1);
+    expect(d["qwe"]).toBeLessThan(1);
     expect(d.light[0]).toBe("foo");
+
+    expect(() => {
+      t.addField("_qwe", "number", false);
+    }).toThrow("Field name must start with a Latin letter!");
+
+    expect(() => {
+      t.addField("$qwe", "number", false);
+    }).toThrow("Field name must start with a Latin letter!");
+
+    expect(() => {
+      t.addField("1qwe", "number", false);
+    }).toThrow("Field name must start with a Latin letter!");
+
+    expect(() => {
+      t.addField(" qwe", "number", false);
+    }).toThrow("Field name must start with a Latin letter!");
   });
 
 
@@ -160,7 +180,7 @@ describe("Table fields", () => {
     expect(iOf1).toBe(0);
 
     let iOf2 = Object.keys(item).indexOf("id");
-    expect(iOf2).toBe(1);
+    expect(iOf2).toBe(0);
 
     t.changeFieldIndex("id", 1);
 
@@ -169,7 +189,7 @@ describe("Table fields", () => {
     iOf1 = t.scheme.fieldsOrderUser.indexOf("id");
     iOf2 = Object.keys(item).indexOf("id");
     expect(iOf1).toBe(1);
-    expect(iOf2).toBe(2);
+    expect(iOf2).toBe(1);
   });
 
   type SimpleFloat = {

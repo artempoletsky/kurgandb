@@ -42,6 +42,9 @@ export default class TableUtils<T, idT extends string | number>{
     return new ResponseError(`Unique value '${value}' for ${this.printField(fieldName)} already exists`);
   }
 
+  errorWrongFieldNameString() {
+    return new ResponseError(`Field name must start with a Latin letter!`);
+  }
 
   public table: Table<T, idT, any, any, any, any>;
   public mainDict: FragmentedDictionary<idT>;

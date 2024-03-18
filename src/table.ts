@@ -16,6 +16,9 @@ import zod, { ZodEffects, ZodError, ZodObject, ZodRawShape } from "zod";
 import TableUtils from "./table_utilities";
 
 
+export function fieldNameStringValid(fieldName: string): boolean {
+  return !!fieldName.match(/^[a-zA-Z].*$/);
+}
 
 export function packEventListener(handler: (...args: any[]) => void): ParsedFunction {
   let parsed: ParsedFunction;
@@ -220,6 +223,8 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   renameField(oldName: string, newName: string) {
     const { fields, tags } = this.scheme;
 
+    if (!fieldNameStringValid(newName)) throw this.utils.errorWrongFieldNameString();
+
     if (!fields[oldName]) throw new Error(`Field '${oldName}' doesn't exist`);
     if (fields[newName]) throw new Error(`Field '${newName}' already exists`);
 
@@ -352,6 +357,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (this.scheme.fields[fieldName])
       throw new ResponseError(`field '${fieldName}' already exists`);
 
+    if (!fieldNameStringValid(fieldName)) throw this.utils.errorWrongFieldNameString();
 
     const filesDir = this.utils.getHeavyFieldDir(fieldName);
 

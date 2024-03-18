@@ -12,6 +12,7 @@ import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { TRecord } from "../src/record";
 import { rimraf } from "rimraf";
 import TableUtils from "../src/table_utilities";
+import { PlainObject } from "../src/globals";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -254,7 +255,7 @@ describe("Table", () => {
   });
 
 
-  test("change id", async () => {
+  test("change id", () => {
     const test_words = DataBase.getTable<TestWord, string>("test_words");
 
     const utils = TableUtils.fromTable(test_words);
@@ -264,14 +265,67 @@ describe("Table", () => {
       rec.id = "new_a";
     });
 
-    console.log(utils.mainDict.getOne("new_a"));
-
     expect(utils.mainDict.getOne("new_a")).toBeDefined();
     expect(utils.mainDict.getOne("a")).toBe(undefined);
     expect(test_words.has("a")).toBe(false);
     expect(test_words.has("new_a")).toBe(true);
     const new_a = test_words.at("new_a");
     expect(new_a.part).toBe("other");
+  });
+
+  test("change id 2", async () => {
+
+    const id = "new_a";
+    const record: TestWord & PlainObject = {
+      id: "new_new_a",
+      level: "b1",
+      oxfordLevel: "b1",
+      part: "verb",
+      word: "a",
+    };
+
+    const updated: TestWord & PlainObject = await query(({ test_words }: { test_words: Table<TestWord, string> }, { id, record }) => {
+      test_words.where(<any>test_words.primaryKey, id).update(doc => {
+        for (const key in record) {
+          const newValue = record[key];
+          if (doc.$get(key) != newValue) {
+            doc.$set(key as any, newValue);
+          }
+        }
+      });
+      return test_words.at(record.id);
+    }, { id, record });
+
+    for (const key in record) {
+      expect((updated)[key]).toBe(record[key]);
+    }
+
+    const test_words = DataBase.getTable<TestWord, string>("test_words");
+
+    test_words.insert({
+      ...record,
+      id: "a",
+    });
+
+    let q = query(({ test_words }: { test_words: Table<TestWord, string> }, { id, record }: { id: string, record: TestWord & PlainObject }) => {
+      test_words.where(<any>test_words.primaryKey, id).update(doc => {
+        for (const key in record) {
+          const newValue = record[key];
+          if (doc.$get(key) != newValue) {
+            doc.$set(key as any, newValue);
+          }
+        }
+      });
+      return test_words.at(record.id);
+    }, {
+      id: record.id,
+      record: {
+        ...record,
+        id: "a",
+      }
+    });
+
+    expect(q).rejects.toHaveProperty("message", "Primary key value 'a' on 'test_words[id]' already exists");
   });
 
   afterAll(async () => {
