@@ -263,8 +263,8 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.saveScheme();
   }
 
-  getLastIndex() {
-    return this.mainDict.end;
+  public get lastId() {
+    return this.mainDict.meta.custom.lastId;
   }
 
   public get length(): number {
@@ -396,7 +396,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
 
     const dataFull: T[] = [];
-    let lastId = this.mainDict.meta.custom.lastId;
+    let lastId = this.lastId;
     const ids: idT[] = [];
     for (const obj of data) {
 

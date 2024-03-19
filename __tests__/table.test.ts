@@ -96,7 +96,7 @@ describe("Table", () => {
   test("adds a document", () => {
 
 
-    const idOffset = t.getLastIndex();
+    const idOffset = t.lastId;
     const lenghtOffset = t.length;
 
     const i1 = t.insert({
