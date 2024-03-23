@@ -307,10 +307,11 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       }
     });
 
-    this.insertColumnToIndex(fieldName, indexData);
-
     tags.push(unique ? "unique" : "index");
     this.scheme.tags[fieldName] = tags;
+    this.utils.insertIndexData({
+      [fieldName]: indexData
+    });
     this.saveScheme();
   }
 
@@ -459,7 +460,9 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       for (let i = 0; i < ids.length; i++) {
         this.utils.fillIndexData(indexData, indexColumns[fieldName][i], ids[i]);
       }
-      this.insertColumnToIndex(fieldName, indexData);
+      this.utils.insertIndexData({
+        [fieldName]: indexData,
+      });
     });
 
     if (this.hasEventListener("recordsInsert")) {
@@ -482,30 +485,6 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this.mainDict.meta.custom.lastId = lastId;
     // perfEndLog("indicies update");
     return ids;
-  }
-
-
-  insertColumnToIndex<ColType extends string | number>(fieldName: string, indexData: Map<ColType, idT[]>) {
-    const column = Array.from(indexData.keys());
-    const indexDict: FragmentedDictionary<ColType, any> = this.indices[fieldName] as any;
-    if (!indexDict) throw this.utils.errorFieldNotIndex(fieldName);
-    const isUnique = this.utils.fieldHasAnyTag(fieldName, "unique");
-    if (isUnique) {
-      const ids = Array.from(indexData.values()).map(arr => arr[0]);
-      indexDict.insertMany(column, ids);
-    } else {
-      indexDict.where({
-        // ranges: Array.from(indexData.keys()).map(v => [v, v]),
-        idFilter: id => indexData.has(id),
-        update: (arr: idT[], id) => {
-          const toPush: idT[] = indexData.get(id) as any;
-          indexData.delete(id);
-          return arr.concat.apply(arr, toPush).sort();
-        },
-      });
-
-      indexDict.insertMany(Array.from(indexData.keys()), Array.from(indexData.values()).map(arr => arr.sort()));
-    }
   }
 
   insert(data: InsertT): idT {
@@ -713,7 +692,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       return;
     }
 
-    let tags = this.scheme.tags[fieldName] || [];
+    let tags = this.scheme.tags[fieldName];
     let set = new Set(tags);
 
     if (set.has(tag)) {

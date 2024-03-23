@@ -173,10 +173,10 @@ export default class TableUtils<T, idT extends string | number>{
           continue;
         }
         if (!current) {
-          indexDict.setOne(id, arr);
+          indexDict.setOne(id, arr.slice(0).sort());
         } else {
           const toInsert = arr.slice(0);
-          toInsert.push(...current)
+          toInsert.push(...current);
           toInsert.sort();
           indexDict.setOne(id, toInsert);
         }

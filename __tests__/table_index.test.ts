@@ -6,7 +6,7 @@ import { Table, getMetaFilepath, packEventListener } from "../src/table";
 import FragmentedDictionary from "../src/fragmented_dictionary";
 import { allIsSaved, existsSync } from "../src/virtual_fs";
 import { constructFunction } from "../src/function";
-import { rimrafSync } from "rimraf";
+import { rimraf, rimrafSync } from "rimraf";
 import TableUtils from "../src/table_utilities";
 
 
@@ -110,14 +110,15 @@ describe("Table utils", () => {
     expect(() => {
       utils.canInsertUnique("word", wordCol, true)
     }).not.toThrow();
-
+    debugger;
     test_words.insertMany(testInsert);
     expect(test_words.length).toBe(8);
     expect(test_words.indexIds("level", "a1").length).toBe(4);
     expect(test_words.indexIds("level", "a1", "a2").length).toBe(6);
 
     const a1IDs = test_words.indexIds("level", "a1");
-
+    console.log(a1IDs);
+    
     expect(a1IDs[0]).toBe(1);
     expect(a1IDs[1]).toBe(2);
     expect(a1IDs[2]).toBe(3);
@@ -371,13 +372,71 @@ describe("Table utils", () => {
     expect(arr.indexOf(lastBarID)).toBe(-1);
   });
 
+  describe("users table", () => {
+    type User = {
+      username: string;
+      email: string;
+    }
+    let users: Table<User, string>;
+    const email = "artempoletsky@gmail.com";
+    const username = "artempoletsky";
+
+    let utils: TableUtils<User, string>;
+
+    beforeAll(() => {
+      users = DataBase.createTable<User, string>({
+        name: "users",
+        fields: {
+          username: "string",
+          email: "string",
+        },
+        tags: {
+          username: ["primary"],
+          email: [],
+        }
+      });
+
+      users.insert({
+        username,
+        email,
+      });
+
+      
+    });
+
+    test("createIndex", () => {
+      users.createIndex("email", true);
+      utils = TableUtils.fromTable(users);
+      const emailIndex = utils.indices["email"];
+      expect(emailIndex).toBeDefined();
+
+      const id = emailIndex.getOne(email);
+      expect(id).toBe(username);
+    });
+
+
+
+    test("toggle unique tag", () => {
+
+
+      expect(users.where("email", email).select().length).toBe(1);
+      users.toggleTag("email", "unique");
+
+      expect(users.where("email", email).select().length).toBe(1);
+      users.toggleTag("email", "unique");
+
+      const emailIndex = utils.indices["email"];
+      expect(emailIndex).toBeDefined();
+      const id = emailIndex.getOne(email);
+      expect(id).toBeDefined();
+      expect(id).toBe(username);
+      expect(users.where("email", email).select().length).toBe(1);
+    });
+  });
+
+
   afterAll(async () => {
     await allIsSaved();
-    // t.closePartition();
-    // if (DataBase.doesTableExist("test_words"))
-    DataBase.removeTable("test_words");
-    // if (DataBase.doesTableExist("simple"))
-    DataBase.removeTable("simple");
-    // await allIsSaved();
+    rimrafSync(process.cwd() + "/test_data");
   });
 });

@@ -3,6 +3,7 @@ import FragmentedDictionary, { FragDictMeta, PartitionMeta, getMetaFilepath } fr
 import SortedDictionary from "../src/sorted_dictionary";
 import vfs, { allIsSaved, rmie, existsSync } from "../src/virtual_fs";
 import virtual_fs from "../src/virtual_fs";
+import { rimraf } from "rimraf";
 
 const xdescribe = (...args: any) => { };
 const xtest = (...args: any) => { };
@@ -21,6 +22,7 @@ describe("Fragmented dictionary", () => {
   const IND = "/test_array_index/";
 
   beforeAll(() => {
+    rimraf.sync(process.cwd() + "/test_data/");
     virtual_fs.setRootDirectory(process.cwd() + "/test_data/");
     numbers = FragmentedDictionary.init({
       directory: NUM,
@@ -46,6 +48,11 @@ describe("Fragmented dictionary", () => {
       maxPartitionSize: 0,
       maxPartitionLength: 100 * 1000,
     });
+  });
+
+  test("empty getOne", ()=>{
+    expect(numbers.length).toBe(0);
+    expect(numbers.getOne(12313)).toBe(undefined);
   });
 
   test("Partition ID search", () => {

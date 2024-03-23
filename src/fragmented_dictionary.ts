@@ -231,6 +231,7 @@ export default class FragmentedDictionary<KeyType extends string | number = stri
   }
 
   getOne(id: KeyType): Type | undefined {
+    if (this.numPartitions == 0) return undefined;
     const partitionId = this.findPartitionForId(id);
     const d = this.openPartition(partitionId);
     return d.get(id);
