@@ -11,7 +11,7 @@ import z from "zod";
 import { $, logError } from "./utils";
 import { constructFunction } from "./function";
 
-
+import { Plugins } from "./db";
 
 
 const zStringNonEmpty = z.string().min(1, "Required");
@@ -54,6 +54,7 @@ export async function query(args: AQuery) {
   let result: any
   try {
     result = queryImplementation(DataBase.getTables(), args.payload, {
+      ...Plugins,
       db: DataBase,
       _,
       $,

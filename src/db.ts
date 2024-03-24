@@ -1,12 +1,13 @@
 import { rimraf } from "rimraf";
 
 import { Table, TableScheme } from "./table";
-import { LOGS_DIRECTORY, LOG_DELIMITER, mkdirSync, rfs, wfs } from "./utils";
+import { $, LOGS_DIRECTORY, LOG_DELIMITER, mkdirSync, rfs, wfs } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs, { existsSync } from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
-import { FieldTag, FieldType } from "./globals";
-import _ from "lodash";
+import { FieldTag, FieldType, PlainObject, PluginFactory } from "./globals";
+import lodash from "lodash";
+import zod from "zod";
 
 import pkg from "../package.json";
 import { ResponseError } from "@artempoletsky/easyrpc";
@@ -15,6 +16,7 @@ export const SCHEME_PATH = "scheme.json";
 
 import { exec } from "child_process";
 import TableUtils, { fieldTypeToKeyType } from "./table_utilities";
+import { ParsedFunction, constructFunction, parseFunction } from "./function";
 
 export type TCreateTable<Type> = {
   name: string
@@ -113,6 +115,22 @@ export class DataBase {
 
     this.loadAllTables();
     initialized = true;
+
+    let dict: FragmentedDictionary<string, ParsedFunction>;
+    const dictDir = "/_plugins/";
+    if (existsSync(this.workingDirectory + dictDir + "settings.json")) {
+      dict = FragmentedDictionary.open(dictDir);
+    } else {
+      debugger;
+      dict = FragmentedDictionary.init({
+        directory: dictDir,
+        keyType: "string",
+      });
+    }
+
+    for (const [fn, name] of dict.loadAll()) {
+      Plugins[name] = constructFunction(fn);
+    }
   }
 
   static loadAllTables() {
@@ -313,6 +331,40 @@ export class DataBase {
     return result;
   }
 
+  static registerPlugin(name: string, factory: PluginFactory): void
+  static registerPlugin(name: string, factory: ParsedFunction): void
+  static registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
+    let fn: PluginFactory, parsed: ParsedFunction;
+
+    if (typeof factory == "function") {
+      fn = factory;
+      parsed = parseFunction(factory);
+    } else {
+      try {
+        fn = constructFunction(factory) as PluginFactory;
+      } catch (error: any) {
+        throw new ResponseError("Plugin factory construnction has failed: {...}", [error.message]);
+      }
+      parsed = factory;
+    }
+
+    Plugins[name] = fn({
+      db: DataBase,
+      $: $,
+      _: lodash,
+      z: zod,
+    });
+    const dict = FragmentedDictionary.open("/_plugins/");
+    dict.setOne(name, parsed);
+  }
+
+  static unregisterPlugin(name: string) {
+    const dict = FragmentedDictionary.open("/_plugins/");
+    dict.remove(name);
+    delete Plugins[name];
+  }
+
 }
 
+export const Plugins: PlainObject = {};
 // DataBase.loadAllTables();

@@ -24,10 +24,10 @@ export type CallbackScope = {
   _: typeof lodash;
 }
 
-export type Predicate<Tables, Payload, ReturnType> = (tables: Tables, payload: Payload, scope: CallbackScope) => ReturnType;
+export type Predicate<Tables, Payload, ReturnType, Plugins> = (tables: Tables, payload: Payload, scope: CallbackScope & Plugins) => ReturnType;
 
 
-export function predicateToQuery<Tables extends Record<string, Table>, Payload, ReturnType>(predicate: Predicate<Tables, Payload, ReturnType>): ARegisterQuery {
+export function predicateToQuery<Tables extends Record<string, Table>, Payload, ReturnType, Plugins>(predicate: Predicate<Tables, Payload, ReturnType, Plugins>): ARegisterQuery {
   const parsed = parseFunction(predicate);
 
   return {
@@ -40,11 +40,11 @@ export function predicateToQuery<Tables extends Record<string, Table>, Payload, 
 export type Promisify<T> = Promise<T extends Promise<any> ? Awaited<T> : T>;
 
 
-const QueriesHashes: Map<Predicate<any, any, any>, string> = new Map();
+const QueriesHashes: Map<Predicate<any, any, any, any>, string> = new Map();
 
 export const QUERY_REGISTER_REQUIRED_MESSAGE = `Query register required`;
 
-async function registerOrCall(predicate: Predicate<any, any, any>, payload: any, registerQuery: FRegisterQuery, remoteQueryAPI: FQuery) {
+async function registerOrCall(predicate: Predicate<any, any, any, any>, payload: any, registerQuery: FRegisterQuery, remoteQueryAPI: FQuery) {
   let queryId = QueriesHashes.get(predicate);
   if (!queryId) {
     queryId = await registerQuery(predicateToQuery(predicate));
@@ -70,8 +70,8 @@ async function registerOrCall(predicate: Predicate<any, any, any>, payload: any,
 }
 
 export async function remoteQuery
-  <Payload, ReturnType, Tables = any>
-  (predicate: Predicate<Tables, Payload, ReturnType>, payload?: Payload)
+  <Payload, ReturnType, Tables = any, Plugins = {}>
+  (predicate: Predicate<Tables, Payload, ReturnType, Plugins>, payload?: Payload)
   : Promisify<ReturnType> {
   if (!payload) payload = {} as Payload;
 

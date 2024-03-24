@@ -1,6 +1,8 @@
 
 import md5 from "md5";
 import { TableScheme } from "./table";
+import { AllTablesDict } from "./db";
+import { CallbackScope } from "./client";
 export type { LogEntry } from "./db";
 export type {
   Table,
@@ -109,3 +111,5 @@ export function formToDocument(form: HTMLFormElement, scheme: TableScheme): Plai
   }
   return result;
 }
+
+export type PluginFactory = (scope: CallbackScope) => any;

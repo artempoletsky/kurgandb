@@ -13,10 +13,10 @@ export function getMetaFilepath(directory: string) {
 }
 
 export type FragmentedDictionarySettings<KeyType extends string | number> = {
-  keyType: KeyType extends string ? "string" : "int"
-  maxPartitionSize: number,
-  maxPartitionLength: number,
-  directory: string,
+  keyType: KeyType extends string ? "string" : "int";
+  maxPartitionSize: number;
+  maxPartitionLength: number;
+  directory: string;
 };
 
 

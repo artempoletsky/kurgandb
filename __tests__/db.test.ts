@@ -15,7 +15,7 @@ DataBase.init(process.cwd() + "/test_data");
 describe("Predicate parser", () => {
 
   test("parses predicates", () => {
-    const q1 = predicateToQuery<any, any, void>((tables, { payloadArg }, { db }) => { "hello world"; });
+    const q1 = predicateToQuery<any, any, void, {}>((tables, { payloadArg }, { db }) => { "hello world"; });
 
     expect(q1.predicateBody).toBe('"hello world";');
     expect(q1.predicateArgs.length).toBe(3);
@@ -23,18 +23,18 @@ describe("Predicate parser", () => {
     expect(q1.predicateArgs[1]).toBe("{ payloadArg }");
     expect(q1.predicateArgs[2]).toBe("{ db }");
 
-    const q2 = predicateToQuery<any, any, void>(function ({ users, posts }) { });
+    const q2 = predicateToQuery<any, any, void, {}>(function ({ users, posts }) { });
     expect(q2.predicateArgs[0]).toBe("{ users, posts }");
     expect(q2.predicateArgs[1]).toBe(undefined);
 
 
-    const q3 = predicateToQuery<any, any, void>(async (tables, payload, { db }) => {
+    const q3 = predicateToQuery<any, any, void, {}>(async (tables, payload, { db }) => {
       await db;
     });
     expect(q3.isAsync).toBe(true);
 
 
-    const q4 = predicateToQuery<any, any, any>(({ }, { }, { db: e }) => Object.keys(e.getTables()));
+    const q4 = predicateToQuery<any, any, any, {}>(({ }, { }, { db: e }) => Object.keys(e.getTables()));
     expect(q4.isAsync).toBe(false);
     expect(q4.predicateArgs[0]).toBe("{}");
     expect(q4.predicateArgs[1]).toBe("{}");
@@ -97,5 +97,21 @@ describe("db", () => {
 
     expect(existsSync(expectedDir)).toBe(false);
     await allIsSaved();
+  });
+
+  test("Plugins", async () => {
+    DataBase.registerPlugin("hello", ({ db }) => {
+      return {
+        getDBVersion() {
+          return db.versionString;
+        }
+      }
+    });
+
+    const version = await query(({ }, { }, { hello }: any) => {
+      return hello.getDBVersion();
+    }, {});
+
+    expect(version).toBe(DataBase.versionString);
   });
 });
