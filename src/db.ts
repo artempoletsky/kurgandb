@@ -129,7 +129,12 @@ export class DataBase {
     }
 
     for (const [fn, name] of dict.loadAll()) {
-      Plugins[name] = constructFunction(fn);
+      Plugins[name] = constructFunction(fn)({
+        db: DataBase,
+        $: $,
+        _: lodash,
+        z: zod,
+      });
     }
   }
 
@@ -364,6 +369,10 @@ export class DataBase {
     delete Plugins[name];
   }
 
+  static getPlugins() {
+    const dict = FragmentedDictionary.open<string, ParsedFunction>("/_plugins/");
+    return dict.loadAll().toJSON();
+  }
 }
 
 export const Plugins: PlainObject = {};
