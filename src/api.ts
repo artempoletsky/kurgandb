@@ -1,5 +1,5 @@
 
-import { CallbackScope, Predicate, Promisify, QUERY_REGISTER_REQUIRED_MESSAGE, predicateToQuery, remoteQuery } from "./client";
+import { GlobalScope, Predicate, Promisify, QUERY_REGISTER_REQUIRED_MESSAGE, predicateToQuery, remoteQuery } from "./client";
 import { AllTablesDict, DataBase, TCreateTable } from "./db";
 import validate, { APIObject, APIRequest, APIValidationObject, ResponseError } from "@artempoletsky/easyrpc";
 import { Table } from "./table";
@@ -8,7 +8,7 @@ import { allIsSaved } from "./virtual_fs";
 import _ from "lodash";
 import { PlainObject } from "./globals";
 import z from "zod";
-import { $, logError } from "./utils";
+import { $, getGlobalScope, logError } from "./utils";
 import { constructFunction } from "./function";
 
 import { Plugins } from "./db";
@@ -24,7 +24,7 @@ const ZQuery = z.object({
 export type AQuery = z.infer<typeof ZQuery>;
 
 
-type QueryImplementation = (tables: AllTablesDict, payload: PlainObject, scope: CallbackScope) => any;
+type QueryImplementation = (tables: AllTablesDict, payload: PlainObject, scope: GlobalScope) => any;
 
 
 export function queryToString(source: ARegisterQuery): string {
@@ -53,13 +53,7 @@ export async function query(args: AQuery) {
 
   let result: any
   try {
-    result = queryImplementation(DataBase.getTables(), args.payload, {
-      ...Plugins,
-      db: DataBase,
-      _,
-      $,
-      z,
-    });
+    result = queryImplementation(DataBase.getTables(), args.payload, getGlobalScope());
   } catch (err: any) {
     if (err.response && err.message && err.statusCode) {
       throw err;

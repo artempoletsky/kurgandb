@@ -13,6 +13,10 @@ import {
 import type { TRecord } from "./record";
 import md5 from "md5";
 import { ResponseError } from "@artempoletsky/easyrpc";
+import { GlobalScope } from "./client";
+import zod from "zod";
+import lodash from "lodash";
+import { Plugins } from "./db";
 
 function pick<Type>(...fields: (keyof Type)[]) {
   return (rec: TRecord<Type, any>) => {
@@ -227,3 +231,12 @@ export function logError(arg1: string | Error, arg2?: string): Error {
   return arg1;
 }
 
+export function getGlobalScope<PluginsType>(): GlobalScope & PluginsType {
+  return {
+    ...Plugins as PluginsType,
+    z: zod,
+    _: lodash,
+    $: $,
+    db: DataBase,
+  }
+}

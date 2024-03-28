@@ -17,14 +17,14 @@ function errorCantParse(predicate: string) {
 }
 
 
-export type CallbackScope = {
+export type GlobalScope = {
   z: typeof z;
   db: typeof DataBase;
   $: typeof $;
   _: typeof lodash;
 }
 
-export type Predicate<Tables, Payload, ReturnType, Plugins> = (tables: Tables, payload: Payload, scope: CallbackScope & Plugins) => ReturnType;
+export type Predicate<Tables, Payload, ReturnType, Plugins> = (tables: Tables, payload: Payload, scope: GlobalScope & Plugins) => ReturnType;
 
 
 export function predicateToQuery<Tables extends Record<string, Table>, Payload, ReturnType, Plugins>(predicate: Predicate<Tables, Payload, ReturnType, Plugins>): ARegisterQuery {

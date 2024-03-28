@@ -1,14 +1,14 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
 import { TRecord, TableRecord } from "./record";
-import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError, $, absolutePath } from "./utils";
+import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError, $, absolutePath, getGlobalScope } from "./utils";
 
 import fs from "fs";
 import FragmentedDictionary, { FragmentedDictionarySettings, IDFilter, PartitionFilter, PartitionMeta } from "./fragmented_dictionary";
 import TableQuery, { twoArgsToFilters } from "./table_query";
 import SortedDictionary from "./sorted_dictionary";
 import _, { flatten } from "lodash";
-import { CallbackScope } from "./client";
+import { GlobalScope } from "./client";
 import { FieldTag, FieldType, PlainObject, EventName } from "./globals";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { ParsedFunction, constructFunction, parseFunction } from "./function";
@@ -31,7 +31,7 @@ export function packEventListener(handler: (...args: any[]) => void): ParsedFunc
   return parsed;
 }
 
-export type RecordValidator = (table: Table<any, any, any>, scope: CallbackScope) => ZodObject<any> | ZodEffects<ZodObject<any>>;
+export type RecordValidator = (table: Table<any, any, any>, scope: GlobalScope) => ZodObject<any> | ZodEffects<ZodObject<any>>;
 
 export type TableScheme = {
   fields: Record<string, FieldType>
@@ -81,7 +81,7 @@ export type EventRecordChangeCompact<T, idT extends string | number, LightT, Vis
 }
 
 export type EventRecordChange<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT, FieldT> = EventRecordChangeCompact<T, idT, LightT, VisibleT, FieldT>
-  & CallbackScope
+  & GlobalScope
   & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
 
@@ -90,21 +90,21 @@ export type EventRecordsInsertCompact<T> = {
 }
 
 export type EventRecordsInsert<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = EventRecordsInsertCompact<T>
-  & CallbackScope
+  & GlobalScope
   & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
 export type EventRecordsRemoveCompact<T> = {
   records: T[];
 }
 export type EventRecordsRemove<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = EventRecordsInsertCompact<T>
-  & CallbackScope
+  & GlobalScope
   & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
 export type EventRecordsRemoveLight<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = EventRecordsInsertCompact<LightT>
-  & CallbackScope
+  & GlobalScope
   & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
-export type EventTableOpen<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = CallbackScope
+export type EventTableOpen<T, idT extends string | number, MetaT, InsertT, LightT, VisibleT> = GlobalScope
   & EventTableBase<T, idT, MetaT, InsertT, LightT, VisibleT>
 
 export class Table<T = unknown, idT extends string | number = string | number, MetaT = {}, InsertT = T, LightT = T, VisibleT = T> {
@@ -471,13 +471,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         [this.primaryKey]: ids[i]
       } as T));
       const e: EventRecordsInsert<T, idT, MetaT, InsertT, LightT, VisibleT> = {
+        ...getGlobalScope(),
         records: inserted,
         table: this,
         meta: this.meta,
-        $,
-        _,
-        db: DataBase,
-        z: zod,
       }
 
       this.triggerEvent("recordsInsert", e);
@@ -611,12 +608,9 @@ export class Table<T = unknown, idT extends string | number = string | number, M
         ...this.meta
       };
       const e: EventTableOpen<T, idT, MetaT, InsertT, LightT, VisibleT> = {
-        $,
-        _,
-        db: DataBase,
+        ...getGlobalScope(),
         meta,
         table: this,
-        z: zod,
       };
       handler(e);
       this.mainDict.meta.custom.userMeta = meta;
@@ -661,9 +655,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (!eventData) eventData = {};
     for (const handlerId in listeners) {
       listeners[handlerId]({
-        $: $,
-        _: _,
-        db: DataBase,
+        ...getGlobalScope(),
         table: this,
         meta: this.meta,
         ...eventData,
@@ -780,7 +772,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
     this.validator = constructFunction(fun) as RecordValidator;
 
-    this._zObject = this.validator(this, { db: DataBase, $, _, z: zod });
+    this._zObject = this.validator(this, getGlobalScope());
   }
 
   protected _zObject: ZodObject<any> | ZodEffects<ZodObject<any>>;
