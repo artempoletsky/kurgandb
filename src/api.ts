@@ -53,7 +53,7 @@ export async function query(args: AQuery) {
 
   let result: any
   try {
-    result = queryImplementation(DataBase.getTables(), args.payload, getGlobalScope());
+    result = await queryImplementation(DataBase.getTables(), args.payload, getGlobalScope());
   } catch (err: any) {
     if (err.response && err.message && err.statusCode) {
       throw err;

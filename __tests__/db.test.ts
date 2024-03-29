@@ -100,7 +100,7 @@ describe("db", () => {
   });
 
   test("Plugins", async () => {
-    DataBase.registerPlugin("hello", ({ db }) => {
+    DataBase.registerPlugin("hello", async ({ db }) => {
       return {
         getDBVersion() {
           return db.versionString;

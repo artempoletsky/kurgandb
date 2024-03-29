@@ -96,15 +96,16 @@ function parseFunctionHead(head: string): {
   };
 }
 
-const AsyncFunction: FunctionConstructor = async function () { }.constructor as FunctionConstructor;
+const AsyncFunction: FunctionConstructor = (async function AsyncFunction() { }).constructor as FunctionConstructor;
 
 export function constructFunction(parsed: ParsedFunction): Function {
-  const Construnctor = parsed.isAsync ? AsyncFunction : Function;
+
+  const ctr = parsed.isAsync ? AsyncFunction : Function;
   const constructorArgs = [...parsed.args, parsed.body];
   let result: Function;
 
   try {
-    result = new Construnctor(...constructorArgs);
+    result = ctr(...constructorArgs);
   } catch (err) {
     throw err;
   }

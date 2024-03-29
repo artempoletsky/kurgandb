@@ -112,4 +112,4 @@ export function formToDocument(form: HTMLFormElement, scheme: TableScheme): Plai
   return result;
 }
 
-export type PluginFactory = (scope: GlobalScope) => any;
+export type PluginFactory = (scope: GlobalScope) => Promise<PlainObject>;

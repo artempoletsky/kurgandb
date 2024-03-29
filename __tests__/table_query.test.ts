@@ -82,6 +82,31 @@ describe("Table", () => {
     expect(bars[0].name).toBe("bar");
   });
 
+  test("async query", async () => {
+    let result = await query(async ({ }, { }, { }) => {
+      const p = new Promise<string>((resolve) => {
+        setTimeout(() => {
+          resolve("foo");
+        }, 100);
+      });
+      return await p;
+    }, {});
+    expect(result).toBe("foo");
+
+    result = await query(async ({ }, { }, { db }) => {
+      return await db.npmInstall("is-odd");
+    }, {});
+    
+    expect(result.trim().startsWith("added 2 packages")).toBe(true);
+
+    result = await query(async ({ }, { }, { db }) => {
+      return await db.npmUninstall("is-odd");
+    }, {});
+
+    expect(result.trim().startsWith("removed 2 packages")).toBe(true);
+
+  }, 20000);
+
   test("filters", () => {
     const bars = t.filter(doc => doc.name == "bar").select();
     expect(bars.length).toBe(3);

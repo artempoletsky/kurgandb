@@ -1,7 +1,7 @@
 import { rimraf } from "rimraf";
 
 import { Table, TableScheme } from "./table";
-import { $, LOGS_DIRECTORY, LOG_DELIMITER, mkdirSync, rfs, wfs } from "./utils";
+import { $, LOGS_DIRECTORY, LOG_DELIMITER, logError, mkdirSync, rfs, wfs, writeIntoLogFile } from "./utils";
 import FragmentedDictionary from "./fragmented_dictionary";
 import fs, { existsSync } from "fs";
 import vfs, { setRootDirectory } from "./virtual_fs";
@@ -336,9 +336,9 @@ export class DataBase {
     return result;
   }
 
-  static registerPlugin(name: string, factory: PluginFactory): void
-  static registerPlugin(name: string, factory: ParsedFunction): void
-  static registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
+  static async registerPlugin(name: string, factory: PluginFactory): Promise<void>
+  static async registerPlugin(name: string, factory: ParsedFunction): Promise<void>
+  static async registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
     let fn: PluginFactory, parsed: ParsedFunction;
 
     if (typeof factory == "function") {
@@ -353,7 +353,7 @@ export class DataBase {
       parsed = factory;
     }
 
-    Plugins[name] = fn({
+    Plugins[name] = await fn({
       db: DataBase,
       $: $,
       _: lodash,
@@ -372,6 +372,31 @@ export class DataBase {
   static getPlugins() {
     const dict = FragmentedDictionary.open<string, ParsedFunction>("/_plugins/");
     return dict.loadAll().toJSON();
+  }
+
+  static async execCli(command: string) {
+    const exec = require("node:child_process").exec;
+
+    return new Promise<string>((resolve) => {
+      exec(command, (err: any, result: string) => {
+        if (err) {
+          throw new ResponseError("Command has failed with error: {...}", [err]);
+        }
+        resolve(result.toString());
+      });
+    })
+  }
+
+  static async npmInstall(moduleName: string) {
+    const result = await this.execCli(`npm install --save ${moduleName}`);
+    writeIntoLogFile(`installed npm module ${moduleName}`, result, "info");
+    return result;
+  }
+
+  static async npmUninstall(moduleName: string) {
+    const result = await this.execCli(`npm uninstall --save ${moduleName}`);
+    writeIntoLogFile(`uninstalled npm module ${moduleName}`, result, "info");
+    return result;
   }
 }
 

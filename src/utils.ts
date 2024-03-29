@@ -56,7 +56,12 @@ function invalid(rec: TRecord<any, any, any, any>): boolean {
   return !rec.$isValid();
 }
 
+function myRequire(pkg: string) {
+  return require(pkg);
+}
+
 export const $ = {
+  require: myRequire,
   randomIndex,
   randomIndices,
   pick,
