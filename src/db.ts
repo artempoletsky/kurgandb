@@ -121,7 +121,6 @@ export class DataBase {
     if (existsSync(this.workingDirectory + dictDir + "settings.json")) {
       dict = FragmentedDictionary.open(dictDir);
     } else {
-      debugger;
       dict = FragmentedDictionary.init({
         directory: dictDir,
         keyType: "string",
@@ -336,9 +335,9 @@ export class DataBase {
     return result;
   }
 
-  static async registerPlugin(name: string, factory: PluginFactory): Promise<void>
-  static async registerPlugin(name: string, factory: ParsedFunction): Promise<void>
-  static async registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
+  static registerPlugin(name: string, factory: PluginFactory): void
+  static registerPlugin(name: string, factory: ParsedFunction): void
+  static registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
     let fn: PluginFactory, parsed: ParsedFunction;
 
     if (typeof factory == "function") {
@@ -353,7 +352,7 @@ export class DataBase {
       parsed = factory;
     }
 
-    Plugins[name] = await fn({
+    Plugins[name] = fn({
       db: DataBase,
       $: $,
       _: lodash,

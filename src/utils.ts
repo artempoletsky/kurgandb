@@ -57,7 +57,7 @@ function invalid(rec: TRecord<any, any, any, any>): boolean {
 }
 
 function myRequire(pkg: string) {
-  return require(pkg);
+  return eval("require(pkg)");
 }
 
 export const $ = {
