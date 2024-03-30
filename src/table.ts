@@ -755,7 +755,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
             case "boolean": rule = z.boolean(); break;
             case "date": rule = z.coerce.date(); break;
             case "json": rule = z.any(); break;
-            case "number": rule = z.number(); break;
+            case "number": rule = z.coerce.number(); break;
             case "string": rule = z.string(); break;
           }
 

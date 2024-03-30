@@ -398,7 +398,7 @@ export default class TableUtils<T, idT extends string | number>{
   makeObjectStorable(o: T): PlainObject {
     const result: PlainObject = {};
     this.forEachField((key, type) => {
-      result[key] = TableRecord.storeValueOfType((<any>o)[key], type as any);
+      result[key] = TableRecord.storeValueOfType((<any>o)[key], type);
     });
     return result;
   }

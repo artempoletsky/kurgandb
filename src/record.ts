@@ -66,7 +66,8 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
       if (utils.mainDict.hasAnyId([value])) {
         throw utils.errorValueNotUnique(primaryKey, value);
       }
-      this._id = value;
+      const { keyType } = this._utils.mainDict.settings;
+      this._id = TableRecord.storeValueOfType(value, keyType == "string" ? "string" : "number");
       return;
     }
 
@@ -74,7 +75,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     if (!type) {
       throw new Error(`There is no '${fieldName}' field in '${table.name}'`);
     }
-    let newValue: any = TableRecord.storeValueOfType(value, type as any);
+    let newValue: any = TableRecord.storeValueOfType(value, type);
 
     if (tags.includes("heavy")) {
       const hasChangeListener = this._table.hasEventListener("recordChange:" + fieldName);
@@ -191,6 +192,9 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
       if (typeof value == "string") {
         return (new Date(value)).getTime();
       }
+    }
+    if (type == "number") {
+      return value * 1;
     }
     return value;
   }
