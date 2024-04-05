@@ -114,18 +114,12 @@ export async function registerQuery(args: ARegisterQuery) {
 export type FRegisterQuery = typeof registerQuery;
 
 
+export const rules = {
+  query: ZQuery,
+  registerQuery: ZRegisterQuery,
+} as const;
 
-export async function POST(req: APIRequest): Promise<[any, number]> {
-  if (!req.args || !req.method) {
-    return ["method or args are missing", 400];
-  }
-
-  const [response, status] = await validate(req, {
-    query: ZQuery,
-    registerQuery: ZRegisterQuery,
-  }, {
-    query,
-    registerQuery
-  });
-  return [response, status.status];
-}
+export const methods: APIObject<typeof rules> = {
+  query,
+  registerQuery,
+};

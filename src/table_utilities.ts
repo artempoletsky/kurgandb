@@ -274,10 +274,10 @@ export default class TableUtils<T, idT extends string | number>{
     });
   }
 
-  forEachField(predicate: (fieldName: string, type: FieldType, tags: Set<FieldTag>) => any): void {
+  forEachField(predicate: (fieldName: string & keyof T, type: FieldType, tags: Set<FieldTag>) => any): void {
     const fields = this.scheme.fields;
     for (const key of this.scheme.fieldsOrderUser) {
-      predicate(key, fields[key], new Set(this.scheme.tags[key]));
+      predicate(key as any, fields[key], new Set(this.scheme.tags[key]));
     }
   }
 

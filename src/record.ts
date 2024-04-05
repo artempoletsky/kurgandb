@@ -278,10 +278,10 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     return this._utils.getHeavyFieldFilepath(this._id, type, field);
   }
 
-  $pick(...fields: string[]): Partial<T> {
+  $pick<KeysT extends (keyof T)[]>(...fields: KeysT): Pick<T, KeysT[number]> {
     const result: PlainObject = {};
     this._utils.forEachField((key, type) => {
-      if (fields.includes(key))
+      if (fields.includes(key as keyof T))
         result[key] = this.$get(key);
     })
     return result as T;
@@ -291,7 +291,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
     return this.$omit() as T;
   }
 
-  $omit(...fields: string[]): Partial<T> {
+  $omit<KeysT extends (keyof T)[]>(...fields: KeysT): Omit<T, KeysT[number]> {
     const result: PlainObject = {};
     this._utils.forEachField((key, type) => {
       if (!fields.includes(key))
@@ -301,7 +301,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
   }
 
   $light(): LightT {
-    return this.$pick(...this._utils.getLightKeys()) as any;
+    return this.$pick(...this._utils.getLightKeys() as any) as any;
   }
 
   $isValid(): boolean {

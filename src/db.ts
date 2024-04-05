@@ -290,6 +290,13 @@ export class DataBase {
     if (!fs.existsSync(LOGS_DIRECTORY)) return [];
     let files = fs.readdirSync(LOGS_DIRECTORY);
     files = files.filter(f => f.endsWith(".txt")).map(f => f.slice(0, f.length - 4));
+    files = files.sort((str1, str2) => {
+      const s1 = str1.split(".").map(v => parseInt(v));
+      const d1 = new Date(s1[2], s1[1] - 1, s1[0]);
+      const s2 = str2.split(".").map(v => parseInt(v));
+      const d2 = new Date(s2[2], s2[1] - 1, s2[0]);
+      return d2.valueOf() - d1.valueOf();
+    });
     return files;
   }
 

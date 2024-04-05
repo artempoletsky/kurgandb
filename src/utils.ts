@@ -8,9 +8,10 @@ import {
   encodePassword,
   dictFromKeys,
   aggregateDictionary,
-  reduceDictionary
+  reduceDictionary,
+  Table
 } from "./globals";
-import type { TRecord } from "./record";
+import type { TRecord, TableRecord } from "./record";
 import md5 from "md5";
 import { ResponseError } from "@artempoletsky/easyrpc";
 import { GlobalScope } from "./client";
@@ -18,19 +19,19 @@ import zod from "zod";
 import lodash from "lodash";
 import { Plugins } from "./db";
 
-function pick<Type>(...fields: (keyof Type)[]) {
-  return (rec: TRecord<Type, any>) => {
-    return rec.$pick(...fields as string[]);
+function pick<Type, KeysT extends (keyof Type)[]>(...fields: KeysT) {
+  return (rec: TableRecord<Type, any, any, any>) => {
+    return rec.$pick(...fields);
   }
 }
 
-function omit<Type>(...fields: (keyof Type)[]) {
-  return (rec: TRecord<Type, any>) => {
-    return rec.$omit(...fields as string[]);
+function omit<Type, KeysT extends keyof Type>(...fields: KeysT[]) {
+  return (rec: TableRecord<Type, any, any, any>) => {
+    return rec.$omit(...fields);
   }
 }
 
-function primary<KeyType extends string | number, Type>(rec: TRecord<Type, KeyType>) {
+function primary<KeyType extends string | number>(rec: TableRecord<any, KeyType, any, any>) {
   return rec.$id;
 }
 
@@ -40,24 +41,34 @@ function field<Type>(fieldName: keyof Type): any {
   }
 }
 
-function full<Type>(rec: TRecord<Type, any, any, any>): Type {
+function full<Type>(rec: TableRecord<Type, any, any, any>): Type {
   return rec.$full();
 }
 
-function light<LightT>(rec: TRecord<any, any, LightT, any>): LightT {
+function light<TLight>(rec: TableRecord<any, any, TLight, any>): TLight {
   return rec.$light();
 }
 
-function valid(rec: TRecord<any, any, any, any>): boolean {
+function valid(rec: TableRecord<any, any, any, any>): boolean {
   return rec.$isValid();
 }
 
-function invalid(rec: TRecord<any, any, any, any>): boolean {
+function invalid(rec: TableRecord<any, any, any, any>): boolean {
   return !rec.$isValid();
 }
 
 function myRequire(pkg: string) {
   return eval("require(pkg)");
+}
+
+function err(field: string, message: string, args?: string[]): ResponseError
+function err(message: string, args?: string[]): ResponseError
+function err(a1: any, a2?: any, a3?: any) {
+  return new ResponseError(a1, a2, a3);
+}
+
+function notFound(message?: string, args?: string[]) {
+  return ResponseError.notFound(message, args);
 }
 
 export const $ = {
@@ -79,6 +90,8 @@ export const $ = {
   light,
   valid,
   invalid,
+  err,
+  notFound,
 }
 
 
