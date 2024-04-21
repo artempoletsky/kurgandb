@@ -722,7 +722,13 @@ export class Table<T = unknown, idT extends string | number = string | number, M
       return idCandidiate as idT;
     }
 
-    return this.mainDict.meta.custom.lastId + 1;
+    if (this.autoId) return this.mainDict.meta.custom.lastId + 1;
+
+    let idCandidiate = (<number>this.mainDict.end + 1) as idT;
+    while (this.has(idCandidiate)) {
+      idCandidiate += 1 as any;
+    }
+    return idCandidiate;
   }
 
   getRecordDraft(): T {
