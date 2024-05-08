@@ -48,8 +48,8 @@ export type IterateRangesOptions<KeyType extends string | number, Type, ReturnTy
   invertRanges?: boolean
 };
 
-export type IDFilter<KeyType extends string | number> = (id: KeyType) => boolean;
-export type PartitionFilter<KeyType extends string | number> = (start: KeyType, end: KeyType) => boolean;
+export type IDFilter<KeyType> = (id: KeyType) => any;
+export type PartitionFilter<KeyType> = (start: KeyType, end: KeyType) => boolean;
 
 export type IterateWhereOptions<KeyType extends string | number, Type, ReturnType = Type> = {
   partitionFilter?: PartitionFilter<KeyType>

@@ -71,11 +71,11 @@ describe("Table", () => {
   });
 
   test("where", () => {
-    const oneThree = t.where<number>("id", 1, 3).select();
+    const oneThree = t.where("id", 1, 3).select();
     expect(oneThree[0].id).toBe(1);
     expect(oneThree[1].id).toBe(3);
 
-    const notBars = t.where<string>("name", name => name != "bar").select();
+    const notBars = t.where("name", name => name != "bar").select();
     expect(notBars[0].name).toBe("foo");
 
     const bars = t.where("name", "bar").select();

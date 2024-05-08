@@ -204,12 +204,12 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     return this.createQuery().whereRange(fieldName as any, min, max);
   }
 
-  where<FieldType extends string | number>(fieldName: keyof T,
-    idFilter: IDFilter<FieldType>,
-    partitionFilter?: PartitionFilter<FieldType>): TableQuery<T, idT, LightT, VisibleT>
-  where<FieldType extends string | number>(fieldName: keyof T, ...values: FieldType[]): TableQuery<T, idT, LightT, VisibleT>
-  where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
-    return this.createQuery().where<FieldType>(fieldName, ...args);
+  where<T1 extends keyof T>(fieldName: T1,
+    idFilter: IDFilter<T[T1]>,
+    partitionFilter?: PartitionFilter<T[T1]>): TableQuery<T, idT, LightT, VisibleT>
+  where<T1 extends keyof T>(fieldName: T1, ...values: T[T1][]): TableQuery<T, idT, LightT, VisibleT>
+  where(fieldName: any, ...args: any[]) {
+    return this.createQuery().where(fieldName, ...args);
   }
 
   filter(predicate: RecordCallback<T, idT, boolean, LightT, VisibleT>) {
@@ -390,6 +390,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     if (iOf == -1) throw this.utils.errorFieldDoesntExist(fieldName);
     fieldsOrderUser.splice(iOf, 1);
     fieldsOrderUser.splice(newIndex, 0, fieldName);
+    this.saveScheme();
   }
 
   public insertMany(data: InsertT[]): idT[] {
@@ -492,7 +493,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   at(id: idT): VisibleT
   at<ReturnType = T>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>): ReturnType
   public at<ReturnType>(id: idT, predicate?: RecordCallback<T, idT, ReturnType, LightT, VisibleT>) {
-    const res = this.where(this.primaryKey as any, id).limit(1).select(predicate);
+    const res = this.where(this.primaryKey as any, id as any).limit(1).select(predicate);
     if (res.length == 0) throw this.utils.errorWrongId(id);
     return res[0];
   }

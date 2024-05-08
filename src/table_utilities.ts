@@ -9,7 +9,7 @@ import { rimraf } from "rimraf";
 
 type IndexData<idT extends string | number> = Record<string, Map<string | number, idT[]>>;
 
-export default class TableUtils<T, idT extends string | number>{
+export default class TableUtils<T, idT extends string | number> {
 
   printField(fieldName?: string) {
     if (!fieldName) return `'${this.table.name}[${this.table.primaryKey}]'`;
@@ -105,7 +105,9 @@ export default class TableUtils<T, idT extends string | number>{
       for (let i = 0; i < oldIds.length; i++) {
         const oldName = this.getHeavyFieldFilepath(oldIds[i], types[fieldName], fieldName);
         const newName = this.getHeavyFieldFilepath(newIds[i], types[fieldName], fieldName);
-        fs.renameSync(oldName, newName);
+        if (fs.existsSync(oldName)) {
+          fs.renameSync(oldName, newName);
+        }
       }
     }
   }

@@ -22,7 +22,7 @@ export function partitionFilterFromSet<KeyType extends string | number>(ids: Key
   };
 }
 
-export function twoArgsToFilters<KeyType extends string | number>(args: any[]): [IDFilter<KeyType>, PartitionFilter<KeyType>] {
+export function twoArgsToFilters<KeyType>(args: any[]): [IDFilter<KeyType>, PartitionFilter<KeyType>] {
   let idFilter: IDFilter<KeyType>, partitionFilter: PartitionFilter<KeyType>;
   if (typeof args[0] == "function") {
     idFilter = args[0];
@@ -70,22 +70,22 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
   }
 
 
-  protected convertWhereToFilter<FieldType extends string | number>(fieldName: string, idFilter: IDFilter<FieldType>) {
+  protected convertWhereToFilter<FieldType>(fieldName: string, idFilter: IDFilter<FieldType>) {
     this.filters.push(rec => {
       return idFilter(rec.$get(fieldName));
     });
     return this;
   }
 
-  where<FieldType extends string | number>(fieldName: keyof T,
-    idFilter: IDFilter<FieldType>,
-    partitionFilter?: PartitionFilter<FieldType>): typeof this
-  where<FieldType extends string | number>(fieldName: keyof T, ...values: FieldType[]): typeof this
-  where<FieldType extends string | number>(fieldName: any, ...args: any[]) {
-    let [idFilter, partitionFilter] = twoArgsToFilters<FieldType>(args);
+  where<T1 extends keyof T>(fieldName: T1,
+    idFilter: IDFilter<T[T1]>,
+    partitionFilter?: PartitionFilter<T[T1]>): typeof this
+  where<T1 extends keyof T>(fieldName: T1, ...values: T[T1][]): typeof this
+  where<T1 extends keyof T>(fieldName: any, ...args: any[]) {
+    let [idFilter, partitionFilter] = twoArgsToFilters<T[T1]>(args);
 
     if (fieldName != this.table.primaryKey && (this.whereField || !this.utils.fieldHasAnyTag(fieldName, "index", "unique"))) {
-      return this.convertWhereToFilter<FieldType>(fieldName, idFilter);
+      return this.convertWhereToFilter(fieldName, idFilter);
     }
 
     this.whereField = fieldName;
@@ -95,17 +95,17 @@ export default class TableQuery<T, idT extends string | number, LightT, VisibleT
   }
 
   whereRange
-    <FieldType extends string | number>(
-      fieldName: keyof T & string,
-      min: FieldType | undefined,
-      max: FieldType | undefined
+    <T1 extends keyof T>(
+      fieldName: T1,
+      min: string | number | undefined,
+      max: string | number | undefined
     ): typeof this {
-    return this.where<any>(fieldName, (val: any) => {
-      if (min !== undefined && val < min) return false;
-      if (max !== undefined && val > max) return false;
+    return this.where<T1>(fieldName, (val: any) => {
+      if (min !== undefined && val < (min)) return false;
+      if (max !== undefined && val > (max)) return false;
       return true;
     }, (start, end) => {
-      return FragmentedDictionary.partitionMatchesRanges(start, end, [[min, max]]);
+      return FragmentedDictionary.partitionMatchesRanges(start as any, end, [[min, max]]);
     });
   }
 

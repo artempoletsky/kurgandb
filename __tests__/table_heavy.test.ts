@@ -73,6 +73,11 @@ describe("Table heavy", () => {
       heavyStr: "",
     });
     expect(three).toBe(3);
+
+    const newId = t.insert(t.getRecordDraft());
+    t.where("id", newId).update(rec => {
+      rec.id++;
+    });
   });
 
   afterAll(async () => {

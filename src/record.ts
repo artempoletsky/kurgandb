@@ -94,7 +94,7 @@ export class TableRecord<T, idT extends string | number, LightT, VisibleT> {
           oldValue,
           record: this as any,
           fieldName,
-        })
+        });
       }
       return;
     }
