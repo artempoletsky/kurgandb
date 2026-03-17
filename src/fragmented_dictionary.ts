@@ -5,7 +5,7 @@ import { partitionFilterFromSet } from "./table_query";
 import vfs, { mkdirSync, existsSync, rmie } from "./virtual_fs";
 
 function getEmptyKey<KeyType extends string | number>(keyType: KeyType extends string ? "string" : "int"): KeyType {
-  return keyType == "string" ? "" : 0 as any;
+  return keyType == "string" ? "" as any : 0 as any;
 }
 
 export function getMetaFilepath(directory: string) {

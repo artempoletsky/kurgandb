@@ -53,6 +53,7 @@ export function renameDir(oldRelativePath: string, newRelativePath: string) {
   }
 }
 
+// remove if exists
 export function rmie(name: string) {
   rimraf.sync(`${ROOT}/${name}`);
 }

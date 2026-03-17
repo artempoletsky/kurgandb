@@ -342,9 +342,9 @@ export class DataBase {
     return result;
   }
 
-  static registerPlugin(name: string, factory: PluginFactory): void
-  static registerPlugin(name: string, factory: ParsedFunction): void
-  static registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
+  static async registerPlugin(name: string, factory: PluginFactory): Promise<void>
+  static async registerPlugin(name: string, factory: ParsedFunction): Promise<void>
+  static async registerPlugin(name: string, factory: PluginFactory | ParsedFunction) {
     let fn: PluginFactory, parsed: ParsedFunction;
 
     if (typeof factory == "function") {
@@ -359,7 +359,7 @@ export class DataBase {
       parsed = factory;
     }
 
-    Plugins[name] = fn({
+    Plugins[name] = await fn({
       db: DataBase,
       $: $,
       _: lodash,

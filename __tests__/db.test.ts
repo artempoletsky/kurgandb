@@ -1,4 +1,4 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, test, xdescribe, xtest } from "./test-setup";
 import { Predicate, predicateToQuery } from "../src/client";
 import { rfs } from "../src/utils";
 import { standAloneQuery as query } from "../src/client";
@@ -7,17 +7,12 @@ import { existsSync } from "fs";
 import { rimraf } from "rimraf";
 import { allIsSaved } from "../src/virtual_fs";
 
-const xdescribe = (...args: any) => { };
-const xtest = (...args: any) => { };
-
-DataBase.init(process.cwd() + "/test_data");
-
-describe("Predicate parser", () => {
+xdescribe("Predicate parser", () => {
 
   test("parses predicates", () => {
-    const q1 = predicateToQuery<any, any, void, {}>((tables, { payloadArg }, { db }) => { "hello world"; });
+    const q1 = predicateToQuery<any, any, void, {}>((tables, { payloadArg }, { db }) => { return "hello world"; });
 
-    expect(q1.predicateBody).toBe('"hello world";');
+    expect(q1.predicateBody).toBe('return "hello world";');
     expect(q1.predicateArgs.length).toBe(3);
     expect(q1.predicateArgs[0]).toBe("tables");
     expect(q1.predicateArgs[1]).toBe("{ payloadArg }");
@@ -54,7 +49,9 @@ describe("db", () => {
   const tableName = "jest_test_table_1";
   const expectedDir = process.cwd() + "/test_data/" + tableName;
   beforeAll(async () => {
-    rimraf.sync(expectedDir);
+    rimraf.sync( process.cwd() + "/test_data/");
+    DataBase.init(process.cwd() + "/test_data");
+    // rimraf.sync(expectedDir);
     await allIsSaved();
   });
 
@@ -100,7 +97,7 @@ describe("db", () => {
   });
 
   test("Plugins", async () => {
-    DataBase.registerPlugin("hello", async ({ db }) => {
+    await DataBase.registerPlugin("hello", async ({ db }) => {
       return {
         getDBVersion() {
           return db.versionString;

@@ -1,13 +1,9 @@
-import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
+import { describe, expect, test, xdescribe, xtest } from "./test-setup";
 import FragmentedDictionary, { FragDictMeta, PartitionMeta, getMetaFilepath } from "../src/fragmented_dictionary";
 import SortedDictionary from "../src/sorted_dictionary";
 import vfs, { allIsSaved, rmie, existsSync } from "../src/virtual_fs";
 import virtual_fs from "../src/virtual_fs";
 import { rimraf } from "rimraf";
-
-const xdescribe = (...args: any) => { };
-const xtest = (...args: any) => { };
-
 
 
 

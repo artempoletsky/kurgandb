@@ -1,4 +1,5 @@
-import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
+import { describe, expect, test, xdescribe, xtest } from "./test-setup";
+
 import { Predicate, predicateToQuery } from "../src/client";
 import { perfEnd, perfStart, perfDur, perfLog, rfs } from "../src/utils";
 // import { star as query } from "../src/api";
@@ -13,8 +14,6 @@ import { TRecord } from "../src/record";
 import { rimraf } from "rimraf";
 import TableUtils from "../src/table_utilities";
 
-const xdescribe = (...args: any) => { };
-const xtest = (...args: any) => { };
 
 const TestTableName = "jest_test_table_0";
 

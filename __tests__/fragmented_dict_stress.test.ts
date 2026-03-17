@@ -1,18 +1,15 @@
-import { describe, expect, test, beforeAll, afterAll } from "@jest/globals";
+import { describe, expect, test, xdescribe, xtest } from "./test-setup";
+
 import FragmentedDictionary, { FragDictMeta, PartitionMeta } from "../src/fragmented_dictionary";
 
 import virtual_fs, { allIsSaved, rmie } from "../src/virtual_fs";
-
-const xdescribe = (...args: any) => { };
-const xtest = (...args: any) => { };
-
 
 
 
 describe("Fragmented dictionary", () => {
   let numbers: FragmentedDictionary<number, number>;
   const NUM = "/jest_dict_numbers_stress/";
-  const partitionLength = 100 * 1000;
+  const partitionLength = 10 * 1000;
 
   const portion = Array.from(Array(partitionLength)).map((und, index) => index);
 
@@ -45,7 +42,7 @@ describe("Fragmented dictionary", () => {
 
 
   test("Inserts millions of records", async () => {
-    const insertTimes = 1 * 1;
+    const insertTimes = 100;
     for (let i = 0; i < insertTimes; i++) {
       numbers.insertArray(portion);
       if (i % 5 == 0) {
@@ -68,6 +65,6 @@ describe("Fragmented dictionary", () => {
 
   afterAll(async () => {
     await allIsSaved();
-    rmie(NUM);
+    // rmie(NUM);
   })
 });
