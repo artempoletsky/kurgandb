@@ -1,5 +1,6 @@
 /node_modules/
 /build/
+/wasmbuild/
 /data/
 /.env
 /test_data/
