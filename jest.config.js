@@ -33,7 +33,7 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'table_stress.test.ts';
 // currentFile = 'db.test.ts';
 // currentFile = 'wasm.test.ts';
-currentFile = 'Index.test.ts';
+currentFile = 'IndexOneNumber.test.ts';
 
 const runStressTests = false;
 
