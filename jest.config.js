@@ -32,7 +32,8 @@ const files = fs.readdirSync('./__tests__');
 // currentFile = 'fragmented_dict_stress.test.ts';
 // currentFile = 'table_stress.test.ts';
 // currentFile = 'db.test.ts';
-currentFile = 'wasm.test.ts';
+// currentFile = 'wasm.test.ts';
+currentFile = 'Index.test.ts';
 
 const runStressTests = false;
 
