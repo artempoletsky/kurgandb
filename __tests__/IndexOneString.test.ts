@@ -11,8 +11,8 @@ describe("IndexOneString", () => {
   const idxPath = path.join(__dirname, "strings");
 
   function removeTestData() {
-    try { fs.unlinkSync(idxPath); } catch { }
-    try { fs.unlinkSync(idxPath + ".txt"); } catch { }
+    try { fs.unlinkSync(idxPath); } catch {}
+    try { fs.unlinkSync(idxPath + ".txt"); } catch {}
   }
 
   beforeAll(removeTestData);
@@ -40,10 +40,10 @@ describe("IndexOneString", () => {
     expect(IndexOneString.compareStringBuffer("hello", variableBuffer, idPos, Buffer.byteLength("hello", "utf-8"))).toBe(0);
 
 
-    expect(idx.getFixedBufferLength()).toBe(12);
-    expect(idx.getVariableBufferLength()).toBe(16);
+    expect(idx.getFixedBufferLength()).toBe(10);
+    expect(idx.getVariableBufferLength()).toBe(5);
 
-    let search = idx.binarySearchString("hello");
+    let search = idx.binarySearch("hello");
 
     expect(search.idPos).toBe(0);
     expect(search.pos).toBe(0);
@@ -73,7 +73,6 @@ describe("IndexOneString", () => {
 
     expect(rec.offset).toBe(123);
     expect(rec.idLen).toBe(5);
-    expect(rec.idMaxLen).toBe(16);
     expect(rec.idPos).toBe(0);
 
     idx.compact();
@@ -84,14 +83,13 @@ describe("IndexOneString", () => {
     expect(fixedBuffer.readUInt32BE(0)).toBe(123);
 
 
-    expect(idx.getVariableBufferLength()).toBe(16);
-    expect(idx.getFixedBufferLength()).toBe(12);
+    expect(idx.getVariableBufferLength()).toBe(5);
+    expect(idx.getFixedBufferLength()).toBe(10);
 
     rec = idx.readFixedRecord(0);
 
     expect(rec.offset).toBe(123);
     expect(rec.idLen).toBe(5);
-    expect(rec.idMaxLen).toBe(16);
     expect(rec.idPos).toBe(0);
   });
 
@@ -99,14 +97,14 @@ describe("IndexOneString", () => {
     const idx = new IndexOneString(idxPath);
     idx.set("hello", 123);
 
-    expect(idx.getVariableBufferLength()).toBe(16);
+    expect(idx.getVariableBufferLength()).toBe(5);
 
     idx.save();
 
     const savedBuffer = fs.readFileSync(idxPath);
-    expect(savedBuffer.length).toBe(12);
+    expect(savedBuffer.length).toBe(10);
     const variableBuffer = fs.readFileSync(idxPath + ".txt", "utf-8");
-    expect(variableBuffer.length).toBe(16);
+    expect(variableBuffer.length).toBe(5);
   });
 
 
@@ -122,7 +120,7 @@ describe("IndexOneString", () => {
     removeTestData();
     const idx = new IndexOneString(idxPath);
 
-    let rawData = createArray(2);
+    let rawData = createArray(2_000);
 
     idx.fastFill(rawData, 5);
 
@@ -131,7 +129,6 @@ describe("IndexOneString", () => {
 
     let rec1 = idx.readFixedRecord(0);
     expect(rec1.idLen).toBe(1);
-    expect(rec1.idMaxLen).toBe(16);
     expect(rec1.offset).toBe(0);
     expect(rec1.idPos).toBe(0);
     idx.save();

@@ -3,7 +3,9 @@ import * as fs from "fs";
 
 const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
 const TOMBSTONE = 0xFFFFFFFF;
-const FIXED_RECORD_SIZE = 12; // 4 bytes for offset, 2 bytes for id length, 2 bytes for max id length, 4 bytes for id position
+const FIXED_RECORD_SIZE = 10; // 4 bytes for offset, 2 bytes for id length, 4 bytes for id position
+const ID_LEN_OFFSET = 4;
+const ID_POS_OFFSET = 6;
 
 export class IndexOneString {
 
@@ -21,20 +23,20 @@ export class IndexOneString {
   }
 
   protected pathFixed: string;
-  protected pathVariable;
+  protected pathVariable: string;
 
-  protected bufferFixed!: Buffer; // file structure is [offset (4 bytes)][id_length (2 bytes)][id_max_length (2 bytes)][id_position (4 bytes)]
-  protected bufferVariable!: Buffer; // file structure is [variable_length]
+  protected fixedBuffer!: Buffer; // file structure is [offset (4 bytes)][id_length (2 bytes)][id_position (4 bytes)]
+  protected variableBuffer!: Buffer; // file structure is [variable_length]
 
   protected bufferFixedLength = 0;
   protected bufferVariableLength = 0;
 
   getFixedBuffer() {
-    return this.bufferFixed.subarray(0, this.bufferFixedLength);
+    return this.fixedBuffer.subarray(0, this.bufferFixedLength);
   }
 
   getVariableBuffer() {
-    return this.bufferVariable.subarray(0, this.bufferVariableLength);
+    return this.variableBuffer.subarray(0, this.bufferVariableLength);
   }
 
   getFixedBufferLength() {
@@ -46,10 +48,10 @@ export class IndexOneString {
   }
 
   get(id: string): number {
-    const { pos, found } = this.binarySearchString(id);
+    const { pos, found } = this.binarySearch(id);
 
     if (found) {
-      const result = this.bufferFixed.readUInt32BE(pos);
+      const result = this.fixedBuffer.readUInt32BE(pos);
       if (result == TOMBSTONE) {
         return -1;
       }
@@ -61,11 +63,11 @@ export class IndexOneString {
 
 
   widenBuffers() {
-    this.bufferFixed = Buffer.concat([this.bufferFixed, Buffer.allocUnsafe(this.bufferFixed.length)]);
-    this.bufferVariable = Buffer.concat([this.bufferVariable, Buffer.allocUnsafe(this.bufferVariable.length)]);
+    this.fixedBuffer = Buffer.concat([this.fixedBuffer, Buffer.allocUnsafe(this.fixedBuffer.length)]);
+    this.variableBuffer = Buffer.concat([this.variableBuffer, Buffer.allocUnsafe(this.variableBuffer.length)]);
   }
 
-  binarySearchString(id: string) {
+  binarySearch(id: string) {
     const length = Math.floor(this.bufferFixedLength / FIXED_RECORD_SIZE);
     let low = 0;
     let high = length - 1;
@@ -74,13 +76,13 @@ export class IndexOneString {
 
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
-      pos = mid * 10;
-      // file structure is [offset (4 bytes)][id_length (2 bytes)][id_max_length (2 bytes)][id_position (4 bytes)]
+      pos = mid * FIXED_RECORD_SIZE;
+      // file structure is [offset (4 bytes)][id_length (2 bytes)][id_position (4 bytes)]
       // const offset = this.buffer.readUInt32BE(pos);
-      const idLen = this.bufferFixed.readUInt16BE(pos + 4);
-      idPos = this.bufferFixed.readUInt32BE(pos + 8);
+      const idLen = this.fixedBuffer.readUInt16BE(pos + ID_LEN_OFFSET);
+      idPos = this.fixedBuffer.readUInt32BE(pos + ID_POS_OFFSET);
 
-      const cmp = IndexOneString.compareStringBuffer(id, this.bufferVariable, idPos, idLen);
+      const cmp = IndexOneString.compareStringBuffer(id, this.variableBuffer, idPos, idLen);
 
       if (cmp === 0) {
         return { pos, idPos, found: true };
@@ -97,43 +99,40 @@ export class IndexOneString {
 
   }
 
-  static computeMaxLen(currentLen: number) {
-    return Math.max(currentLen * 2, 16);
-  }
 
   set(id: string, offset: number) {
 
-    const { pos, idPos, found } = this.binarySearchString(id);
+    const { pos, idPos, found } = this.binarySearch(id);
 
 
     let idLen = Buffer.byteLength(id, "utf-8");
 
 
     if (found) {
-      this.bufferFixed.writeUInt32BE(offset, pos);
+      this.fixedBuffer.writeUInt32BE(offset, pos);
       return;
     }
 
     //todo: widen buffers if necessary before shifting
 
     //shift records to the right to make space for the new record
-    this.bufferFixed.copy(this.bufferFixed, pos + FIXED_RECORD_SIZE, pos, this.bufferFixedLength);
+    this.fixedBuffer.copy(this.fixedBuffer, pos + FIXED_RECORD_SIZE, pos, this.bufferFixedLength);
     this.bufferFixedLength += FIXED_RECORD_SIZE;
-    const idMaxLen = IndexOneString.computeMaxLen(idLen);
 
 
-    this.bufferFixed.writeInt32BE(offset, pos);
-    this.bufferFixed.writeInt16BE(idLen, pos + 4);
-    this.bufferFixed.writeInt16BE(idMaxLen, pos + 6);
 
-    this.bufferFixed.writeInt32BE(this.bufferVariableLength, pos + 8);
-    this.bufferVariable.write(id, this.bufferVariableLength, "utf-8");
-    this.bufferVariableLength += idMaxLen;
+    this.fixedBuffer.writeUInt32BE(offset, pos);
+    this.fixedBuffer.writeUInt16BE(idLen, pos + ID_LEN_OFFSET);
+
+
+    this.fixedBuffer.writeUInt32BE(this.bufferVariableLength, pos + ID_POS_OFFSET);
+    this.variableBuffer.write(id, this.bufferVariableLength, "utf-8");
+    this.bufferVariableLength += idLen;
 
 
     // the record fits in place, we can just overwrite it
     // if (idLen <= idMaxLen) {
-    //   this.bufferFixed.writeInt32BE(idPos, pos + 8);
+    //   this.bufferFixed.writeUInt32BE(idPos, pos + 8);
     //   this.bufferVariable.set(Buffer.from(id, "utf-8"), idPos);
     // } else {
     //   let newIdsBufferLength = this.bufferVariableLength + idMaxLen;
@@ -153,11 +152,11 @@ export class IndexOneString {
 
   delete(id: string) {
 
-    const { pos, idPos, found } = this.binarySearchString(id);
+    const { pos, idPos, found } = this.binarySearch(id);
 
     if (!found) return;
 
-    this.bufferFixed.writeUInt32BE(TOMBSTONE, pos);
+    this.fixedBuffer.writeUInt32BE(TOMBSTONE, pos);
   }
 
   fastFill(keyValuePairs: { key: string, offset: number }[], approximateIdLen: number): void
@@ -174,20 +173,19 @@ export class IndexOneString {
       length = arg1.length;
     }
 
-    let startingBufferSize = Math.max(IndexOneString.computeMaxLen(approximateIdLen) * length, MIN_BUFFER_SIZE);
+    let startingBufferSize = Math.max(approximateIdLen * length, MIN_BUFFER_SIZE);
 
-    this.bufferFixed = Buffer.allocUnsafe(length * 12 * 2);
+    this.fixedBuffer = Buffer.alloc(Math.max(length * FIXED_RECORD_SIZE * 2, MIN_BUFFER_SIZE));
     this.bufferFixedLength = 0;
 
-    this.bufferVariable = Buffer.allocUnsafe(startingBufferSize);
+    this.variableBuffer = Buffer.alloc(startingBufferSize);
 
     for (let i = 0; i < length; i++) {
 
       let idLen = Buffer.byteLength(arg1[i].key, "utf-8");
-      let maxIdLen = IndexOneString.computeMaxLen(idLen);
 
-      let resultIdsBufferLength = this.bufferFixedLength + maxIdLen;
-      if (resultIdsBufferLength > this.bufferVariable.length) {
+      let resultIdsBufferLength = this.bufferFixedLength + idLen;
+      if (resultIdsBufferLength > this.variableBuffer.length) {
         this.widenBuffers();
       }
 
@@ -199,36 +197,34 @@ export class IndexOneString {
 
         // file structure is [offset (4 bytes)][id_length (2 bytes)][id_max_length (2 bytes)][id_position (4 bytes)]
 
-        buf = Buffer.allocUnsafe(12);
-        buf.writeInt32BE(arg1[i].offset, 0);
-        buf.writeInt16BE(idLen, 4);
-        buf.writeInt16BE(maxIdLen, 6);
-        buf.writeInt32BE(this.bufferVariableLength, 8);
+        buf = Buffer.allocUnsafe(FIXED_RECORD_SIZE);
+        buf.writeUInt32BE(arg1[i].offset, 0);
+        buf.writeUInt16BE(idLen, ID_LEN_OFFSET);
+        buf.writeUInt32BE(this.bufferVariableLength, ID_POS_OFFSET);
 
       }
 
-      this.bufferVariable.write(arg1[i].key, this.bufferVariableLength, "utf-8");
+      this.variableBuffer.write(arg1[i].key, this.bufferVariableLength, "utf-8");
       this.bufferVariableLength = resultIdsBufferLength;
 
-      this.bufferFixed.set(buf, this.bufferFixedLength);
-      this.bufferFixedLength += 12;
+      this.fixedBuffer.set(buf, this.bufferFixedLength);
+      this.bufferFixedLength += FIXED_RECORD_SIZE;
     }
 
   }
 
   readFixedRecord(position: number) {
     return {
-      offset: this.bufferFixed.readUInt32BE(position),
-      idLen: this.bufferFixed.readUInt16BE(position + 4),
-      idMaxLen: this.bufferFixed.readUInt16BE(position + 6),
-      idPos: this.bufferFixed.readUInt32BE(position + 8)
+      offset: this.fixedBuffer.readUInt32BE(position),
+      idLen: this.fixedBuffer.readUInt16BE(position + ID_LEN_OFFSET),
+      idPos: this.fixedBuffer.readUInt32BE(position + ID_POS_OFFSET)
     }
   }
 
   compact() {
-    const newFixedBuffer = Buffer.allocUnsafe(this.bufferFixed.length);
+    const newFixedBuffer = Buffer.allocUnsafe(this.fixedBuffer.length);
 
-    const newVariableBuffer = Buffer.allocUnsafe(this.bufferVariable.length);
+    const newVariableBuffer = Buffer.allocUnsafe(this.variableBuffer.length);
 
     let fixedWritePos = 0;
     let variableWritePos = 0;
@@ -236,23 +232,22 @@ export class IndexOneString {
 
     for (let i = 0; i < this.bufferFixedLength / FIXED_RECORD_SIZE; i++) {
       const recordPos = i * FIXED_RECORD_SIZE;
-      const offset = this.bufferFixed.readUInt32BE(recordPos);
+      const offset = this.fixedBuffer.readUInt32BE(recordPos);
       if (offset !== TOMBSTONE) {
 
-        const idLen = this.bufferFixed.readUInt16BE(recordPos + 4);
-        const idMaxLen = this.bufferFixed.readUInt16BE(recordPos + 6);
-        const idPos = this.bufferFixed.readUInt32BE(recordPos + 8);
+        const idLen = this.fixedBuffer.readUInt16BE(recordPos + ID_LEN_OFFSET);
+        const idPos = this.fixedBuffer.readUInt32BE(recordPos + ID_POS_OFFSET);
 
-        this.bufferFixed.copy(newFixedBuffer, fixedWritePos, recordPos, recordPos + FIXED_RECORD_SIZE);
+        this.fixedBuffer.copy(newFixedBuffer, fixedWritePos, recordPos, recordPos + FIXED_RECORD_SIZE);
         fixedWritePos += FIXED_RECORD_SIZE;
-
-        this.bufferVariable.copy(newVariableBuffer, variableWritePos, idPos, idPos + idLen);
-        variableWritePos += idMaxLen;
+        
+        this.variableBuffer.copy(newVariableBuffer, variableWritePos, idPos, idPos + idLen);
+        variableWritePos += idLen;
       }
     }
 
-    this.bufferFixed = newFixedBuffer;
-    this.bufferVariable = newVariableBuffer;
+    this.fixedBuffer = newFixedBuffer;
+    this.variableBuffer = newVariableBuffer;
     this.bufferFixedLength = fixedWritePos;
     this.bufferVariableLength = variableWritePos;
 
@@ -261,8 +256,8 @@ export class IndexOneString {
 
   save() {
     this.compact();
-    fs.writeFileSync(this.pathFixed, this.bufferFixed.subarray(0, this.bufferFixedLength));
-    fs.writeFileSync(this.pathVariable, this.bufferVariable.subarray(0, this.bufferVariableLength));
+    fs.writeFileSync(this.pathFixed, this.fixedBuffer.subarray(0, this.bufferFixedLength));
+    fs.writeFileSync(this.pathVariable, this.variableBuffer.subarray(0, this.bufferVariableLength));
   }
 
   reset() {
@@ -272,11 +267,11 @@ export class IndexOneString {
     const stats = fs.statSync(this.pathFixed);
     const fileSize = stats.size;
 
-    this.bufferFixed = Buffer.allocUnsafe(Math.max(fileSize * 1.5, MIN_BUFFER_SIZE));
+    this.fixedBuffer = Buffer.allocUnsafe(Math.max(fileSize * 1.5, MIN_BUFFER_SIZE));
 
     this.bufferFixedLength = fileSize;
 
-    fs.readSync(fs.openSync(this.pathFixed, 'r'), this.bufferFixed, 0, this.bufferFixedLength, 0);
+    fs.readSync(fs.openSync(this.pathFixed, 'r'), this.fixedBuffer, 0, this.bufferFixedLength, 0);
 
 
     if (!fs.existsSync(this.pathVariable)) {
@@ -284,8 +279,8 @@ export class IndexOneString {
     }
     const variableFileSize = fs.statSync(this.pathVariable).size;
     this.bufferVariableLength = variableFileSize;
-    this.bufferVariable = Buffer.allocUnsafe(Math.max(variableFileSize * 2, MIN_BUFFER_SIZE));
-    fs.readSync(fs.openSync(this.pathVariable, 'r'), this.bufferVariable, 0, this.bufferVariableLength, 0);
+    this.variableBuffer = Buffer.allocUnsafe(Math.max(variableFileSize * 2, MIN_BUFFER_SIZE));
+    fs.readSync(fs.openSync(this.pathVariable, 'r'), this.variableBuffer, 0, this.bufferVariableLength, 0);
 
   }
 
