@@ -10,15 +10,13 @@ import { text } from "stream/consumers";
 describe("IndexOneString", () => {
   const idxPath = path.join(__dirname, "strings");
 
+  function removeTestData() {
+    try { fs.unlinkSync(idxPath); } catch { }
+    try { fs.unlinkSync(idxPath + ".txt"); } catch { }
+  }
 
-  beforeAll(() => {
-    try { fs.unlinkSync(idxPath); } catch { }
-    try { fs.unlinkSync(idxPath + ".txt"); } catch { }
-  });
-  afterAll(() => {
-    try { fs.unlinkSync(idxPath); } catch { }
-    try { fs.unlinkSync(idxPath + ".txt"); } catch { }
-  });
+  beforeAll(removeTestData);
+  afterAll(removeTestData);
 
   test("compareStringBuffer", () => {
     const str1 = "hello";
@@ -112,61 +110,30 @@ describe("IndexOneString", () => {
   });
 
 
-  xtest("setOffset getOffset (strings)", () => {
-    const idx = new IndexOneString(idxPath);
-
-    let rawData = Array.from({ length: 1_000_000 }, (_, i) => {
+  function createArray(length: number) {
+    let rawData = Array.from({ length }, (_, i) => {
       return { key: String(i), offset: i * 10 };
     });
+    rawData = rawData.sort((a, b) => a.key.localeCompare(b.key));
+    return rawData
+  }
 
-    rawData.splice(1234, 1);
+  test("fast fill", () => {
+    removeTestData();
+    const idx = new IndexOneString(idxPath);
 
+    let rawData = createArray(2);
 
+    idx.fastFill(rawData, 5);
 
-    console.time("insert");
-    idx.fastFill(rawData, 10);
-    console.timeEnd("insert");
+    // expect(idx.getFixedBufferLength()).toBe(24);
+    // expect(idx.getVariableBufferLength()).toBe(28);
 
-    expect(rawData.find((d) => d.key === "123")?.offset).toBe(1230);
-
-    console.time("getExistent");
-    expect(idx.get("123")).toBe(1230);
-    console.timeEnd("getExistent");
-
-
-    console.time("getNonExistent");
-    expect(idx.get("1234")).toBe(-1);
-    console.timeEnd("getNonExistent");
-
-    console.time("deleteNonExistent");
-    idx.delete("1234");
-    console.timeEnd("deleteNonExistent");
-
-
-    console.time("setWithShift");
-    idx.set("1234", 1230);
-    console.timeEnd("setWithShift");
-
-
-    console.time("rewriteSet");
-    idx.set("1234", 12300);
-    console.timeEnd("rewriteSet");
-
-
-    console.time("deleteExistent");
-    idx.delete("1234");
-    console.timeEnd("deleteExistent");
-
-
-    console.time("getWithTombstone");
-    expect(idx.get("1234")).toBe(-1);
-    console.timeEnd("getWithTombstone");
-
-
-    console.time("compact");
-    idx.compact();
-    console.timeEnd("compact");
-
+    let rec1 = idx.readFixedRecord(0);
+    expect(rec1.idLen).toBe(1);
+    expect(rec1.idMaxLen).toBe(16);
+    expect(rec1.offset).toBe(0);
+    expect(rec1.idPos).toBe(0);
     idx.save();
   });
 
