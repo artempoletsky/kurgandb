@@ -3,8 +3,13 @@ import * as fs from "fs";
 
 const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
 const TOMBSTONE = 0xFFFFFFFF;
-const FIXED_RECORD_SIZE = 12;
+const FIXED_RECORD_SIZE = 10;
+const START_OFFSET = 4;
+const LEN_OFFSET = 8;
 
+
+// stores multiple offsets for a single number key
+// one to many relationship between key and offsets
 export class IndexManyNumber {
 
   constructor(path: string)
@@ -16,33 +21,33 @@ export class IndexManyNumber {
     }
 
     this.pathFixed = path;
-    this.pathVariable = path + ".txt";
+    this.pathOffsets = path + "_var";
     this.reset();
   }
 
   protected pathFixed: string;
-  protected pathVariable;
+  protected pathOffsets;
 
-  protected fixedBuffer!: Buffer; // file structure is [id (4 bytes)][start (4 bytes)][len (4 bytes)]
-  protected offsetsBuffer!: Buffer; // file structure is [offset (4 bytes)]
+  protected bufferFixed!: Buffer; // file structure is [key (4 bytes)][start+tombstone (4 bytes)][len (2 bytes)]
+  protected bufferOffsets!: Buffer; // file structure is [offset (4 bytes)]
 
-  protected fixedBufferLength = 0;
-  protected offsetsBufferLength = 0;
+  protected lengthBufferFixed = 0;
+  protected lengthBufferOffset = 0;
 
   getFixedBuffer() {
-    return this.fixedBuffer.subarray(0, this.fixedBufferLength);
+    return this.bufferFixed.subarray(0, this.lengthBufferFixed);
   }
 
   getOffsetsBuffer() {
-    return this.offsetsBuffer.subarray(0, this.offsetsBufferLength);
+    return this.bufferOffsets.subarray(0, this.lengthBufferOffset);
   }
 
   getFixedBufferLength() {
-    return this.fixedBufferLength;
+    return this.lengthBufferFixed;
   }
 
   getVariableBufferLength() {
-    return this.offsetsBufferLength;
+    return this.lengthBufferOffset;
   }
 
   get(value: number): number[] {
@@ -53,26 +58,26 @@ export class IndexManyNumber {
 
 
   widenBuffers() {
-    this.fixedBuffer = Buffer.concat([this.fixedBuffer, Buffer.allocUnsafe(this.fixedBuffer.length)]);
-    this.offsetsBuffer = Buffer.concat([this.offsetsBuffer, Buffer.allocUnsafe(this.offsetsBuffer.length)]);
+    this.bufferFixed = Buffer.concat([this.bufferFixed, Buffer.allocUnsafe(this.bufferFixed.length)]);
+    this.bufferOffsets = Buffer.concat([this.bufferOffsets, Buffer.allocUnsafe(this.bufferOffsets.length)]);
   }
 
 
   readOffsetsAtPositionInFixedBuffer(pos: number) {
 
-    const start = this.fixedBuffer.readUInt16BE(pos + 4);
-    const len = this.fixedBuffer.readUInt16BE(pos + 8);
+    const start = this.bufferFixed.readUInt16BE(pos + START_OFFSET);
+    const len = this.bufferFixed.readUInt16BE(pos + LEN_OFFSET);
 
     const offsets: number[] = [];
     for (let i = 0; i < len; i++) {
-      offsets.push(this.offsetsBuffer.readUint32BE(start + i * 4));
+      offsets.push(this.bufferOffsets.readUint32BE(start + i * 4));
     }
 
     return offsets;
   }
 
   binarySearch(value: number) {
-    const length = Math.floor(this.fixedBufferLength / FIXED_RECORD_SIZE);
+    const length = Math.floor(this.lengthBufferFixed / FIXED_RECORD_SIZE);
     let low = 0;
     let high = length - 1;
     let pos = 0;
@@ -84,11 +89,11 @@ export class IndexManyNumber {
       // file structure is [start (4 bytes)][len (4 bytes)]
       // const offset = this.buffer.readUInt32BE(pos);
 
-      const currentId = this.fixedBuffer.readUInt16BE(pos);
+      const currentId = this.bufferFixed.readUInt16BE(pos);
       if (currentId == value) {
         return { pos, found: true };
       }
-
+      
 
       if (currentId < value) {
         low = mid + 1;
@@ -101,8 +106,12 @@ export class IndexManyNumber {
 
   }
 
-  static computeMaxLen(currentLen: number) {
-    return Math.max(currentLen * 2, 16);
+  appendToOffsetsBuffer(buf: Buffer) {
+    if (this.lengthBufferOffset + buf.length > this.bufferOffsets.length) {
+      this.bufferOffsets = Buffer.concat([this.bufferOffsets, Buffer.allocUnsafe(this.bufferOffsets.length)]);
+    }
+    this.bufferOffsets.set(buf, this.lengthBufferOffset);
+    this.lengthBufferOffset += buf.length;
   }
 
   setArray(value: number, offsets: number[]) {
@@ -110,173 +119,134 @@ export class IndexManyNumber {
     const { pos, found } = this.binarySearch(value);
 
 
+    let toAppend = Buffer.from(new Uint32Array(offsets).buffer)
 
+    // let toAppend = Buffer.allocUnsafe(offsets.length * 4);
+    // for (let i = 0; i < offsets.length; i++) {
+    //   toAppend.writeUInt32BE(offsets[i], i * 4);
+    // }
 
     if (found) {
-      const currentLen = this.fixedBuffer.readUInt32BE(pos + 8);
-      let start;
+      const currentLen = this.bufferFixed.readUInt32BE(pos + LEN_OFFSET);
+
       if (currentLen >= offsets.length) {
-        start = this.fixedBuffer.readUInt32BE(pos + 4);
-      } else {
-        start = this.offsetsBufferLength;
-      }
-      for (let i = 0; i < offsets.length; i++) {
-        this.offsetsBuffer.writeUint32BE(offsets[i], start + i * 4);
+        this.bufferOffsets.set(toAppend, this.bufferFixed.readUInt32BE(pos + START_OFFSET));
+        this.bufferFixed.writeUInt16BE(offsets.length, pos + LEN_OFFSET);
+        return;
       }
 
-      return;
 
     }
 
-    //todo: widen buffers if necessary before shifting
 
-    //shift records to the right to make space for the new record
-    this.fixedBuffer.copy(this.fixedBuffer, pos + FIXED_RECORD_SIZE, pos, this.fixedBufferLength);
-    this.fixedBufferLength += FIXED_RECORD_SIZE;
-    const idMaxLen = IndexOneString.computeMaxLen(idLen);
-
-
-    this.fixedBuffer.writeInt32BE(offset, pos);
-    this.fixedBuffer.writeInt16BE(idLen, pos + 4);
-    this.fixedBuffer.writeInt16BE(idMaxLen, pos + 6);
-
-    this.fixedBuffer.writeInt32BE(this.offsetsBufferLength, pos + 8);
-    this.bufferVariable.write(value, this.offsetsBufferLength, "utf-8");
-    this.offsetsBufferLength += idMaxLen;
-
-
-    // the record fits in place, we can just overwrite it
-    // if (idLen <= idMaxLen) {
-    //   this.bufferFixed.writeInt32BE(idPos, pos + 8);
-    //   this.bufferVariable.set(Buffer.from(id, "utf-8"), idPos);
-    // } else {
-    //   let newIdsBufferLength = this.bufferVariableLength + idMaxLen;
-    //   if (newIdsBufferLength > this.bufferVariable.length) {
-    //     this.widenBuffers(); // todo: optimize by only widening the idsBuffer
-    //   }
-
-
-
-
-
-
+    this.bufferFixed.writeUInt32BE(value, pos);
+    this.bufferFixed.writeUInt32BE(this.lengthBufferOffset, pos + START_OFFSET);
+    this.bufferFixed.writeUInt16BE(offsets.length, pos + LEN_OFFSET);
+    this.lengthBufferFixed += FIXED_RECORD_SIZE;
+    this.appendToOffsetsBuffer(toAppend);
 
   }
 
 
 
-  delete(id: string) {
+  delete(value: number) {
 
-    const { pos, idPos, found } = this.binarySearchString(id);
+    const { pos, found } = this.binarySearch(value);
 
     if (!found) return;
 
-    this.fixedBuffer.writeUInt32BE(TOMBSTONE, pos);
+    this.bufferFixed.writeUInt32BE(TOMBSTONE, pos + START_OFFSET);
   }
 
-  fastFill(keyValuePairs: { key: string, offset: number }[], approximateIdLen: number): void
-  fastFill(fn: (index: number) => Buffer, length: number, approximateIdLen: number): void
+  fastFill(keyValuePairs: { key: number, offsets: number[] }[], startingBufferSize?: number): void
+  fastFill(fn: (index: number) => Buffer, length: number, startingBufferSize?: number): void
   fastFill(arg1: any, arg2: any, arg3?: any) {
-    let approximateIdLen: number;
+    let startingBufferSize: number;
     let length: number;
 
     if (typeof arg3 === "number") {
-      approximateIdLen = arg3;
+      startingBufferSize = arg3 || 0;
       length = arg2;
     } else {
-      approximateIdLen = arg2;
+      startingBufferSize = arg2 || 0;
       length = arg1.length;
     }
 
-    let startingBufferSize = Math.max(IndexOneString.computeMaxLen(approximateIdLen) * length, MIN_BUFFER_SIZE);
+    startingBufferSize = Math.max(startingBufferSize, MIN_BUFFER_SIZE, length * FIXED_RECORD_SIZE * 2);
 
-    this.fixedBuffer = Buffer.allocUnsafe(length * 12 * 2);
-    this.fixedBufferLength = 0;
+    this.bufferFixed = Buffer.allocUnsafe(startingBufferSize);
+    this.lengthBufferFixed = 0;
 
-    this.bufferVariable = Buffer.allocUnsafe(startingBufferSize);
+    this.bufferOffsets = Buffer.allocUnsafe(startingBufferSize);
+    this.lengthBufferOffset = 0;
 
     for (let i = 0; i < length; i++) {
-
-      let idLen = Buffer.byteLength(arg1[i].key, "utf-8");
-      let maxIdLen = IndexOneString.computeMaxLen(idLen);
-
-      let resultIdsBufferLength = this.fixedBufferLength + maxIdLen;
-      if (resultIdsBufferLength > this.bufferVariable.length) {
-        this.widenBuffers();
-      }
-
 
       let buf: Buffer;
       if (typeof arg1 === "function") {
         buf = arg1(i);
       } else {
 
-        // file structure is [offset (4 bytes)][id_length (2 bytes)][id_max_length (2 bytes)][id_position (4 bytes)]
-
-        buf = Buffer.allocUnsafe(12);
-        buf.writeInt32BE(arg1[i].offset, 0);
-        buf.writeInt16BE(idLen, 4);
-        buf.writeInt16BE(maxIdLen, 6);
-        buf.writeInt32BE(this.offsetsBufferLength, 8);
-
+        buf = Buffer.allocUnsafe(FIXED_RECORD_SIZE);
+        buf.writeUInt32BE(arg1[i].key, 0);
+        buf.writeUInt32BE(this.lengthBufferOffset, START_OFFSET);
+        buf.writeUInt16BE(arg1[i].offsets.length, LEN_OFFSET);
       }
 
-      this.bufferVariable.write(arg1[i].key, this.offsetsBufferLength, "utf-8");
-      this.offsetsBufferLength = resultIdsBufferLength;
-
-      this.fixedBuffer.set(buf, this.fixedBufferLength);
-      this.fixedBufferLength += 12;
+      this.appendToOffsetsBuffer(Buffer.from(new Uint32Array(arg1[i].offsets).buffer));
+      this.bufferFixed.set(buf, this.lengthBufferFixed);
+      this.lengthBufferFixed += FIXED_RECORD_SIZE;
     }
 
   }
 
   readFixedRecord(position: number) {
     return {
-      offset: this.fixedBuffer.readUInt32BE(position),
-      idLen: this.fixedBuffer.readUInt16BE(position + 4),
-      idMaxLen: this.fixedBuffer.readUInt16BE(position + 6),
-      idPos: this.fixedBuffer.readUInt32BE(position + 8)
+      value: this.bufferFixed.readUInt32BE(position),
+      len: this.bufferFixed.readUInt16BE(position + LEN_OFFSET),
+      start: this.bufferFixed.readUInt32BE(position + START_OFFSET)
     }
   }
 
   compact() {
-    const newFixedBuffer = Buffer.allocUnsafe(this.fixedBuffer.length);
+    const newFixedBuffer = Buffer.allocUnsafe(this.bufferFixed.length);
 
-    const newVariableBuffer = Buffer.allocUnsafe(this.bufferVariable.length);
+    const newOffsetsBuffer = Buffer.allocUnsafe(this.bufferOffsets.length);
 
     let fixedWritePos = 0;
     let variableWritePos = 0;
 
 
-    for (let i = 0; i < this.fixedBufferLength / FIXED_RECORD_SIZE; i++) {
+    for (let i = 0; i < this.lengthBufferFixed / FIXED_RECORD_SIZE; i++) {
       const recordPos = i * FIXED_RECORD_SIZE;
-      const offset = this.fixedBuffer.readUInt32BE(recordPos);
-      if (offset !== TOMBSTONE) {
 
-        const idLen = this.fixedBuffer.readUInt16BE(recordPos + 4);
-        const idMaxLen = this.fixedBuffer.readUInt16BE(recordPos + 6);
-        const idPos = this.fixedBuffer.readUInt32BE(recordPos + 8);
 
-        this.fixedBuffer.copy(newFixedBuffer, fixedWritePos, recordPos, recordPos + FIXED_RECORD_SIZE);
+      const start = this.bufferFixed.readUInt16BE(recordPos + START_OFFSET);
+      if (start !== TOMBSTONE) {
+
+        const key = this.bufferFixed.readUInt32BE(recordPos);
+        const len = this.bufferFixed.readUInt32BE(recordPos + LEN_OFFSET);
+
+        this.bufferFixed.copy(newFixedBuffer, fixedWritePos, recordPos, recordPos + FIXED_RECORD_SIZE);
         fixedWritePos += FIXED_RECORD_SIZE;
 
-        this.bufferVariable.copy(newVariableBuffer, variableWritePos, idPos, idPos + idLen);
-        variableWritePos += idMaxLen;
+        this.bufferOffsets.copy(newOffsetsBuffer, variableWritePos, start, start + len * 4);
+        variableWritePos += len * 4;
       }
     }
 
-    this.fixedBuffer = newFixedBuffer;
-    this.bufferVariable = newVariableBuffer;
-    this.fixedBufferLength = fixedWritePos;
-    this.offsetsBufferLength = variableWritePos;
+    this.bufferFixed = newFixedBuffer;
+    this.bufferOffsets = newOffsetsBuffer;
+    this.lengthBufferFixed = fixedWritePos;
+    this.lengthBufferOffset = variableWritePos;
 
   }
 
 
   save() {
     this.compact();
-    fs.writeFileSync(this.pathFixed, this.fixedBuffer.subarray(0, this.fixedBufferLength));
-    fs.writeFileSync(this.pathVariable, this.bufferVariable.subarray(0, this.offsetsBufferLength));
+    fs.writeFileSync(this.pathFixed, this.bufferFixed.subarray(0, this.lengthBufferFixed));
+    fs.writeFileSync(this.pathOffsets, this.bufferOffsets.subarray(0, this.lengthBufferOffset));
   }
 
   reset() {
@@ -286,20 +256,20 @@ export class IndexManyNumber {
     const stats = fs.statSync(this.pathFixed);
     const fileSize = stats.size;
 
-    this.fixedBuffer = Buffer.allocUnsafe(Math.max(fileSize * 1.5, MIN_BUFFER_SIZE));
+    this.bufferFixed = Buffer.allocUnsafe(Math.max(fileSize * 1.5, MIN_BUFFER_SIZE));
 
-    this.fixedBufferLength = fileSize;
+    this.lengthBufferFixed = fileSize;
 
-    fs.readSync(fs.openSync(this.pathFixed, 'r'), this.fixedBuffer, 0, this.fixedBufferLength, 0);
+    fs.readSync(fs.openSync(this.pathFixed, 'r'), this.bufferFixed, 0, this.lengthBufferFixed, 0);
 
 
-    if (!fs.existsSync(this.pathVariable)) {
-      fs.writeFileSync(this.pathVariable, Buffer.alloc(0));
+    if (!fs.existsSync(this.pathOffsets)) {
+      fs.writeFileSync(this.pathOffsets, Buffer.alloc(0));
     }
-    const variableFileSize = fs.statSync(this.pathVariable).size;
-    this.offsetsBufferLength = variableFileSize;
-    this.bufferVariable = Buffer.allocUnsafe(Math.max(variableFileSize * 2, MIN_BUFFER_SIZE));
-    fs.readSync(fs.openSync(this.pathVariable, 'r'), this.bufferVariable, 0, this.offsetsBufferLength, 0);
+    const variableFileSize = fs.statSync(this.pathOffsets).size;
+    this.lengthBufferOffset = variableFileSize;
+    this.bufferOffsets = Buffer.allocUnsafe(Math.max(variableFileSize * 2, MIN_BUFFER_SIZE));
+    fs.readSync(fs.openSync(this.pathOffsets, 'r'), this.bufferOffsets, 0, this.lengthBufferOffset, 0);
 
   }
 

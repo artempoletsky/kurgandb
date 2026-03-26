@@ -136,8 +136,8 @@ export class IndexOneNumber {
         buf = arg1(i);
       } else {
         buf = Buffer.allocUnsafe(8);
-        buf.writeInt32BE(arg1[i].key, 0);
-        buf.writeInt32BE(arg1[i].offset, 4);
+        buf.writeUInt32BE(arg1[i].key, 0);
+        buf.writeUInt32BE(arg1[i].offset, 4);
       }
 
       this.buffer.set(buf, this.bufferLength);

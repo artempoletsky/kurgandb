@@ -1,8 +1,8 @@
-const fs = require('fs');
+const fs = require("fs");
 
 // Any custom config you want to pass to Jest
 const customJestConfig = {
-  // setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  // setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   "testMatch": [
     "<rootDir>/__tests__/*.test.ts"
   ],
@@ -13,28 +13,29 @@ const customJestConfig = {
 }
 
 let currentFile = false;
-const files = fs.readdirSync('./__tests__');
+const files = fs.readdirSync("./__tests__");
 
 // Uncomment for working with a single test file
 
-// currentFile = 'virtual_fs.test.ts';
-// currentFile = 'sorteddict.test.ts';
-// currentFile = 'dict.test.ts';
-// currentFile = 'query_errors.test.ts';
-// currentFile = 'table.test.ts';
-// currentFile = 'table_heavy.test.ts';
-// currentFile = 'table_query.test.ts';
-// currentFile = 'table_events.test.ts';
-// currentFile = 'table_field.test.ts';
-// currentFile = 'table_index.test.ts';
-// currentFile = 'table_utils.test.ts';
-// currentFile = 'utils.test.ts';
-// currentFile = 'fragmented_dict_stress.test.ts';
-// currentFile = 'table_stress.test.ts';
-// currentFile = 'db.test.ts';
-// currentFile = 'wasm.test.ts';
-// currentFile = 'IndexOneNumber.test.ts';
-currentFile = 'IndexOneString.test.ts';
+// currentFile = "virtual_fs.test.ts";
+// currentFile = "sorteddict.test.ts";
+// currentFile = "dict.test.ts";
+// currentFile = "query_errors.test.ts";
+// currentFile = "table.test.ts";
+// currentFile = "table_heavy.test.ts";
+// currentFile = "table_query.test.ts";
+// currentFile = "table_events.test.ts";
+// currentFile = "table_field.test.ts";
+// currentFile = "table_index.test.ts";
+// currentFile = "table_utils.test.ts";
+// currentFile = "utils.test.ts";
+// currentFile = "fragmented_dict_stress.test.ts";
+// currentFile = "table_stress.test.ts";
+// currentFile = "db.test.ts";
+// currentFile = "wasm.test.ts";
+// currentFile = "IndexOneNumber.test.ts";
+// currentFile = "IndexOneString.test.ts";
+currentFile = "IndexManyNumber.test.ts"
 
 const runStressTests = false;
 
