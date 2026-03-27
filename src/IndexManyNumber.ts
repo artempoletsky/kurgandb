@@ -2,7 +2,7 @@ import * as fs from "fs";
 
 
 const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
-const TOMBSTONE = 0xFFFFFFFF;
+// const TOMBSTONE = 0xFFFFFFFF;
 const FIXED_RECORD_SIZE = 10;
 const START_OFFSET = 4;
 const LEN_OFFSET = 8;
@@ -50,7 +50,7 @@ export class IndexManyNumber {
     return this.lengthBufferOffset;
   }
 
-  get(value: number): number[] {
+  get(value: number) {
     const { pos, found } = this.binarySearch(value);
     if (!found) return [];
     return this.readOffsetsAtPositionInFixedBuffer(pos);
@@ -65,15 +65,18 @@ export class IndexManyNumber {
 
   readOffsetsAtPositionInFixedBuffer(pos: number) {
 
-    const start = this.bufferFixed.readUInt16BE(pos + START_OFFSET);
-    const len = this.bufferFixed.readUInt16BE(pos + LEN_OFFSET);
+    const len = this.bufferFixed.readUInt16LE(pos + LEN_OFFSET);
+    if (len === 0) return new Uint32Array();
 
-    const offsets: number[] = [];
-    for (let i = 0; i < len; i++) {
-      offsets.push(this.bufferOffsets.readUint32BE(start + i * 4));
-    }
+    const start = this.bufferFixed.readUInt32LE(pos + START_OFFSET);
+    const slice = this.bufferOffsets.subarray(start, start + len * 4);
 
-    return offsets;
+
+
+
+    return new Uint32Array(slice.buffer,
+      slice.byteOffset,
+      len);
   }
 
   binarySearch(value: number) {
@@ -87,13 +90,13 @@ export class IndexManyNumber {
       const mid = Math.floor((low + high) / 2);
       pos = mid * FIXED_RECORD_SIZE;
       // file structure is [start (4 bytes)][len (4 bytes)]
-      // const offset = this.buffer.readUInt32BE(pos);
+      // const offset = this.buffer.readUInt32LE(pos);
 
-      const currentId = this.bufferFixed.readUInt16BE(pos);
+      const currentId = this.bufferFixed.readUInt32LE(pos);
       if (currentId == value) {
         return { pos, found: true };
       }
-      
+
 
       if (currentId < value) {
         low = mid + 1;
@@ -108,30 +111,33 @@ export class IndexManyNumber {
 
   appendToOffsetsBuffer(buf: Buffer) {
     if (this.lengthBufferOffset + buf.length > this.bufferOffsets.length) {
-      this.bufferOffsets = Buffer.concat([this.bufferOffsets, Buffer.allocUnsafe(this.bufferOffsets.length)]);
+      let toAllocate = Math.max(MIN_BUFFER_SIZE, buf.length);
+      this.bufferOffsets = Buffer.concat([this.bufferOffsets, Buffer.allocUnsafe(toAllocate)]);
     }
     this.bufferOffsets.set(buf, this.lengthBufferOffset);
     this.lengthBufferOffset += buf.length;
   }
 
-  setArray(value: number, offsets: number[]) {
+  setArray(value: number, offsets: Uint32Array) {
 
     const { pos, found } = this.binarySearch(value);
 
 
-    let toAppend = Buffer.from(new Uint32Array(offsets).buffer)
+    let toAppend = Buffer.from(offsets.buffer, offsets.byteOffset,
+      offsets.byteLength);
 
     // let toAppend = Buffer.allocUnsafe(offsets.length * 4);
+
     // for (let i = 0; i < offsets.length; i++) {
-    //   toAppend.writeUInt32BE(offsets[i], i * 4);
+    //   toAppend.writeUInt32LE(offsets[i], i * 4);
     // }
 
     if (found) {
-      const currentLen = this.bufferFixed.readUInt32BE(pos + LEN_OFFSET);
+      const currentLen = this.bufferFixed.readUInt32LE(pos + LEN_OFFSET);
 
       if (currentLen >= offsets.length) {
-        this.bufferOffsets.set(toAppend, this.bufferFixed.readUInt32BE(pos + START_OFFSET));
-        this.bufferFixed.writeUInt16BE(offsets.length, pos + LEN_OFFSET);
+        this.bufferOffsets.set(toAppend, this.bufferFixed.readUInt32LE(pos + START_OFFSET));
+        this.bufferFixed.writeUInt16LE(offsets.length, pos + LEN_OFFSET);
         return;
       }
 
@@ -139,9 +145,9 @@ export class IndexManyNumber {
     }
 
 
-    this.bufferFixed.writeUInt32BE(value, pos);
-    this.bufferFixed.writeUInt32BE(this.lengthBufferOffset, pos + START_OFFSET);
-    this.bufferFixed.writeUInt16BE(offsets.length, pos + LEN_OFFSET);
+    this.bufferFixed.writeUInt32LE(value, pos);
+    this.bufferFixed.writeUInt32LE(this.lengthBufferOffset, pos + START_OFFSET);
+    this.bufferFixed.writeUInt16LE(offsets.length, pos + LEN_OFFSET);
     this.lengthBufferFixed += FIXED_RECORD_SIZE;
     this.appendToOffsetsBuffer(toAppend);
 
@@ -155,7 +161,7 @@ export class IndexManyNumber {
 
     if (!found) return;
 
-    this.bufferFixed.writeUInt32BE(TOMBSTONE, pos + START_OFFSET);
+    this.bufferFixed.writeUInt32LE(0, pos + LEN_OFFSET);
   }
 
   fastFill(keyValuePairs: { key: number, offsets: number[] }[], startingBufferSize?: number): void
@@ -188,9 +194,9 @@ export class IndexManyNumber {
       } else {
 
         buf = Buffer.allocUnsafe(FIXED_RECORD_SIZE);
-        buf.writeUInt32BE(arg1[i].key, 0);
-        buf.writeUInt32BE(this.lengthBufferOffset, START_OFFSET);
-        buf.writeUInt16BE(arg1[i].offsets.length, LEN_OFFSET);
+        buf.writeUInt32LE(arg1[i].key, 0);
+        buf.writeUInt32LE(this.lengthBufferOffset, START_OFFSET);
+        buf.writeUInt16LE(arg1[i].offsets.length, LEN_OFFSET);
       }
 
       this.appendToOffsetsBuffer(Buffer.from(new Uint32Array(arg1[i].offsets).buffer));
@@ -202,9 +208,9 @@ export class IndexManyNumber {
 
   readFixedRecord(position: number) {
     return {
-      value: this.bufferFixed.readUInt32BE(position),
-      len: this.bufferFixed.readUInt16BE(position + LEN_OFFSET),
-      start: this.bufferFixed.readUInt32BE(position + START_OFFSET)
+      value: this.bufferFixed.readUInt32LE(position),
+      len: this.bufferFixed.readUInt16LE(position + LEN_OFFSET),
+      start: this.bufferFixed.readUInt32LE(position + START_OFFSET)
     }
   }
 
@@ -221,11 +227,12 @@ export class IndexManyNumber {
       const recordPos = i * FIXED_RECORD_SIZE;
 
 
-      const start = this.bufferFixed.readUInt16BE(recordPos + START_OFFSET);
-      if (start !== TOMBSTONE) {
+      const len = this.bufferFixed.readUInt16LE(recordPos + LEN_OFFSET);
+      if (len !== 0) {
 
-        const key = this.bufferFixed.readUInt32BE(recordPos);
-        const len = this.bufferFixed.readUInt32BE(recordPos + LEN_OFFSET);
+        const key = this.bufferFixed.readUInt32LE(recordPos);
+        const start = this.bufferFixed.readUInt32LE(recordPos + START_OFFSET);
+
 
         this.bufferFixed.copy(newFixedBuffer, fixedWritePos, recordPos, recordPos + FIXED_RECORD_SIZE);
         fixedWritePos += FIXED_RECORD_SIZE;

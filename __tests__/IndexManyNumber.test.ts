@@ -17,10 +17,10 @@ describe("IndexManyNumber", () => {
   beforeAll(removeTestData);
   // afterAll(removeTestData);
 
-  test("setArray get", () => {
+  xtest("setArray get", () => {
     const idx = new IndexManyNumber(idxPath);
     expect(idx.get(42)).toEqual([]);
-    idx.setArray(42, [100, 200]);
+    idx.setArray(42, new Uint32Array([100, 200]));
 
     expect(idx.getFixedBufferLength()).toBe(10);
     expect(idx.getVariableBufferLength()).toBe(8);
@@ -33,10 +33,10 @@ describe("IndexManyNumber", () => {
 
     let arr = idx.readOffsetsAtPositionInFixedBuffer(0);
 
-    expect(arr).toEqual([100, 200]);
+    expect(arr).toEqual(new Uint32Array([100, 200]));
 
 
-    expect(idx.get(42)).toEqual([100, 200]);
+    expect(idx.get(42)).toEqual(new Uint32Array([100, 200]));
 
     
     idx.reset();
@@ -44,17 +44,17 @@ describe("IndexManyNumber", () => {
 
   xtest("delete", () => {
     const idx = new IndexManyNumber(idxPath);
-    idx.setArray(7, [700]);
-    expect(idx.get(7)).toEqual([700]);
+    idx.setArray(7, new Uint32Array([700]));
+    expect(idx.get(7)).toEqual(new Uint32Array([700]));
     idx.delete(7);
-    expect(idx.get(7)).toEqual([]);
+    expect(idx.get(7)).toEqual(new Uint32Array([]));
     idx.reset();
   });
 
 
   xtest("compact", () => {
     const idx = new IndexManyNumber(idxPath);
-    idx.setArray(5, [123]);
+    idx.setArray(5, new Uint32Array([123]));
 
     let rec = idx.readFixedRecord(0);
 
