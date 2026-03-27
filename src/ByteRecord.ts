@@ -7,26 +7,35 @@ import TableUtils from "./table_utilities";
 
 type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
     | "RECORD_LENGTH"
-    | "NEW_MOVED_ADDRESS"
-    | "SCHEME_VERSION"
-    | "DATES_OFFSET"
-    | "STRINGS_OFFSET"
-    | "JSON_OFFSET"
+    | "BOOLEANS"
+    | "ENUMS_START"
+    | "ENUMS_LEN"
+    | "NUMBERS_START"
+    | "NUMBERS_LEN"
+    | "DATES_START"
+    | "DATES_LEN"
+    | "STRINGS_START"
+    | "STRINGS_LEN"
+    | "JSON_START"
+    | "JSON_LEN"
     | "RESERVED";
 
 const RECORD_STRUCTURE: { key: RECORD_STRUCTURE_KEY, length: number }[] = [];
 RECORD_STRUCTURE.push({ key: "SERVICE_FLAGS", length: 1 });
-RECORD_STRUCTURE.push({ key: "RECORD_LENGTH", length: 4 });
-RECORD_STRUCTURE.push({ key: "NEW_MOVED_ADDRESS", length: 4 });
-RECORD_STRUCTURE.push({ key: "SCHEME_VERSION", length: 1 });
-RECORD_STRUCTURE.push({ key: "DATES_OFFSET", length: 4 });
-RECORD_STRUCTURE.push({ key: "STRINGS_OFFSET", length: 4 });
-RECORD_STRUCTURE.push({ key: "JSON_OFFSET", length: 4 });
+RECORD_STRUCTURE.push({ key: "BOOLEANS", length: 2 });
+RECORD_STRUCTURE.push({ key: "ENUMS_START", length: 4 });
+RECORD_STRUCTURE.push({ key: "ENUMS_LEN", length: 1 });
+RECORD_STRUCTURE.push({ key: "NUMBERS_START", length: 4 });
+RECORD_STRUCTURE.push({ key: "NUMBERS_LEN", length: 1 });
+RECORD_STRUCTURE.push({ key: "STRINGS_START", length: 4 });
+RECORD_STRUCTURE.push({ key: "STRINGS_LEN", length: 1 });
+RECORD_STRUCTURE.push({ key: "JSON_START", length: 4 });
+RECORD_STRUCTURE.push({ key: "JSON_LEN", length: 1 });
 RECORD_STRUCTURE.push({ key: "RESERVED", length: 50 });
 
 
 let _currentOffset = 0;
-const offsets: Record<RECORD_STRUCTURE_KEY, number> = RECORD_STRUCTURE.reduce((result, e) => {
+const offsets = RECORD_STRUCTURE.reduce((result, e) => {
     _currentOffset += e.length;
     result[e.key] = _currentOffset;
     return result;
@@ -46,26 +55,52 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
     protected _table: Table<T, idT, any, any, LightT, VisibleT>;
 
+    protected _numbers: Float32Array;
+    protected _dates: Float32Array;
+    protected _enums: Uint8Array;
 
 
     public get $id(): idT {
         return this._id;
     }
 
-    protected buffer: Buffer;
+    protected bufferFixed: Buffer;
 
+    $readFromFile(offset: number, len: number): Buffer {
+
+    }
+
+    $readAll() {
+        let start = this.bufferFixed.readUInt32LE(offsets.NUMBERS_START);
+        let len = this.bufferFixed.readUInt32LE(offsets.NUMBERS_LEN);
+        let buf = this.$readFromFile(start, len * 4);
+        this._numbers = new Float32Array(buf.buffer, buf.byteOffset, len);
+
+
+        start = this.bufferFixed.readUInt32LE(offsets.ENUMS_START);
+        len = this.bufferFixed.readUInt32LE(offsets.ENUMS_LEN);
+        buf = this.$readFromFile(start, len);
+        this._enums = new Uint8Array(buf.buffer, buf.byteOffset, len);
+
+    }
+
+
+    $readNumberFile(index: number) {
+        const offset = this.bufferFixed.readUInt32LE(offsets.NUMBERS_START) + index * 4;
+        return this.$readFromFile(offset, 4).readFloatLE(0);
+    }
 
     $getFlag(i: number): number {
-        return (this.buffer[0]! & (1 << i & 7));
+        return (this.bufferFixed[0]! & (1 << i & 7));
     }
 
     $setFlag(i: number, value: any) {
         const bitMask = 1 << (i & 7);
 
         if (value) {
-            this.buffer[0] |= bitMask;
+            this.bufferFixed[0] |= bitMask;
         } else {
-            this.buffer[0] &= ~bitMask;
+            this.bufferFixed[0] &= ~bitMask;
         }
     }
 
@@ -74,7 +109,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         const bitIndex = i & 7; // i % 8 
         // const byte = this.buffer.at(byteIndex)!;
 
-        return (this.buffer[1 + byteIndex]! & (1 << bitIndex)) !== 0;
+        return (this.bufferFixed[1 + byteIndex]! & (1 << bitIndex)) !== 0;
     }
 
     $setBool(i: number, value: boolean) {
@@ -82,9 +117,9 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         const bitMask = 1 << (i & 7);
 
         if (value) {
-            this.buffer[byteIndex] |= bitMask;
+            this.bufferFixed[byteIndex] |= bitMask;
         } else {
-            this.buffer[byteIndex] &= ~bitMask;
+            this.bufferFixed[byteIndex] &= ~bitMask;
         }
     }
 
@@ -98,7 +133,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
         this._data = data;
 
-        this.buffer = Buffer.alloc(2);
+        this.bufferFixed = Buffer.alloc(2);
 
         let proxy = new Proxy<ByteRecord<T, idT, LightT, VisibleT>>(this, {
             set: (target: any, key: string & keyof T, value: any) => {

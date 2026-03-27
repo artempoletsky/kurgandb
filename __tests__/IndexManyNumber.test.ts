@@ -73,9 +73,9 @@ describe("IndexManyNumber", () => {
     expect(rec.len).toBe(1);
   });
 
-  xtest("save", () => {
+  test("save", () => {
     const idx = new IndexManyNumber(idxPath);
-    idx.setArray(1, [11]);
+    idx.setArray(1, new Uint32Array([11]));
 
     expect(idx.getVariableBufferLength()).toBe(4);
 
@@ -90,22 +90,22 @@ describe("IndexManyNumber", () => {
 
   function createArray(length: number) {
     let rawData = Array.from({ length }, (_, i) => {
-      return { key: i, offsets: [i * 10] };
+      return { key: i, offsets: [i * 10, i * 10, i * 10, i * 10] };
     });
     rawData = rawData.sort((a, b) => a.key - b.key);
     return rawData
   }
 
-  xtest("fast fill", () => {
+  test("fast fill", () => {
     removeTestData();
     const idx = new IndexManyNumber(idxPath);
 
-    let rawData = createArray(2000);
+    let rawData = createArray(2_000);
 
     idx.fastFill(rawData, 5);
 
     let rec1 = idx.readFixedRecord(0);
-    expect(rec1.len).toBe(1);
+    expect(rec1.len).toBe(4);
     expect(rec1.start).toBe(0);
     idx.save();
   });
