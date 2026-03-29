@@ -34,11 +34,11 @@ export function packEventListener(handler: (...args: any[]) => void): ParsedFunc
 export type RecordValidator = (table: Table<any, any, any>, scope: GlobalScope) => ZodObject<any> | ZodEffects<ZodObject<any>>;
 
 export type TableScheme = {
-  fields: Record<string, FieldType>
-  fieldsOrder: string[]
-  fieldsOrderUser: string[]
-  tags: Record<string, FieldTag[]>
-  settings: TableSettings
+  fields: Record<string, FieldType>;
+  fieldsOrder: string[];
+  fieldsOrderUser: string[];
+  tags: Record<string, FieldTag[]>;
+  settings: TableSettings;
 };
 
 
@@ -786,6 +786,10 @@ export class Table<T = unknown, idT extends string | number = string | number, M
 
   public get zObject() {
     return this._zObject;
+  }
+
+  getNumberOfFieldsOfType(type: FieldType): number {
+    
   }
 
 }

@@ -3,6 +3,8 @@ import { TableScheme, Table, IndicesRecord } from "./table";
 import { DataBase } from "./db";
 import { FieldType, PlainObject } from "./globals";
 import TableUtils from "./table_utilities";
+import { IndexOneNumber } from "./IndexOneNumber";
+import { IndexOneString } from "./IndexOneString";
 
 
 type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
@@ -14,7 +16,6 @@ type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
     | "NUMBERS_LEN"
     | "DATES_START"
     | "DATES_LEN"
-    | "STRINGS_START"
     | "STRINGS_LEN"
     | "JSON_START"
     | "JSON_LEN"
@@ -27,7 +28,6 @@ RECORD_STRUCTURE.push({ key: "ENUMS_START", length: 4 });
 RECORD_STRUCTURE.push({ key: "ENUMS_LEN", length: 1 });
 RECORD_STRUCTURE.push({ key: "NUMBERS_START", length: 4 });
 RECORD_STRUCTURE.push({ key: "NUMBERS_LEN", length: 1 });
-RECORD_STRUCTURE.push({ key: "STRINGS_START", length: 4 });
 RECORD_STRUCTURE.push({ key: "STRINGS_LEN", length: 1 });
 RECORD_STRUCTURE.push({ key: "JSON_START", length: 4 });
 RECORD_STRUCTURE.push({ key: "JSON_LEN", length: 1 });
@@ -42,65 +42,187 @@ const offsets = RECORD_STRUCTURE.reduce((result, e) => {
 }, {} as Record<RECORD_STRUCTURE_KEY, number>);
 
 
-// User data
-const BOOLEANS_BLOCK = 20; //2 bytes
-const NUMBERS_BLOCK = 22; //varied
+const DEFAULT_PAGE_SIZE = 0x2000;
+
 
 
 export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
-    protected _id: idT;
     protected _utils: TableUtils<T, idT>;
     protected _data: any[] = [];
-    protected _dates: Record<string, Date> = {};
+    protected _datesObj: Record<string, Date> = {};
 
     protected _table: Table<T, idT, any, any, LightT, VisibleT>;
 
-    protected _numbers: Float32Array;
-    protected _dates: Float32Array;
-    protected _enums: Uint8Array;
+    protected _numbers?: Float64Array;
+    protected _datesNumeric?: Float64Array;
+    protected _enums?: Uint8Array;
+    // protected _cache: Map<number, Buffer>;
+    protected _pageSize: number = DEFAULT_PAGE_SIZE;
+    protected _fdPage: number;
+    protected _bufferPage: Buffer;
 
+    protected _enumsStart: number;
+    protected _enumsNum: number;
+    protected _numbersStart: number;
+    protected _numbersNum: number;
+    protected _datesStart: number;
+    protected _datesNum: number;
+
+    protected _stringsMetaStart: number;
+    protected _stringsStart: number;
+    protected _stringsNum: number;
+    protected _stringsByteLengths!: Uint8Array;
+    protected _stringsOffsets!: Uint16Array;
+    protected _stringsCache!: string[];
+    
+    protected _jsonStart: number;
+    protected _jsonLen: number;
+    protected _id!: idT;
+
+    protected _jsonCache!: any[];
+    protected _needsStringsTailRebuilding: boolean = false;
+    protected _needsJSONTailRebuilding: boolean = false;
+
+
+    protected _keyType: idT extends string ? "string" : "number";
+    protected _primaryKeyIndex: idT extends string ? IndexOneString : IndexOneNumber;
+    protected _idIndex: number;
 
     public get $id(): idT {
         return this._id;
     }
 
-    protected bufferFixed: Buffer;
+    $buildStringsTail() {
+        let tail = "";
 
-    $readFromFile(offset: number, len: number): Buffer {
+        const stringsOffsets = [];
+        let writePosition = 0;
+        for (let i = 0; i < this._stringsLen; i++) {
+            const str = this.$getString(i);
+            const strByteLen = Buffer.byteLength(str, "utf-8");
+            if (strByteLen > 0xFF) {
+                throw "not implemented";
+            }
+            this._bufferPage[this._stringsMetaStart + i * 3] = strByteLen;
+            stringsOffsets.push(writePosition);
+            tail += str;
+            writePosition += strByteLen;
+        }
 
+        const JSONOffsets = [];
+
+        for (let i = 0; i < this._jsonLen; i++) {
+            const str = this.$getJSON(i);
+            const strByteLen = Buffer.byteLength(str, "utf-8");
+            if (strByteLen > 0xFFFF) {
+                throw "not implemented";
+            }
+            this._bufferPage[this._stringsMetaStart + i * 3] = strByteLen;
+            stringsOffsets.push(writePosition);
+            tail += str;
+            writePosition += strByteLen;
+        }
+
+        let tailStart = this._pageSize - writePosition;
+        for (let i = 0; i < this._stringNum; i++) {
+            this._bufferPage.writeInt16LE(tailStart + stringsOffsets[i], this._stringsMetaStart + i * 2 + 1);
+        }
+
+
+        return tail;
     }
 
-    $readAll() {
-        let start = this.bufferFixed.readUInt32LE(offsets.NUMBERS_START);
-        let len = this.bufferFixed.readUInt32LE(offsets.NUMBERS_LEN);
-        let buf = this.$readFromFile(start, len * 4);
-        this._numbers = new Float32Array(buf.buffer, buf.byteOffset, len);
+    $readPage(page: number) {
+        let buf: Buffer;
+        // if (this._cache.has(page)) {
+        //     buf = this._cache.get(page)!;
+        // } else {
+        buf = Buffer.allocUnsafe(this._pageSize);
+        fs.readSync(this._fdPage, buf, 0, this._pageSize, page * this._pageSize);
+        //     this._cache.set(page, buf);
+        // }
+        this._bufferPage = buf;
 
 
-        start = this.bufferFixed.readUInt32LE(offsets.ENUMS_START);
-        len = this.bufferFixed.readUInt32LE(offsets.ENUMS_LEN);
-        buf = this.$readFromFile(start, len);
-        this._enums = new Uint8Array(buf.buffer, buf.byteOffset, len);
 
+        this._stringsCache = [];
+        this._jsonCache = [];
+
+        this._stringsByteLengths = new Uint8Array(this._bufferPage.buffer, this._stringsMetaStart, this._stringsNum);
+        this._stringsOffsets = new Uint16Array(this._stringsNum);
+        let currentOffset = this._stringsStart;
+        for (let i = 0; i < this._stringsNum; i++) {
+            this._stringsOffsets[i] = currentOffset;
+            currentOffset += this._stringsByteLengths[i];
+        }
+
+        this._numbers = new Float64Array(this._bufferPage.buffer, this._numbersStart, this._numbersNum);
+        this._datesNumeric = new Float64Array(this._bufferPage.buffer, this._datesStart, this._datesNum);
+        this._enums = new Uint8Array(this._bufferPage.buffer, this._enumsStart, this._enumsNum);
+
+        if (this._keyType == "number") {
+            this._id = this._numbers[this._idIndex] as any;
+        } else {
+            this._id = this.$getString(this._idIndex) as any;
+        }
+
+
+        return buf;
     }
 
 
-    $readNumberFile(index: number) {
-        const offset = this.bufferFixed.readUInt32LE(offsets.NUMBERS_START) + index * 4;
-        return this.$readFromFile(offset, 4).readFloatLE(0);
+    $getJSON(index: number) {
+        if (this._jsonCache[index] !== undefined) return this._jsonCache[index];
+
+        let len = this._bufferPage.readUint8(this._jsonStart + index);
+        let start = this._bufferPage.readUint16LE(this._stringsMetaStart + index + 1);
+        if (start === 0xFFFF) {
+            throw "implement separate file field or the heap";
+        }
+
+        this._stringsCache[index] = this._bufferPage.subarray(start, len).toString("utf-8");
+
+        return this._stringsCache[index];
+    }
+
+    $getString(index: number) {
+        if (this._stringsCache[index] !== undefined) return this._stringsCache[index];
+
+        let len = this._stringsByteLengths[index];
+        let start = this._stringsOffsets[index];
+        if (len === 0xFF) {
+            throw "implement separate file field or the heap";
+        }
+
+        this._stringsCache[index] = this._bufferPage.subarray(start, len).toString("utf-8");
+
+        return this._stringsCache[index];
+    }
+
+    $setString(index: number, string: string) {
+        let prev = this._stringsCache[index];
+        if (prev == string) return;
+        let byteLength = Buffer.byteLength(string, "utf-8");
+        if (byteLength > 0xFF) {
+            throw "implement separate file field or the heap";
+        }
+        this._needsStringsTailRebuilding = true;
+
+        this._stringsCache[index] = string;
+        this._stringsByteLengths[index] = byteLength;
     }
 
     $getFlag(i: number): number {
-        return (this.bufferFixed[0]! & (1 << i & 7));
+        return (this._bufferPage[0]! & (1 << i & 7));
     }
 
     $setFlag(i: number, value: any) {
         const bitMask = 1 << (i & 7);
 
         if (value) {
-            this.bufferFixed[0] |= bitMask;
+            this._bufferPage[0] |= bitMask;
         } else {
-            this.bufferFixed[0] &= ~bitMask;
+            this._bufferPage[0] &= ~bitMask;
         }
     }
 
@@ -109,7 +231,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         const bitIndex = i & 7; // i % 8 
         // const byte = this.buffer.at(byteIndex)!;
 
-        return (this.bufferFixed[1 + byteIndex]! & (1 << bitIndex)) !== 0;
+        return (this._bufferPage[1 + byteIndex]! & (1 << bitIndex)) !== 0;
     }
 
     $setBool(i: number, value: boolean) {
@@ -117,23 +239,57 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         const bitMask = 1 << (i & 7);
 
         if (value) {
-            this.bufferFixed[byteIndex] |= bitMask;
+            this._bufferPage[byteIndex] |= bitMask;
         } else {
-            this.bufferFixed[byteIndex] &= ~bitMask;
+            this._bufferPage[byteIndex] &= ~bitMask;
         }
     }
 
 
-    constructor(data: any[], id: idT, table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
+    constructor(table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
         this._utils = utils;
 
         this._table = table;
 
-        this._id = id;
+        let currentReadPos = 3;
+        this._enumsNum = table.getNumberOfFieldsOfType("enum");
+        currentReadPos += 1;
+        this._enumsStart = currentReadPos;
+        currentReadPos += this._enumsNum * 1;
 
-        this._data = data;
+        this._numbersNum = table.getNumberOfFieldsOfType("number");
+        currentReadPos += 1;
+        this._numbersStart = currentReadPos;
+        currentReadPos += this._numbersNum * 8;
 
-        this.bufferFixed = Buffer.alloc(2);
+        this._datesNum = table.getNumberOfFieldsOfType("date");
+        currentReadPos += 1;
+        this._datesStart = currentReadPos;
+        currentReadPos += this._datesNum * 8;
+
+        this._stringsNum = table.getNumberOfFieldsOfType("string");
+        currentReadPos += 1;
+        this._stringsMetaStart = currentReadPos;
+
+        currentReadPos += this._stringsNum;
+
+
+        // this._jsonLen = table.getNumberOfFieldsOfType("json");
+        // currentReadPos += 1;
+        // this._jsonStart = currentReadPos;
+        // currentReadPos += this._strings * 4;
+
+        this._stringsStart = currentReadPos;
+
+
+        let primaryKeyType: "string" | "number" = table.scheme.fields[table.primaryKey] as any;
+        this._keyType = primaryKeyType as any;
+        if (primaryKeyType == "string") {
+            this._primaryKeyIndex = new IndexOneString(table.name, table.primaryKey) as any;
+        } else {
+            this._primaryKeyIndex = new IndexOneNumber(table.name, table.primaryKey) as any;
+        }
+
 
         let proxy = new Proxy<ByteRecord<T, idT, LightT, VisibleT>>(this, {
             set: (target: any, key: string & keyof T, value: any) => {
@@ -168,54 +324,81 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         const { primaryKey } = this._table;
         const tags = this._table.scheme.tags[fieldName] || [];
 
-        if (primaryKey == fieldName) {
-            if (value == this._id) return;
-            if (utils.mainDict.hasAnyId([value])) {
-                throw utils.errorValueNotUnique(primaryKey, value);
-            }
-            const { keyType } = this._utils.mainDict.settings;
-            this._id = TableRecord.storeValueOfType(value, keyType == "string" ? "string" : "number");
-            return;
-        }
+        // if (primaryKey == fieldName) {
+        //     if (value == this._id) return;
+        //     if (utils.mainDict.hasAnyId([value])) {
+        //         throw utils.errorValueNotUnique(primaryKey, value);
+        //     }
+        //     const { keyType } = this._utils.mainDict.settings;
+        //     this._id = TableRecord.storeValueOfType(value, keyType == "string" ? "string" : "number");
+        //     return;
+        // }
 
         const type = fields[fieldName];
         if (!type) {
             throw new Error(`There is no '${fieldName}' field in '${table.name}'`);
         }
-        let newValue: any = TableRecord.storeValueOfType(value, type);
 
-        if (tags.includes("heavy")) {
-            const hasChangeListener = this._table.hasEventListener("recordChange:" + fieldName);
-            let oldValue: any;
-            if (hasChangeListener) {
-                oldValue = this.$get(fieldName);
-            }
-            if (type == "json") {
-                fs.writeFileSync(this.$getExternalFilename(fieldName), JSON.stringify(value));
-            } else {
-                fs.writeFileSync(this.$getExternalFilename(fieldName), value);
-            }
-            if (hasChangeListener) {
-                this._table.triggerEvent("recordChange", {
-                    newValue,
-                    oldValue,
-                    record: this as any,
-                    fieldName,
-                });
-            }
-            return;
-        }
 
+        const currentValue = this.$get(fieldName);
         const indexField = table.fieldNameIndex[fieldName];
-        const currentValue = this._data[indexField];
-        utils.changeIndexValue(fieldName, this._id, currentValue, newValue);
 
-
-        if (type == "date") {
-            this._dates[fieldName] = new Date(value);
+        if (type == "number") {
+            this._numbers![indexField] = value;
+        } else if (type == "string") {
+            this.$setString(indexField, value);
+        } else if (type == "date") {
+            // this.$setString(indexField, value);
+            if (typeof value == "number") {
+                this._datesNumeric![indexField] = value.
+            } else if (typeof value == "string") {
+                throw "not implemented";
+            } else if (typeof value == "object") {
+                this._datesObj[indexField] = value;
+                throw "not implemented"
+            }
+        } else if (type == "boolean") {
+            this.$setBool(indexField, value);
+        } else if (type == "enum") {
+            throw "not implemented";
+        } else if (type == "json") {
+            throw "not implemented";
         }
 
-        this._data[indexField] = newValue;
+        let newValue: any = ByteRecord.storeValueOfType(value, type);
+
+        // if (tags.includes("heavy")) {
+        //     const hasChangeListener = this._table.hasEventListener("recordChange:" + fieldName);
+        //     let oldValue: any;
+        //     if (hasChangeListener) {
+        //         oldValue = this.$get(fieldName);
+        //     }
+        //     if (type == "json") {
+        //         fs.writeFileSync(this.$getExternalFilename(fieldName), JSON.stringify(value));
+        //     } else {
+        //         fs.writeFileSync(this.$getExternalFilename(fieldName), value);
+        //     }
+        //     if (hasChangeListener) {
+        //         this._table.triggerEvent("recordChange", {
+        //             newValue,
+        //             oldValue,
+        //             record: this as any,
+        //             fieldName,
+        //         });
+        //     }
+        //     return;
+        // }
+
+
+        // const currentValue = this._data[indexField];
+        // utils.changeIndexValue(fieldName, this._id, currentValue, newValue);
+
+
+        // if (type == "date") {
+        //     this._datesObj[fieldName] = new Date(value);
+        // }
+
+        // this._data[indexField] = newValue;
 
 
         this._table.triggerEvent("recordChange", {
@@ -239,11 +422,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         const table = this._table;
         const { fields } = this._table.scheme;
         const tags = this._table.scheme.tags[fieldName] || [];
-        const { primaryKey } = this._table;
 
-        if (primaryKey == fieldName) {
-            return this._id;
-        }
         const type = fields[fieldName];
         if (!type) return;
 
@@ -259,15 +438,19 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
         const fieldIndex = table.fieldNameIndex[fieldName];
 
-
-
-        if (type == "date") {
-            if (this._dates[fieldName]) return this._dates[fieldName];
-            this._dates[fieldName] = new Date(this._data[fieldIndex]);
-            return this._dates[fieldName];
+        if (type == "boolean") {
+            return this.$getBool(fieldIndex);
+        } else if (type == "number") {
+            return this._numbers![fieldIndex];
+        } else if (type == "date") {
+            if (this._datesObj[fieldName]) return this._datesObj[fieldName];
+            this._datesObj[fieldName] = new Date(this._datesNumeric![fieldIndex]);
+            return this._datesObj[fieldName];
+        } else if (type == "string") {
+            return this.$getString(fieldIndex);
         }
 
-        return TableRecord.retrieveValueOfType(this._data[fieldIndex], type);
+        throw "not implemented";
     }
 
     static retrieveValueOfType(value: any, type: FieldType) {
@@ -325,8 +508,8 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
         table.scheme.fieldsOrder.forEach((key, index) => {
             const type = table.indexType[index];
-            if (type == "date" && this._dates[key]) {
-                result[index] = this._dates[key].toJSON();
+            if (type == "date" && this._datesObj[key]) {
+                result[index] = this._datesObj[key].toJSON();
                 return;
             }
 

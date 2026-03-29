@@ -18,7 +18,7 @@ export type {
 export type { TRecord } from "./record";
 
 
-export const FieldTypes = ["string", "number", "date", "boolean", "json"] as const;
+export const FieldTypes = ["string", "number", "date", "boolean", "json", "enum"] as const;
 
 export type FieldType = typeof FieldTypes[number];
 

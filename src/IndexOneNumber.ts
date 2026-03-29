@@ -20,7 +20,6 @@ export class IndexOneNumber {
 
   protected path: string;
   protected buffer!: Buffer;
-  protected stringMetaIndex: Buffer | null = null; // file structure is [offset (4 bytes)]
 
   protected bufferLength = 0;
   protected metaIndexLength = 0;
@@ -42,9 +41,6 @@ export class IndexOneNumber {
 
   widenBuffers() {
     this.buffer = Buffer.concat([this.buffer, Buffer.allocUnsafe(this.buffer.length)]);
-    if (this.stringMetaIndex) {
-      this.stringMetaIndex = Buffer.concat([this.stringMetaIndex, Buffer.allocUnsafe(this.stringMetaIndex.length)]);
-    }
   }
 
   binarySearchNumber(id: number) {
