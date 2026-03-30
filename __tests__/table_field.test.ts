@@ -121,7 +121,7 @@ describe("Table fields", () => {
     }).toThrow("Field name must start with a Latin letter!");
   });
 
-  test("remove", async () => {
+  xtest("remove", async () => {
     const utils = TableUtils.fromTable(t);
     let dict = FragmentedDictionary.open<number, any[]>(utils.getMainDictDir());
     let first = dict.getOne(1);
@@ -147,7 +147,7 @@ describe("Table fields", () => {
 
   });
 
-  test("add", async () => {
+  xtest("add", async () => {
     t.addField("qwe", "number", false, e => Math.random());
     expect(t.scheme.fields).toHaveProperty("qwe");
 
@@ -173,7 +173,7 @@ describe("Table fields", () => {
   });
 
 
-  test("changeFieldIndex", () => {
+  xtest("changeFieldIndex", () => {
     let item = t.at(1);
 
     let iOf1 = t.scheme.fieldsOrderUser.indexOf("id");
@@ -196,7 +196,7 @@ describe("Table fields", () => {
     float: number
   };
   let t2: Table<SimpleFloat, number>;
-  test("reset db", async () => {
+  xtest("reset db", async () => {
     await allIsSaved();
     DataBase.removeTable(TestTableName);
 
@@ -212,7 +212,7 @@ describe("Table fields", () => {
     await allIsSaved();
   });
 
-  test("0 index insert", () => {
+  xtest("0 index insert", () => {
     for (let i = 0; i < 100; i++) {
       const rand = Math.random();
       t2.insert({

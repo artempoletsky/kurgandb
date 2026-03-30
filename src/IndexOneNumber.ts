@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import TableUtils from "./table_utilities";
 
 
 const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
@@ -7,11 +8,14 @@ const TOMBSTONE = 0xFFFFFFFF;
 export class IndexOneNumber {
 
   constructor(path: string)
-  constructor(tableName: string, columnName: string)
-  constructor(a1: string, a2?: string) {
-    const path = a1;
-    if (a2) {
-      throw new Error("Not implemented yet");
+  constructor(tableName: TableUtils<any, number>, columnName: string)
+  constructor(a1: string | TableUtils<any, number>, a2?: string) {
+    let path: string;
+    if (typeof a1 == "object") {
+      // throw new Error("Not implemented yet");
+      path = a1.getIndexDictDir(a2!) + "index.bin";
+    } else {
+      path = a1;
     }
 
     this.path = path;

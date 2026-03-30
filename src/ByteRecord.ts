@@ -44,7 +44,7 @@ const offsets = RECORD_STRUCTURE.reduce((result, e) => {
 
 const DEFAULT_PAGE_SIZE = 0x2000;
 
-
+export type TRecord<T, idT extends string | number, LightT = T, VisibleT = T> = ByteRecord<T, idT, LightT, VisibleT> & T;
 
 export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     protected _utils: TableUtils<T, idT>;
@@ -53,7 +53,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
     protected _table: Table<T, idT, any, any, LightT, VisibleT>;
 
-    protected _numbers?: Float64Array;
+    protected _numbers: Float64Array;
     protected _datesNumeric?: Float64Array;
     protected _enums?: Uint8Array;
     // protected _cache: Map<number, Buffer>;
@@ -69,12 +69,12 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     protected _datesNum: number;
 
     protected _stringsMetaStart: number;
-    protected _stringsStart: number;
+    protected _stringsTailStart: number;
     protected _stringsNum: number;
     protected _stringsByteLengths!: Uint8Array;
     protected _stringsOffsets!: Uint16Array;
     protected _stringsCache!: string[];
-    
+
     protected _jsonStart: number;
     protected _jsonLen: number;
     protected _id!: idT;
@@ -97,7 +97,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
         const stringsOffsets = [];
         let writePosition = 0;
-        for (let i = 0; i < this._stringsLen; i++) {
+        for (let i = 0; i < this._stringsNum; i++) {
             const str = this.$getString(i);
             const strByteLen = Buffer.byteLength(str, "utf-8");
             if (strByteLen > 0xFF) {
@@ -150,7 +150,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
         this._stringsByteLengths = new Uint8Array(this._bufferPage.buffer, this._stringsMetaStart, this._stringsNum);
         this._stringsOffsets = new Uint16Array(this._stringsNum);
-        let currentOffset = this._stringsStart;
+        let currentOffset = this._stringsTailStart;
         for (let i = 0; i < this._stringsNum; i++) {
             this._stringsOffsets[i] = currentOffset;
             currentOffset += this._stringsByteLengths[i];
@@ -212,6 +212,11 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         this._stringsByteLengths[index] = byteLength;
     }
 
+    $writeCacheStringsToBuffer() {
+        const tail = this.$buildStringsTail();
+        this._bufferPage.write(tail, this._stringsTailStart, "utf-8");
+    }
+
     $getFlag(i: number): number {
         return (this._bufferPage[0]! & (1 << i & 7));
     }
@@ -252,22 +257,22 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         this._table = table;
 
         let currentReadPos = 3;
-        this._enumsNum = table.getNumberOfFieldsOfType("enum");
+        this._enumsNum = table.numberOfType["enum"];
         currentReadPos += 1;
         this._enumsStart = currentReadPos;
         currentReadPos += this._enumsNum * 1;
 
-        this._numbersNum = table.getNumberOfFieldsOfType("number");
+        this._numbersNum = table.numberOfType["number"];
         currentReadPos += 1;
         this._numbersStart = currentReadPos;
         currentReadPos += this._numbersNum * 8;
 
-        this._datesNum = table.getNumberOfFieldsOfType("date");
+        this._datesNum = table.numberOfType["date"];
         currentReadPos += 1;
         this._datesStart = currentReadPos;
         currentReadPos += this._datesNum * 8;
 
-        this._stringsNum = table.getNumberOfFieldsOfType("string");
+        this._stringsNum = table.numberOfType["string"];
         currentReadPos += 1;
         this._stringsMetaStart = currentReadPos;
 
@@ -279,15 +284,18 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         // this._jsonStart = currentReadPos;
         // currentReadPos += this._strings * 4;
 
-        this._stringsStart = currentReadPos;
+        this._numbers = new Float64Array(this._numbersNum);
+
+        this._stringsTailStart = currentReadPos;
 
 
         let primaryKeyType: "string" | "number" = table.scheme.fields[table.primaryKey] as any;
         this._keyType = primaryKeyType as any;
         if (primaryKeyType == "string") {
-            this._primaryKeyIndex = new IndexOneString(table.name, table.primaryKey) as any;
+            this._primaryKeyIndex = new IndexOneString(table.utils, table.primaryKey) as any;
         } else {
-            this._primaryKeyIndex = new IndexOneNumber(table.name, table.primaryKey) as any;
+
+            this._primaryKeyIndex = new IndexOneNumber(table.utils as any, table.primaryKey) as any;
         }
 
 
@@ -350,7 +358,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         } else if (type == "date") {
             // this.$setString(indexField, value);
             if (typeof value == "number") {
-                this._datesNumeric![indexField] = value.
+                this._datesNumeric![indexField] = value;
             } else if (typeof value == "string") {
                 throw "not implemented";
             } else if (typeof value == "object") {
@@ -500,24 +508,28 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         return JSON.parse(text);
     }
 
-    public $serialize(): any[] {
-        const result: any[] = [];
+    public $create(data: T) {
+        this._bufferPage = Buffer.allocUnsafe(this._pageSize);
         const table = this._table;
-        if (!this._data) throw new Error(`No data: ${this.idPrint()}`);
-
-
         table.scheme.fieldsOrder.forEach((key, index) => {
             const type = table.indexType[index];
-            if (type == "date" && this._datesObj[key]) {
-                result[index] = this._datesObj[key].toJSON();
-                return;
+            const i = table.localIndexOfType[type];
+            const value = (data as any)[key];
+            if (type == "boolean") {
+                this.$setBool(i, value);
+            } else if (type == "number") {
+                this._numbers[i] = value;
+            } else if (type == "string") {
+                this.$setString(i, value);
+            } else {
+                throw "not implemented";
             }
-
-            if (!this._data) throw new Error("No data");
-            result[index] = this._data[index];
         });
+    }
 
-        return result;
+    public $serialize(): Buffer {
+        this.$writeCacheStringsToBuffer();
+        return this._bufferPage;
     }
 
     public toJSON(): VisibleT {

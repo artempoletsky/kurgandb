@@ -1,6 +1,7 @@
 
 import { DataBase, SCHEME_PATH, SchemeFile, TableSettings } from "./db";
-import { TRecord, TableRecord } from "./record";
+// import { TRecord, TableRecord } from "./record";
+import { TRecord, ByteRecord } from "./ByteRecord";
 import { rfs, wfs, existsSync, mkdirSync, renameSync, rmie, logError, $, absolutePath, getGlobalScope } from "./utils";
 
 import fs from "fs";
@@ -118,12 +119,22 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   protected _indexType: FieldType[] = [];
   protected _indexIndexType: FieldType[] = [];
 
-  protected utils: TableUtils<T, idT>;
+  public readonly utils: TableUtils<T, idT>;
 
   public readonly scheme: TableScheme;
   public readonly name: string;
   public readonly primaryKey: string;
   protected _dirtyIndexPartitions: Map<number, boolean> = new Map();
+
+  public readonly byteRecord: ByteRecord<T, idT, LightT, VisibleT>;
+  // shows how many instances of FieldType are
+  public readonly numberOfType!: Record<FieldType, number>;
+  // shows local index of field name for example: 
+  // localIndexOfType["name"] == 0         //1st string
+  // localIndexOfType["description"] == 1  //2nd string
+  // localIndexOfType["width"] == 0        //1st number
+  // localIndexOfType["height"] == 1       //2nd number
+  public readonly localIndexOfType!: Record<string, number>;
 
   constructor(name: string, scheme: TableScheme) {
 
@@ -160,6 +171,7 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     }
 
     this.utils = new TableUtils(this, this.mainDict, this.indices);
+    this.byteRecord = new ByteRecord(this, this.utils);
   }
 
 
@@ -172,12 +184,21 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     this._indexFieldName = [];
     let i = 0;
 
+    
+    let numberOfType: Record<string, number> = {};
+
     for (const key of this.scheme.fieldsOrder) {
       const type = this.scheme.fields[key];
       this._indexType[i] = type;
       this._indexFieldName[i] = key;
       this._fieldNameIndex[key] = i++;
+      if (numberOfType[key] === undefined) {
+        numberOfType[key] = 0;
+      }
+      numberOfType[key]++;
     }
+    //@ts-expect-error
+    this.numberOfType = numberOfType;
   }
 
   public get fieldNameIndex() {
@@ -368,7 +389,9 @@ export class Table<T = unknown, idT extends string | number = string | number, M
     else {
       const definedPredicate = predicate || (() => getDefaultValueForType(type));
       this.utils.insertRecordColumn(this._indexFieldName.length, (id, arr) => {
-        return definedPredicate(new TableRecord(arr, id, this, this.utils) as TRecord<T, idT, LightT, VisibleT>);
+        throw "not implemented";
+        this.byteRecord.$readPage(0);
+        return definedPredicate(this.byteRecord as TRecord<T, idT, LightT, VisibleT>);
       });
     }
 
@@ -764,6 +787,8 @@ export class Table<T = unknown, idT extends string | number = string | number, M
             case "json": rule = z.any(); break;
             case "number": rule = z.coerce.number(); break;
             case "string": rule = z.string(); break;
+            default: 
+              throw "wrong field type";
           }
 
           shape[fieldName] = rule;
@@ -787,9 +812,4 @@ export class Table<T = unknown, idT extends string | number = string | number, M
   public get zObject() {
     return this._zObject;
   }
-
-  getNumberOfFieldsOfType(type: FieldType): number {
-    
-  }
-
 }

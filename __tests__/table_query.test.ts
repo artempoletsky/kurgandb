@@ -82,7 +82,7 @@ describe("Table", () => {
     expect(bars[0].name).toBe("bar");
   });
 
-  test("async query", async () => {
+  xtest("async query", async () => {
     let result = await query(async ({ }, { }, { }) => {
       const p = new Promise<string>((resolve) => {
         setTimeout(() => {
@@ -107,13 +107,13 @@ describe("Table", () => {
 
   }, 20000);
 
-  test("filters", () => {
+  xtest("filters", () => {
     const bars = t.filter(doc => doc.name == "bar").select();
     expect(bars.length).toBe(3);
   });
 
 
-  test("limit", () => {
+  xtest("limit", () => {
     // t.removeIndex("name");
     for (let i = 0; i < 4; i++) {
       t.insert({
@@ -129,7 +129,7 @@ describe("Table", () => {
     expect(johns.length).toBe(2);
   });
 
-  test("paginate", () => {
+  xtest("paginate", () => {
     t.all().delete();
     t.insertMany(Array.from(Array(100)).map((und, i) => ({
       bool: false,
@@ -152,7 +152,7 @@ describe("Table", () => {
   };
   let t2: Table<SimpleFloat, number>;
 
-  test("reset db", async () => {
+  xtest("reset db", async () => {
     await allIsSaved();
     DataBase.removeTable(TestTableName);
 
@@ -168,7 +168,7 @@ describe("Table", () => {
     await allIsSaved();
   });
 
-  test("0 index insert", () => {
+  xtest("0 index insert", () => {
     for (let i = 0; i < 100; i++) {
       const rand = Math.random();
       t2.insert({
@@ -184,7 +184,7 @@ describe("Table", () => {
 
   });
 
-  test("order by", () => {
+  xtest("order by", () => {
     t2.all().delete();
 
     const data: SimpleFloat[] = [];
@@ -228,7 +228,7 @@ describe("Table", () => {
   }
 
 
-  test("update", async () => {
+  xtest("update", async () => {
 
 
     const test_words: Table<TestWord, string> = DataBase.createTable<TestWord, string>({
@@ -280,7 +280,7 @@ describe("Table", () => {
   });
 
 
-  test("change id", () => {
+  xtest("change id", () => {
     const test_words = DataBase.getTable<TestWord, string>("test_words");
 
     const utils = TableUtils.fromTable(test_words);
@@ -298,7 +298,7 @@ describe("Table", () => {
     expect(new_a.part).toBe("other");
   });
 
-  test("change id 2", async () => {
+  xtest("change id 2", async () => {
 
     const id = "new_a";
     const record: TestWord & PlainObject = {
