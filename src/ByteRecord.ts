@@ -5,6 +5,7 @@ import { FieldType, PlainObject } from "./globals";
 import TableUtils from "./table_utilities";
 import { IndexOneNumber } from "./IndexOneNumber";
 import { IndexOneString } from "./IndexOneString";
+import FilePatchRecord from "./FilePatchRecord";
 
 
 type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
@@ -58,7 +59,6 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     protected _enums?: Uint8Array;
     // protected _cache: Map<number, Buffer>;
     protected _pageSize: number = DEFAULT_PAGE_SIZE;
-    protected _fdPage: number;
     protected _bufferPage: Buffer;
 
     protected _enumsStart: number;
@@ -87,6 +87,8 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     protected _keyType: idT extends string ? "string" : "number";
     protected _primaryKeyIndex: idT extends string ? IndexOneString : IndexOneNumber;
     protected _idIndex: number;
+
+    public readonly wal: FilePatchRecord;
 
     public get $id(): idT {
         return this._id;
@@ -137,11 +139,10 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
         // if (this._cache.has(page)) {
         //     buf = this._cache.get(page)!;
         // } else {
-        buf = Buffer.allocUnsafe(this._pageSize);
-        fs.readSync(this._fdPage, buf, 0, this._pageSize, page * this._pageSize);
+        
         //     this._cache.set(page, buf);
         // }
-        this._bufferPage = buf;
+        this._bufferPage = this.wal.readPage(page);
 
 
 
@@ -252,6 +253,12 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
 
     constructor(table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
+        this.wal = new FilePatchRecord({
+            pathPage: utils.getPagesFilePath(),
+            pathHeap: utils.getHeapFilePath(),
+            sizePage: this._pageSize,
+        });
+
         this._utils = utils;
 
         this._table = table;

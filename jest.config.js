@@ -23,7 +23,7 @@ const files = fs.readdirSync("./__tests__");
 // currentFile = "query_errors.test.ts";
 // currentFile = "table.test.ts";
 // currentFile = "table_heavy.test.ts";
-currentFile = "table_query.test.ts";
+// currentFile = "table_query.test.ts";
 // currentFile = "table_events.test.ts";
 // currentFile = "table_field.test.ts";
 // currentFile = "table_index.test.ts";
@@ -36,6 +36,7 @@ currentFile = "table_query.test.ts";
 // currentFile = "IndexOneNumber.test.ts";
 // currentFile = "IndexOneString.test.ts";
 // currentFile = "IndexManyNumber.test.ts"
+currentFile = "WALRecord.test.ts"
 
 const runStressTests = false;
 

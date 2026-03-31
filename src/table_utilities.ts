@@ -523,6 +523,14 @@ export default class TableUtils<T, idT extends string | number> {
     }
     throw new Error("Can't find primary key in the scheme!");
   }
+
+  getPagesFilePath() {
+    return `/${this.name}/pages.bin`;
+  }
+
+  getHeapFilePath() {
+    return `/${this.name}/heap.bin`;
+  }
 }
 
 

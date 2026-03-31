@@ -10,7 +10,7 @@ import { Table } from "../src/table";
 
 describe("ByteRecord.$serialize", () => {
 
-    let t = new Table()
+    // let t = new Table()
     test("$serialize for basic types", () => {
 
         // const br = new ByteRecord()
