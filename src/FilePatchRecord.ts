@@ -16,8 +16,8 @@ type HeapSection = {
 
 
 export default class FilePatchRecord {
-  public readonly pagePath: string;
-  public readonly heapPath: string;
+  public readonly pathPage: string;
+  public readonly pathHeap: string;
   public readonly walPagePath: string;
   public readonly walHeapPath: string;
   public readonly pageSize: number;
@@ -43,11 +43,11 @@ export default class FilePatchRecord {
     pathHeap: string;
     sizePage: number;
   }) {
-    this.pagePath = getAbsolutePath(pagePath);
-    this.heapPath = getAbsolutePath(heapPath);
+    this.pathPage = getAbsolutePath(pagePath);
+    this.pathHeap = getAbsolutePath(heapPath);
 
-    this.walPagePath = getAbsolutePath(pagePath + ".wal");
-    this.walHeapPath = getAbsolutePath(heapPath + ".wal");
+    this.walPagePath = getAbsolutePath(pagePath + ".patch");
+    this.walHeapPath = getAbsolutePath(heapPath + ".patch");
 
     this.pageSize = pageSize;
 
@@ -171,24 +171,25 @@ export default class FilePatchRecord {
 
 
     buf = Buffer.allocUnsafe(1024 * 1024 * 10);
-    for (const [heapOffset, { offsetWal: walOffset, sizeCurrent: currentSize, sizeMax: maxSize }] of this.heapSections) {
-      this.virtualReadWalHeap(buf, walOffset, currentSize);
-      fs.writeSync(this.fdHeap, buf, 0, currentSize, heapOffset);
+    for (const [offsetHeap, { offsetWal, sizeCurrent, sizeMax }] of this.heapSections) {
+      this.virtualReadWalHeap(buf, offsetWal, sizeCurrent);
+      fs.writeSync(this.fdHeap, buf, 0, sizeMax, offsetHeap);
     }
 
     this.reset();
   }
 
   reset() {
-    if (!fs.existsSync(this.heapPath)) {
-      fs.writeFileSync(this.heapPath, Buffer.alloc(0));
+    if (!fs.existsSync(this.pathHeap)) {
+      fs.writeFileSync(this.pathHeap, Buffer.alloc(0));
     }
-    if (!fs.existsSync(this.pagePath)) {
-      fs.writeFileSync(this.pagePath, Buffer.alloc(0));
+    if (!fs.existsSync(this.pathPage)) {
+      fs.writeFileSync(this.pathPage, Buffer.alloc(0));
     }
 
-    this.fdPage = fs.openSync(this.pagePath, "r+");
-    this.fdHeap = fs.openSync(this.heapPath, "r+");
+    let stat = fs.statSync(this.pathHeap);
+    this.fdPage = fs.openSync(this.pathPage, "r+");
+    this.fdHeap = fs.openSync(this.pathHeap, "r+");
 
     // fs.writeFileSync(this.walHeapPath, Buffer.alloc(0));
     // fs.writeFileSync(this.walPagePath, Buffer.alloc(0));
@@ -199,6 +200,8 @@ export default class FilePatchRecord {
 
     this.pageWalOffsetMap = new Map();
     this.currentPageWalWritePos = 0;
+    this.currentHeapWritePos = stat.size;
+    this.currentHeapWalWritePos = 0;
 
     this.heapSections = new Map();
   }

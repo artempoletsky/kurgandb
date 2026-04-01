@@ -36,7 +36,7 @@ const files = fs.readdirSync("./__tests__");
 // currentFile = "IndexOneNumber.test.ts";
 // currentFile = "IndexOneString.test.ts";
 // currentFile = "IndexManyNumber.test.ts"
-currentFile = "WALRecord.test.ts"
+currentFile = "FilePatchRecord.test.ts"
 
 const runStressTests = false;
 
