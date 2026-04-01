@@ -19,6 +19,8 @@ describe("FilePatchRecord", () => {
         pathPage: cwd + "page.bin",
         sizePage: 0x2000,
         pathHeap: cwd + "heap.bin",
+        // memoryBufferSizeHeap: 0,
+        // memoryBufferSizePage: 0,
     });
 
 
@@ -60,7 +62,7 @@ describe("FilePatchRecord", () => {
 
         readBuff = r.readHeap(0xFFFD, Buffer.byteLength(data));
 
-        expect(readBuff.toString()).toBe(data);
+        expect(readBuff.toString()).toBe("heap test2");
 
         r.commit();
         readBuff = r.readHeap(0xFFFD, Buffer.byteLength(data));

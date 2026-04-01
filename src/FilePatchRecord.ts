@@ -6,7 +6,7 @@ function getAbsolutePath(relative: string) {
 }
 
 const HEAP_TOMBSTONE = 0xFFFFFFFF;
-const MEMORY_BUFFER_SIZE = 1024 * 1024 * 10;
+const DEFAULT_MEMORY_BUFFER_SIZE = 1024 * 1024 * 10;
 
 type HeapSection = {
   sizeCurrent: number;
@@ -36,30 +36,38 @@ export default class FilePatchRecord {
   protected heapSections!: Map<number, HeapSection>;
 
 
-  protected memoryHeap: Buffer | null;
-  protected memoryPage: Buffer | null;
+  protected memoryHeap: Buffer | null = null;
+  protected memoryPage: Buffer | null = null;
 
-  protected memoryBufferSizePage: number;
-  protected memoryBufferSizeHeap: number;
+  protected memoryBufferSizePage: number = 0;
+  protected memoryBufferSizeHeap: number = 0;
 
 
 
   constructor({
-    pathPage: pagePath,
-    pathHeap: heapPath,
-    sizePage: pageSize
+    pathPage,
+    pathHeap,
+    sizePage,
+    memoryBufferSizePage,
+    memoryBufferSizeHeap,
   }: {
     pathPage: string;
     pathHeap: string;
     sizePage: number;
+    memoryBufferSizePage?: number;
+    memoryBufferSizeHeap?: number;
   }) {
-    this.pathPage = getAbsolutePath(pagePath);
-    this.pathHeap = getAbsolutePath(heapPath);
+    this.pathPage = getAbsolutePath(pathPage);
+    this.pathHeap = getAbsolutePath(pathHeap);
 
-    this.pathPatchPage = getAbsolutePath(pagePath + ".patch");
-    this.pathPatchHeap = getAbsolutePath(heapPath + ".patch");
+    this.pathPatchPage = getAbsolutePath(pathPage + ".patch");
+    this.pathPatchHeap = getAbsolutePath(pathHeap + ".patch");
 
-    this.pageSize = pageSize;
+    this.pageSize = sizePage;
+
+
+    this.memoryBufferSizeHeap = memoryBufferSizeHeap ?? DEFAULT_MEMORY_BUFFER_SIZE;
+    this.memoryBufferSizePage = memoryBufferSizePage ?? DEFAULT_MEMORY_BUFFER_SIZE;
 
     this.reset();
   }
@@ -102,7 +110,7 @@ export default class FilePatchRecord {
       throw "wrong byteLength";
     }
 
-    this.virtualReadWalPage(buf, offsetWal);
+    this.virtualReadWalHeap(buf, offsetWal, byteLength);
 
     return buf;
   }
@@ -166,6 +174,11 @@ export default class FilePatchRecord {
     this.spitToDiskIfPage(buf.byteLength + walOffset);
 
     if (!this.memoryPage) {
+      if (buf.byteLength < this.pageSize) {
+        let paddedBuf = Buffer.alloc(this.pageSize);
+        buf.copy(paddedBuf, 0, 0, buf.byteLength);
+        buf = paddedBuf;
+      }
       fs.writeSync(this.fdPatchPage, buf, 0, this.pageSize, walOffset);
       return;
     }
@@ -236,8 +249,6 @@ export default class FilePatchRecord {
 
     this.heapSections = new Map();
 
-    this.memoryBufferSizeHeap = MEMORY_BUFFER_SIZE;
-    this.memoryBufferSizePage = MEMORY_BUFFER_SIZE;
 
     this.memoryHeap = Buffer.allocUnsafe(this.memoryBufferSizeHeap);
     this.memoryPage = Buffer.allocUnsafe(this.memoryBufferSizePage);
@@ -251,7 +262,8 @@ export default class FilePatchRecord {
       return;
     }
     this.fdPatchPage = fs.openSync(this.pathPatchPage, "w+");
-    fs.writeSync(this.fdPatchPage, this.memoryPage, 0, this.currentWritePosPagePatch, 0);
+    this.writeWithPadding(this.memoryPage, this.fdPatchPage, 0, this.currentWritePosPagePatch);
+
     this.memoryPage = null;
   }
 
@@ -263,7 +275,17 @@ export default class FilePatchRecord {
       return;
     }
     this.fdPatchHeap = fs.openSync(this.pathPatchHeap, "w+");
-    fs.writeSync(this.fdPatchHeap, this.memoryHeap, 0, this.currentWritePosHeapPatch, 0);
+    this.writeWithPadding(this.memoryHeap, this.fdPatchHeap, 0, this.currentWritePosHeapPatch);
     this.memoryHeap = null;
+  }
+
+  writeWithPadding(buf: Buffer, fd: number, offset: number, minBufferSize: number) {
+    let bufferSize = Math.max(buf.byteLength, minBufferSize);
+    if (buf.byteLength < minBufferSize) {
+      let paddedBuf = Buffer.alloc(minBufferSize);
+      buf.copy(paddedBuf, 0, 0, buf.byteLength);
+      buf = paddedBuf;
+    }
+    fs.writeSync(fd, buf, 0, bufferSize, offset);
   }
 }
