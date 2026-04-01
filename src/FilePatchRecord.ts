@@ -6,6 +6,7 @@ function getAbsolutePath(relative: string) {
 }
 
 const HEAP_TOMBSTONE = 0xFFFFFFFF;
+const MEMORY_BUFFER_SIZE = 1024 * 1024 * 10;
 
 type HeapSection = {
   sizeCurrent: number;
@@ -18,21 +19,30 @@ type HeapSection = {
 export default class FilePatchRecord {
   public readonly pathPage: string;
   public readonly pathHeap: string;
-  public readonly walPagePath: string;
-  public readonly walHeapPath: string;
+  public readonly pathPatchPage: string;
+  public readonly pathPatchHeap: string;
   public readonly pageSize: number;
 
   protected fdPage!: number;
   protected fdHeap!: number;
-  protected fdWalPage!: number;
-  protected fdWalHeap!: number;
+  protected fdPatchPage!: number;
+  protected fdPatchHeap!: number;
 
-  protected pageWalOffsetMap!: Map<number, number>;
-  protected currentPageWalWritePos: number = 0;
-  protected currentHeapWalWritePos: number = 0;
+  protected pagePatchOffsetMap!: Map<number, number>;
+  protected currentWritePosPagePatch: number = 0;
+  protected currentWritePosHeapPatch: number = 0;
 
-  protected currentHeapWritePos: number = 0;
+  protected currentWritePosHeap: number = 0;
   protected heapSections!: Map<number, HeapSection>;
+
+
+  protected memoryHeap: Buffer | null;
+  protected memoryPage: Buffer | null;
+
+  protected memoryBufferSizePage: number;
+  protected memoryBufferSizeHeap: number;
+
+
 
   constructor({
     pathPage: pagePath,
@@ -46,8 +56,8 @@ export default class FilePatchRecord {
     this.pathPage = getAbsolutePath(pagePath);
     this.pathHeap = getAbsolutePath(heapPath);
 
-    this.walPagePath = getAbsolutePath(pagePath + ".patch");
-    this.walHeapPath = getAbsolutePath(heapPath + ".patch");
+    this.pathPatchPage = getAbsolutePath(pagePath + ".patch");
+    this.pathPatchHeap = getAbsolutePath(heapPath + ".patch");
 
     this.pageSize = pageSize;
 
@@ -55,24 +65,25 @@ export default class FilePatchRecord {
   }
 
   writePage(page: number, data: Buffer) {
-    let writePos = this.currentPageWalWritePos;
-    let isNew = !this.pageWalOffsetMap.has(page);
+    let writePos = this.currentWritePosPagePatch;
+    let isNew = !this.pagePatchOffsetMap.has(page);
     if (!isNew) {
-      writePos = this.pageWalOffsetMap.get(page)!;
+      writePos = this.pagePatchOffsetMap.get(page)!;
     }
 
-    fs.writeSync(this.fdWalPage, data, 0, data.byteLength, writePos);
+    this.virtualWriteWalPage(data, writePos)
 
     if (isNew) {
-      this.pageWalOffsetMap.set(page, writePos);
-      this.currentPageWalWritePos += this.pageSize;
+      this.pagePatchOffsetMap.set(page, writePos);
+      this.currentWritePosPagePatch += this.pageSize;
     }
   }
 
   readPage(page: number, buf: Buffer) {
-    let isTouched = this.pageWalOffsetMap.has(page);
+    let isTouched = this.pagePatchOffsetMap.has(page);
     if (isTouched) {
-      fs.readSync(this.fdWalPage, buf, 0, this.pageSize, this.pageWalOffsetMap.get(page)!);
+      // fs.readSync(this.fdPatchPage, buf, 0, this.pageSize, this.pagePatchOffsetMap.get(page)!);
+      this.virtualReadWalPage(buf, this.pagePatchOffsetMap.get(page)!);
     } else {
       fs.readSync(this.fdPage, buf, 0, this.pageSize, page * this.pageSize);
     }
@@ -91,7 +102,8 @@ export default class FilePatchRecord {
       throw "wrong byteLength";
     }
 
-    fs.readSync(this.fdWalHeap, buf, 0, byteLength, offsetWal);
+    this.virtualReadWalPage(buf, offsetWal);
+
     return buf;
   }
 
@@ -104,7 +116,7 @@ export default class FilePatchRecord {
 
 
     if (offsetHeap === undefined) {
-      offsetHeap = this.currentHeapWritePos;
+      offsetHeap = this.currentWritePosHeap;
     }
 
     let isTouched = this.heapSections.has(offsetHeap);
@@ -118,21 +130,21 @@ export default class FilePatchRecord {
       return { ...section };
     }
 
-    let isNew = offsetHeap === this.currentHeapWritePos;
+    let isNew = offsetHeap === this.currentWritePosHeap;
 
 
     let section: HeapSection = {
       sizeMax,
       sizeCurrent: data.byteLength,
       offsetHeap,
-      offsetWal: this.currentHeapWalWritePos,
+      offsetWal: this.currentWritePosHeapPatch,
     };
     this.heapSections.set(offsetHeap, section);
 
-    this.currentHeapWalWritePos += sizeMax;
+    this.currentWritePosHeapPatch += sizeMax;
 
     if (isNew) {
-      this.currentHeapWritePos += sizeMax;
+      this.currentWritePosHeap += sizeMax;
     }
 
     this.virtualWriteWalHeap(data, section.offsetWal);
@@ -141,30 +153,49 @@ export default class FilePatchRecord {
   }
 
   virtualReadWalPage(buf: Buffer, walOffset: number) {
-    fs.readSync(this.fdWalPage, buf, 0, this.pageSize, walOffset);
-
-    //todo implement reading from memory
+    if (this.memoryPage) {
+      this.memoryPage.copy(buf, 0, walOffset, this.pageSize);
+      return;
+    }
+    fs.readSync(this.fdPatchPage, buf, 0, this.pageSize, walOffset);
   }
 
   virtualWriteWalPage(buf: Buffer, walOffset: number) {
-    fs.writeSync(this.fdWalPage, buf, 0, this.pageSize, walOffset);
 
-    //todo implement reading from memory
+
+    this.spitToDiskIfPage(buf.byteLength + walOffset);
+
+    if (!this.memoryPage) {
+      fs.writeSync(this.fdPatchPage, buf, 0, this.pageSize, walOffset);
+      return;
+    }
+
+    buf.copy(this.memoryPage, walOffset, 0, buf.byteLength);
   }
 
   virtualReadWalHeap(buf: Buffer, walOffset: number, currentSize: number) {
-    fs.readSync(this.fdWalHeap, buf, 0, currentSize, walOffset);
-    //todo implement reading from memory
+    if (this.memoryHeap) {
+      this.memoryHeap.copy(buf, 0, walOffset, currentSize);
+      return;
+    }
+    fs.readSync(this.fdPatchHeap, buf, 0, currentSize, walOffset);
   }
 
   virtualWriteWalHeap(buf: Buffer, walOffset: number) {
-    fs.writeSync(this.fdWalHeap, buf, 0, buf.byteLength, walOffset);
-    //todo implement reading from memory
+
+    this.spitToDiskIfHeap(buf.byteLength + walOffset);
+
+    if (!this.memoryHeap) {
+      fs.writeSync(this.fdPatchHeap, buf, 0, buf.byteLength, walOffset);
+      return;
+    }
+
+    buf.copy(this.memoryHeap, walOffset, 0, buf.byteLength);
   }
 
   commit() {
     let buf = Buffer.allocUnsafe(this.pageSize);
-    for (const [pageNumber, walOffset] of this.pageWalOffsetMap) {
+    for (const [pageNumber, walOffset] of this.pagePatchOffsetMap) {
       this.virtualReadWalPage(buf, walOffset);
       fs.writeSync(this.fdPage, buf, 0, this.pageSize, pageNumber * this.pageSize);
     }
@@ -195,14 +226,44 @@ export default class FilePatchRecord {
     // fs.writeFileSync(this.walPagePath, Buffer.alloc(0));
 
 
-    this.fdWalPage = fs.openSync(this.walPagePath, "w+");
-    this.fdWalHeap = fs.openSync(this.walHeapPath, "w+");
+    // this.fdPatchPage = fs.openSync(this.pathPatchPage, "w+");
+    // this.fdPatchHeap = fs.openSync(this.pathPatchHeap, "w+");
 
-    this.pageWalOffsetMap = new Map();
-    this.currentPageWalWritePos = 0;
-    this.currentHeapWritePos = stat.size;
-    this.currentHeapWalWritePos = 0;
+    this.pagePatchOffsetMap = new Map();
+    this.currentWritePosPagePatch = 0;
+    this.currentWritePosHeap = stat.size;
+    this.currentWritePosHeapPatch = 0;
 
     this.heapSections = new Map();
+
+    this.memoryBufferSizeHeap = MEMORY_BUFFER_SIZE;
+    this.memoryBufferSizePage = MEMORY_BUFFER_SIZE;
+
+    this.memoryHeap = Buffer.allocUnsafe(this.memoryBufferSizeHeap);
+    this.memoryPage = Buffer.allocUnsafe(this.memoryBufferSizePage);
+  }
+
+  spitToDiskIfPage(lastByte: number) {
+    if (!this.memoryPage) { //is already working on the disk
+      return;
+    }
+    if (lastByte < this.memoryBufferSizePage) { //the data still fits in the memory
+      return;
+    }
+    this.fdPatchPage = fs.openSync(this.pathPatchPage, "w+");
+    fs.writeSync(this.fdPatchPage, this.memoryPage, 0, this.currentWritePosPagePatch, 0);
+    this.memoryPage = null;
+  }
+
+  spitToDiskIfHeap(lastByte: number) {
+    if (!this.memoryHeap) { //is already working on the disk
+      return;
+    }
+    if (lastByte < this.memoryBufferSizeHeap) { //the data still fits in the memory
+      return;
+    }
+    this.fdPatchHeap = fs.openSync(this.pathPatchHeap, "w+");
+    fs.writeSync(this.fdPatchHeap, this.memoryHeap, 0, this.currentWritePosHeapPatch, 0);
+    this.memoryHeap = null;
   }
 }

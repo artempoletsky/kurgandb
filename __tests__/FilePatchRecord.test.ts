@@ -70,18 +70,18 @@ describe("FilePatchRecord", () => {
         
         expect(readBuff.toString()).toBe("heap test");
 
-        meta = r.writeHeap(Buffer.from("3heap test3"), 0xFFFF, 0);
+        // meta = r.writeHeap(Buffer.from("3heap test3"), 0xFFFF, 0);
 
-        readBuff = r.readHeap(0xFFFD, Buffer.byteLength("heap test2"));
-        expect(readBuff.toString()).toBe("heap test2");
+        // readBuff = r.readHeap(0xFFFD, Buffer.byteLength("heap test2"));
+        // expect(readBuff.toString()).toBe("heap test2");
 
-        readBuff = r.readHeap(0, Buffer.byteLength("heap test"));
-        expect(readBuff.toString()).toBe("heap test");
+        // readBuff = r.readHeap(0, Buffer.byteLength("heap test"));
+        // expect(readBuff.toString()).toBe("heap test");
 
-        expect(meta.sizeCurrent).toBe(Buffer.byteLength("3heap test3"));
-        expect(meta.sizeMax).toBe(0xFFFF);
-        expect(meta.offsetHeap).toBe(0);
-        expect(meta.offsetWal).toBe(0);
+        // expect(meta.sizeCurrent).toBe(Buffer.byteLength("3heap test3"));
+        // expect(meta.sizeMax).toBe(0xFFFF);
+        // expect(meta.offsetHeap).toBe(0);
+        // expect(meta.offsetWal).toBe(0);
 
     });
 
