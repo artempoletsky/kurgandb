@@ -6,6 +6,7 @@ import TableUtils from "./table_utilities";
 import { IndexOneNumber } from "./IndexOneNumber";
 import { IndexOneString } from "./IndexOneString";
 import FilePatchRecord from "./FilePatchRecord";
+import StringsSaver from "./StringsSaver";
 
 
 type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
@@ -88,13 +89,15 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
   protected _primaryKeyIndex: idT extends string ? IndexOneString : IndexOneNumber;
   protected _idIndex: number;
 
-  public readonly fpr: FilePatchRecord;
+  public readonly _stringsSaver: StringsSaver;
+
+  public readonly _fpr: FilePatchRecord;
 
   public get $id(): idT {
     return this._id;
   }
 
- 
+
 
   $readPage(page: number) {
     // if (this._cache.has(page)) {
@@ -103,20 +106,14 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
     //     this._cache.set(page, buf);
     // }
-    this.fpr.readPage(page, this._bufferPage);
+    this._fpr.readPage(page, this._bufferPage);
 
 
 
     this._stringsCache = [];
     this._jsonCache = [];
 
-    this._stringsByteLengths = new Uint8Array(this._bufferPage.buffer, this._stringsMetaStart, this._stringsNum);
-    this._stringsOffsets = new Uint16Array(this._stringsNum);
-    let currentOffset = this._stringsTailStart;
-    for (let i = 0; i < this._stringsNum; i++) {
-      this._stringsOffsets[i] = currentOffset;
-      currentOffset += this._stringsByteLengths[i];
-    }
+    this._stringsSaver.readPage();
 
     this._numbers = new Float64Array(this._bufferPage.buffer, this._numbersStart, this._numbersNum);
     this._datesNumeric = new Float64Array(this._bufferPage.buffer, this._datesStart, this._datesNum);
@@ -146,7 +143,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
     return this._stringsCache[index];
   }
- 
+
   $getFlag(i: number): number {
     return (this._bufferPage[0]! & (1 << i & 7));
   }
@@ -183,7 +180,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
   constructor(table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
     this._bufferPage = Buffer.allocUnsafe(this._pageSize);
-    this.fpr = new FilePatchRecord({
+    this._fpr = new FilePatchRecord({
       pathPage: utils.getPagesFilePath(),
       pathHeap: utils.getHeapFilePath(),
       sizePage: this._pageSize,
@@ -291,7 +288,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     if (type == "number") {
       this._numbers![indexField] = value;
     } else if (type == "string") {
-      this.$setString(indexField, value);
+      this._stringsSaver.setString(indexField, value);
     } else if (type == "date") {
       // this.$setString(indexField, value);
       if (typeof value == "number") {
@@ -392,7 +389,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
       this._datesObj[fieldName] = new Date(this._datesNumeric![fieldIndex]);
       return this._datesObj[fieldName];
     } else if (type == "string") {
-      return this.$getString(fieldIndex);
+      return this._stringsSaver.getString(fieldIndex);
     }
 
     throw "not implemented";
@@ -456,7 +453,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
       } else if (type == "number") {
         this._numbers[i] = value;
       } else if (type == "string") {
-        this.$setString(i, value);
+        this._stringsSaver.setString(i, value);
       } else {
         throw "not implemented";
       }
@@ -464,7 +461,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
   }
 
   public $serialize(): Buffer {
-    this.$writeCacheStringsToBuffer();
+    this._stringsSaver.save();
     return this._bufferPage;
   }
 

@@ -1,57 +1,84 @@
 import FilePatchRecord from "./FilePatchRecord";
 
-
+const MIN_HEAP_SIZE = 1024 * 4;
 export default class StringsSaver {
   protected _stringsMetaStart: number;
   protected _stringsTailStart: number;
-  protected _stringsNum: number;
-  protected _stringsByteLengths!: Uint8Array;
-  protected _stringsOffsets!: Uint16Array;
-  protected _stringsCache!: string[];
+  protected numberOfStrings: number;
+  protected byteLengthsPage!: Uint8Array;
+  protected offsetsPage!: Uint16Array;
+  protected cache!: string[];
+  protected page: Buffer;
+  protected heapPositions!: Uint32Array;
+  protected heapLenghts!: Uint32Array;
+  protected heapMaxLengths!: Uint32Array;
+  // protected heapFlags!: Map<number, boolean>;
 
-  constructor({
+  protected fpr!: FilePatchRecord;
 
-  }: {
+  constructor(options: {
     bufferPage: Buffer;
     stringsMetaStart: number;
     stringsTailStart: number;
     stringsNum: number;
     fpr: FilePatchRecord;
   }) {
+    this.page = options.bufferPage;
+    this.numberOfStrings = options.stringsNum;
+    this._stringsMetaStart = options.stringsMetaStart;
+    this._stringsTailStart = options.stringsTailStart;
   }
 
 
-  getString(index: number) {
-    if (this._stringsCache[index] !== undefined) return this._stringsCache[index];
+  readPage() {
+    this.byteLengthsPage = new Uint8Array(this.page.buffer, this._stringsMetaStart, this.numberOfStrings);
+    this.offsetsPage = new Uint16Array(this.numberOfStrings);
+    let currentOffset = this._stringsTailStart;
+    this.heapPositions = new Uint32Array(this.numberOfStrings);
+    this.heapLenghts = new Uint32Array(this.numberOfStrings);
 
-    let len = this._stringsByteLengths[index];
-    let start = this._stringsOffsets[index];
+    for (let i = 0; i < this.numberOfStrings; i++) {
+      let len = this.byteLengthsPage[i];
+      if (len = 0xff) {
+        len = 12;
+      }
+      this.offsetsPage[i] = currentOffset;
+      currentOffset += this.byteLengthsPage[i];
+    }
+  }
+
+  getString(index: number) {
+    if (this.cache[index] !== undefined) return this.cache[index];
+
+    let len = this.byteLengthsPage[index];
+    let start = this.offsetsPage[index];
     let result: string;
     if (len === 0xFF) {
-      const heapAddr = this._bufferPage.readUInt32LE(start);
-      len = this._bufferPage.readUInt32LE(start + 4);
+      const heapAddr = this.page.readUInt32LE(start);
+      len = this.page.readUInt32LE(start + 4);
       result = this.fpr.readHeap(heapAddr, len).toString("utf-8");
     } else {
-      result = this._bufferPage.subarray(start, start + len).toString("utf-8");
+      result = this.page.subarray(start, start + len).toString("utf-8");
     }
 
-    this._stringsCache[index] = result;
+    this.cache[index] = result;
 
     return result;
   }
 
 
   setString(index: number, string: string) {
-    let prev = this._stringsCache[index];
+    let prev = this.cache[index];
     if (prev == string) return;
-    let byteLength = Buffer.byteLength(string, "utf-8");
-    if (byteLength > 0xFF) {
-      throw "implement separate file field or the heap";
-    }
-    this._needsStringsTailRebuilding = true;
+    this.cache[index] = string;
+  }
 
-    this._stringsCache[index] = string;
-    this._stringsByteLengths[index] = byteLength;
+  save() {
+    for (let i = 0; i < this.numberOfStrings; i++) {
+      let cached = this.cache[i];
+      let len = 
+
+    }
   }
 
   buildStringsTail() {
@@ -59,8 +86,8 @@ export default class StringsSaver {
 
     const stringsOffsets = [];
     let writePosition = 0;
-    for (let i = 0; i < this._stringsNum; i++) {
-      let str = this._stringsCache[i];
+    for (let i = 0; i < this.numberOfStrings; i++) {
+      let str = this.cache[i];
       if (str === undefined) {
 
       }
@@ -68,7 +95,7 @@ export default class StringsSaver {
       if (strByteLen > 0xFF) {
         throw "not implemented";
       }
-      this._bufferPage[this._stringsMetaStart + i * 3] = strByteLen;
+      this.page[this._stringsMetaStart + i * 3] = strByteLen;
       stringsOffsets.push(writePosition);
       tail += str;
       writePosition += strByteLen;
@@ -82,7 +109,7 @@ export default class StringsSaver {
       if (strByteLen > 0xFFFF) {
         throw "not implemented";
       }
-      this._bufferPage[this._stringsMetaStart + i * 3] = strByteLen;
+      this.page[this._stringsMetaStart + i * 3] = strByteLen;
       stringsOffsets.push(writePosition);
       tail += str;
       writePosition += strByteLen;
@@ -90,7 +117,7 @@ export default class StringsSaver {
 
     let tailStart = this._pageSize - writePosition;
     for (let i = 0; i < this._stringNum; i++) {
-      this._bufferPage.writeInt16LE(tailStart + stringsOffsets[i], this._stringsMetaStart + i * 2 + 1);
+      this.page.writeInt16LE(tailStart + stringsOffsets[i], this._stringsMetaStart + i * 2 + 1);
     }
 
 
