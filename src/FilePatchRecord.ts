@@ -21,7 +21,7 @@ export default class FilePatchRecord {
   public readonly pathHeap: string;
   public readonly pathPatchPage: string;
   public readonly pathPatchHeap: string;
-  public readonly pageSize: number;
+  public readonly sizePage: number;
 
   protected fdPage!: number;
   protected fdHeap!: number;
@@ -63,7 +63,7 @@ export default class FilePatchRecord {
     this.pathPatchPage = getAbsolutePath(pathPage + ".patch");
     this.pathPatchHeap = getAbsolutePath(pathHeap + ".patch");
 
-    this.pageSize = sizePage;
+    this.sizePage = sizePage;
 
 
     this.memoryBufferSizeHeap = memoryBufferSizeHeap ?? DEFAULT_MEMORY_BUFFER_SIZE;
@@ -83,7 +83,7 @@ export default class FilePatchRecord {
 
     if (isNew) {
       this.pagePatchOffsetMap.set(page, writePos);
-      this.currentWritePosPagePatch += this.pageSize;
+      this.currentWritePosPagePatch += this.sizePage;
     }
   }
 
@@ -93,7 +93,7 @@ export default class FilePatchRecord {
       // fs.readSync(this.fdPatchPage, buf, 0, this.pageSize, this.pagePatchOffsetMap.get(page)!);
       this.virtualReadWalPage(buf, this.pagePatchOffsetMap.get(page)!);
     } else {
-      fs.readSync(this.fdPage, buf, 0, this.pageSize, page * this.pageSize);
+      fs.readSync(this.fdPage, buf, 0, this.sizePage, page * this.sizePage);
     }
 
   }
@@ -162,10 +162,10 @@ export default class FilePatchRecord {
 
   virtualReadWalPage(buf: Buffer, walOffset: number) {
     if (this.memoryPage) {
-      this.memoryPage.copy(buf, 0, walOffset, this.pageSize);
+      this.memoryPage.copy(buf, 0, walOffset, this.sizePage);
       return;
     }
-    fs.readSync(this.fdPatchPage, buf, 0, this.pageSize, walOffset);
+    fs.readSync(this.fdPatchPage, buf, 0, this.sizePage, walOffset);
   }
 
   virtualWriteWalPage(buf: Buffer, walOffset: number) {
@@ -174,12 +174,12 @@ export default class FilePatchRecord {
     this.spitToDiskIfPage(buf.byteLength + walOffset);
 
     if (!this.memoryPage) {
-      if (buf.byteLength < this.pageSize) {
-        let paddedBuf = Buffer.alloc(this.pageSize);
+      if (buf.byteLength < this.sizePage) {
+        let paddedBuf = Buffer.alloc(this.sizePage);
         buf.copy(paddedBuf, 0, 0, buf.byteLength);
         buf = paddedBuf;
       }
-      fs.writeSync(this.fdPatchPage, buf, 0, this.pageSize, walOffset);
+      fs.writeSync(this.fdPatchPage, buf, 0, this.sizePage, walOffset);
       return;
     }
 
@@ -207,10 +207,10 @@ export default class FilePatchRecord {
   }
 
   commit() {
-    let buf = Buffer.allocUnsafe(this.pageSize);
+    let buf = Buffer.allocUnsafe(this.sizePage);
     for (const [pageNumber, walOffset] of this.pagePatchOffsetMap) {
       this.virtualReadWalPage(buf, walOffset);
-      fs.writeSync(this.fdPage, buf, 0, this.pageSize, pageNumber * this.pageSize);
+      fs.writeSync(this.fdPage, buf, 0, this.sizePage, pageNumber * this.sizePage);
     }
 
 

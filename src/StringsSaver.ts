@@ -1,3 +1,4 @@
+import { th } from "@faker-js/faker";
 import FilePatchRecord from "./FilePatchRecord";
 
 const MIN_HEAP_SIZE = 1024 * 4;
@@ -5,7 +6,7 @@ export default class StringsSaver {
   protected _stringsMetaStart: number;
   protected _stringsTailStart: number;
   protected numberOfStrings: number;
-  protected byteLengthsPage!: Uint8Array;
+  protected lengthsPage!: Uint8Array;
   protected offsetsPage!: Uint16Array;
   protected cache!: string[];
   protected page: Buffer;
@@ -27,30 +28,32 @@ export default class StringsSaver {
     this.numberOfStrings = options.stringsNum;
     this._stringsMetaStart = options.stringsMetaStart;
     this._stringsTailStart = options.stringsTailStart;
+    this.cache = new Array(this.numberOfStrings);
+    this.fpr = options.fpr;
   }
 
 
   readPage() {
-    this.byteLengthsPage = new Uint8Array(this.page.buffer, this._stringsMetaStart, this.numberOfStrings);
+    this.lengthsPage = new Uint8Array(this.page.buffer, this._stringsMetaStart, this.numberOfStrings);
     this.offsetsPage = new Uint16Array(this.numberOfStrings);
     let currentOffset = this._stringsTailStart;
     this.heapPositions = new Uint32Array(this.numberOfStrings);
     this.heapLenghts = new Uint32Array(this.numberOfStrings);
 
     for (let i = 0; i < this.numberOfStrings; i++) {
-      let len = this.byteLengthsPage[i];
+      let len = this.lengthsPage[i];
       if (len = 0xff) {
         len = 12;
       }
       this.offsetsPage[i] = currentOffset;
-      currentOffset += this.byteLengthsPage[i];
+      currentOffset += this.lengthsPage[i];
     }
   }
 
   getString(index: number) {
     if (this.cache[index] !== undefined) return this.cache[index];
 
-    let len = this.byteLengthsPage[index];
+    let len = this.lengthsPage[index];
     let start = this.offsetsPage[index];
     let result: string;
     if (len === 0xFF) {
@@ -74,54 +77,53 @@ export default class StringsSaver {
   }
 
   save() {
+    let writePos = this._stringsTailStart;
+    let readPos = this._stringsTailStart;
+    let tempBuff = Buffer.allocUnsafe(this.page.byteLength - this._stringsTailStart);
     for (let i = 0; i < this.numberOfStrings; i++) {
       let cached = this.cache[i];
-      let len = 
+      let oldLen = this.lengthsPage[i];
+      let newLen = oldLen;
 
-    }
-  }
+      if (cached === undefined) {
+        if (oldLen === 0xFF) { // heap string has fixed length of 12 bytes [offset:4][length:4][maxLength:4]
+          newLen = 12;
+        }
+        this.page.copy(tempBuff, writePos, readPos, readPos + newLen);
+      } else {
+        newLen = Buffer.byteLength(cached, "utf-8");
+        if (newLen >= 0xFF) {
+          this.lengthsPage[i] = 0xFF;
+          const oldHeapOffset = this.page.readUInt32LE(readPos);
+          // const oldHeapLength = this.page.readUInt32LE(readPos + 4);
+          const oldHeapMaxLength = this.page.readUInt32LE(readPos + 8);
 
-  buildStringsTail() {
-    let tail = "";
-
-    const stringsOffsets = [];
-    let writePosition = 0;
-    for (let i = 0; i < this.numberOfStrings; i++) {
-      let str = this.cache[i];
-      if (str === undefined) {
-
+          if (oldLen === 0xFF && oldHeapMaxLength >= newLen) { // if it was already a heap string, we can reuse the same heap space if it fits
+            // if (oldHeapMaxLength >= newLen) { // it fits
+            this.fpr.writeHeap(Buffer.from(cached, "utf-8"), oldHeapMaxLength, oldHeapOffset);
+            tempBuff.writeUInt32LE(oldHeapOffset, writePos);
+            tempBuff.writeUInt32LE(newLen, writePos + 4);
+            tempBuff.writeUInt32LE(oldHeapMaxLength, writePos + 8);
+          } else { //neded to allocate new heap space
+            const heapSection = this.fpr.writeHeap(Buffer.from(cached, "utf-8"), Math.max(newLen * 1.5, MIN_HEAP_SIZE));
+            tempBuff.writeUInt32LE(heapSection.offsetHeap, writePos);
+            tempBuff.writeUInt32LE(heapSection.sizeCurrent, writePos + 4);
+            tempBuff.writeUInt32LE(heapSection.sizeMax, writePos + 8);
+          }
+          if (oldLen === 0xFF) { // if it was a heap the next string is after 12 bytes
+            oldLen = 12;
+          }
+          newLen = 12;
+        } else {
+          this.lengthsPage[i] = newLen;
+          tempBuff.write(cached, writePos, "utf-8");
+        }
       }
-      const strByteLen = Buffer.byteLength(str, "utf-8");
-      if (strByteLen > 0xFF) {
-        throw "not implemented";
-      }
-      this.page[this._stringsMetaStart + i * 3] = strByteLen;
-      stringsOffsets.push(writePosition);
-      tail += str;
-      writePosition += strByteLen;
+
+      writePos += newLen;
+      readPos += oldLen;
+
     }
-
-    const JSONOffsets = [];
-
-    for (let i = 0; i < this._jsonLen; i++) {
-      const str = this.$getJSON(i);
-      const strByteLen = Buffer.byteLength(str, "utf-8");
-      if (strByteLen > 0xFFFF) {
-        throw "not implemented";
-      }
-      this.page[this._stringsMetaStart + i * 3] = strByteLen;
-      stringsOffsets.push(writePosition);
-      tail += str;
-      writePosition += strByteLen;
-    }
-
-    let tailStart = this._pageSize - writePosition;
-    for (let i = 0; i < this._stringNum; i++) {
-      this.page.writeInt16LE(tailStart + stringsOffsets[i], this._stringsMetaStart + i * 2 + 1);
-    }
-
-
-    return tail;
   }
 
 }

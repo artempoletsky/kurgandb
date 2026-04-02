@@ -28,7 +28,7 @@ describe("FilePatchRecord", () => {
 
         r.writePage(5, Buffer.from("test"));
 
-        let readBuff = Buffer.allocUnsafe(r.pageSize);
+        let readBuff = Buffer.allocUnsafe(r.sizePage);
         r.readPage(5, readBuff);
         expect(readBuff.toString().startsWith("test")).toBe(true);
         r.commit();
