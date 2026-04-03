@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import TableUtils from "./table_utilities";
+import { DataBase } from "./db";
 
 
 const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
@@ -18,7 +19,7 @@ export class IndexOneNumber {
       path = a1;
     }
 
-    this.path = path;
+    this.path = DataBase.workingDirectory + "/" + path;
     this.reset();
   }
 

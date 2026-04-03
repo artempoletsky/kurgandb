@@ -48,6 +48,7 @@ export default class StringsSaver {
       this.offsetsPage[i] = currentOffset;
       currentOffset += this.lengthsPage[i];
     }
+    this.cache = new Array(this.numberOfStrings);
   }
 
   getString(index: number) {

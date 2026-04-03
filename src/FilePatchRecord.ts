@@ -1,8 +1,9 @@
 
 import fs from "fs";
+import { DataBase } from "./db";
 
-function getAbsolutePath(relative: string) {
-  return process.cwd() + relative;
+function getAbsolutePath(relative: string) {  
+  return DataBase.workingDirectory + "/" + relative;
 }
 
 const HEAP_TOMBSTONE = 0xFFFFFFFF;

@@ -38,6 +38,7 @@ const files = fs.readdirSync("./__tests__");
 // currentFile = "IndexManyNumber.test.ts"
 // currentFile = "FilePatchRecord.test.ts"
 currentFile = "StringsSaver.test.ts";
+// currentFile = "ByteRecord_serialize.test.ts";
 
 const runStressTests = false;
 

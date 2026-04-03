@@ -10,11 +10,10 @@ import StringsSaver from "../src/StringsSaver";
 
 describe("StringsSaver", () => {
 
-  const cwd = "/kurgandb_data/_stringssavertest/"
+  const cwd = "/_stringssavertest/"
 
-  rimraf.sync(process.cwd() + cwd);
-  fs.mkdirSync(process.cwd() + cwd, { recursive: true });
-
+  rimraf.sync(process.cwd() + "/kurgandb_data" + cwd);
+  fs.mkdirSync(process.cwd() + "/kurgandb_data" + cwd, { recursive: true });
 
   let page = Buffer.alloc(0x2000);
   let fpr = new FilePatchRecord({

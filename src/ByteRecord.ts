@@ -76,8 +76,6 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
   protected _stringsOffsets!: Uint16Array;
   protected _stringsCache!: string[];
 
-  protected _jsonStart: number;
-  protected _jsonLen: number;
   protected _id!: idT;
 
   protected _jsonCache!: any[];
@@ -122,7 +120,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     if (this._keyType == "number") {
       this._id = this._numbers[this._idIndex] as any;
     } else {
-      this._id = this.$getString(this._idIndex) as any;
+      this._id = this._stringsSaver.getString(this._idIndex) as any;
     }
 
 
@@ -179,7 +177,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
 
   constructor(table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
-    this._bufferPage = Buffer.allocUnsafe(this._pageSize);
+    this._bufferPage = Buffer.alloc(this._pageSize);
     this._fpr = new FilePatchRecord({
       pathPage: utils.getPagesFilePath(),
       pathHeap: utils.getHeapFilePath(),
@@ -222,9 +220,19 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
     this._stringsTailStart = currentReadPos;
 
+    this._stringsSaver = new StringsSaver({
+      bufferPage: this._bufferPage,
+      fpr: this._fpr,
+      stringsMetaStart: this._stringsMetaStart,
+      stringsTailStart: this._stringsTailStart,
+      stringsNum: this._stringsNum,
+    });
+
 
     let primaryKeyType: "string" | "number" = table.scheme.fields[table.primaryKey] as any;
     this._keyType = primaryKeyType as any;
+
+    this._idIndex = table.fieldNameIndex[table.primaryKey];
     if (primaryKeyType == "string") {
       this._primaryKeyIndex = new IndexOneString(table.utils, table.primaryKey) as any;
     } else {
