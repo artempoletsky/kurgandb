@@ -3,8 +3,8 @@ import FilePatchRecord from "./FilePatchRecord";
 
 const MIN_HEAP_SIZE = 1024 * 4;
 export default class StringsSaver {
-  protected _stringsMetaStart: number;
-  protected _stringsTailStart: number;
+  protected metaStart: number;
+  protected tailStart: number;
   protected numberOfStrings: number;
   protected lengthsPage!: Uint8Array;
   protected offsetsPage!: Uint16Array;
@@ -26,24 +26,28 @@ export default class StringsSaver {
   }) {
     this.page = options.bufferPage;
     this.numberOfStrings = options.stringsNum;
-    this._stringsMetaStart = options.stringsMetaStart;
-    this._stringsTailStart = options.stringsTailStart;
+    this.metaStart = options.stringsMetaStart;
+    this.tailStart = options.stringsTailStart;
     this.cache = new Array(this.numberOfStrings);
     this.fpr = options.fpr;
   }
 
 
-  readPage() {
-    this.lengthsPage = new Uint8Array(this.page.buffer, this._stringsMetaStart, this.numberOfStrings);
+  readRow() {
+    this.lengthsPage = new Uint8Array(this.page.buffer, this.metaStart, this.numberOfStrings);
     this.offsetsPage = new Uint16Array(this.numberOfStrings);
-    let currentOffset = this._stringsTailStart;
+    let currentOffset = this.tailStart;
     this.heapPositions = new Uint32Array(this.numberOfStrings);
     this.heapLenghts = new Uint32Array(this.numberOfStrings);
+    this.heapMaxLengths = new Uint32Array(this.numberOfStrings);
 
     for (let i = 0; i < this.numberOfStrings; i++) {
       let len = this.lengthsPage[i];
       if (len = 0xff) {
         len = 12;
+        this.heapPositions[i] = this.page.readUInt32LE(currentOffset);
+        this.heapLenghts[i] = this.page.readUInt32LE(currentOffset + 4);
+        this.heapMaxLengths[i] = this.page.readUInt32LE(currentOffset + 8);
       }
       this.offsetsPage[i] = currentOffset;
       currentOffset += this.lengthsPage[i];
@@ -78,9 +82,9 @@ export default class StringsSaver {
   }
 
   save() {
-    let writePos = this._stringsTailStart;
-    let readPos = this._stringsTailStart;
-    let tempBuff = Buffer.allocUnsafe(this.page.byteLength - this._stringsTailStart);
+    let writePos = this.tailStart;
+    let readPos = this.tailStart;
+    let tempBuff = Buffer.allocUnsafe(this.page.byteLength - this.tailStart);
     for (let i = 0; i < this.numberOfStrings; i++) {
       let cached = this.cache[i];
       let oldLen = this.lengthsPage[i];

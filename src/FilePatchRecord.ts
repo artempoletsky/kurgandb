@@ -2,7 +2,9 @@
 import fs from "fs";
 import { DataBase } from "./db";
 
-function getAbsolutePath(relative: string) {  
+
+
+function getAbsolutePath(relative: string) {
   return DataBase.workingDirectory + "/" + relative;
 }
 
@@ -71,6 +73,19 @@ export default class FilePatchRecord {
     this.memoryBufferSizePage = memoryBufferSizePage ?? DEFAULT_MEMORY_BUFFER_SIZE;
 
     this.reset();
+  }
+
+  createPage() {
+    const page = Buffer.alloc(this.sizePage);
+    this.formatPage(page);
+  }
+
+  get length(): number {
+    return this.page;
+  }
+
+  formatPage(page: Buffer) {
+    this.
   }
 
   writePage(page: number, data: Buffer) {

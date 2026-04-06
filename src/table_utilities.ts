@@ -1,6 +1,6 @@
 import { ResponseError } from "@artempoletsky/easyrpc";
 import FragmentedDictionary from "./fragmented_dictionary";
-import { FieldTag, FieldType, PlainObject, TRecord, Table, TableScheme } from "./globals";
+import { FieldTag, FieldType, PlainObject, SchemeRecord, TRecord, Table, TableScheme } from "./globals";
 import { rmie } from "./virtual_fs";
 import { DataBase } from "./db";
 import { TableRecord } from "./record";
@@ -514,7 +514,7 @@ export default class TableUtils<T, idT extends string | number> {
     });
   }
 
-  static getPrimaryKeyFromScheme(scheme: TableScheme) {
+  static getPrimaryKeyFromScheme(scheme: SchemeRecord) {
     for (const fieldName in scheme.tags) {
       const tags = scheme.tags[fieldName];
       if (tags.includes("primary")) {

@@ -1,0 +1,41 @@
+{
+  "tableName": "jest_test_table_0",
+  "fields": {
+    "id": "number",
+    "bool": "boolean",
+    "date": "date",
+    "name": "string",
+    "light": "json",
+    "heavy": "json"
+  },
+  "fieldsOrder": [
+    "bool",
+    "date",
+    "name",
+    "light"
+  ],
+  "fieldsOrderUser": [
+    "id",
+    "bool",
+    "date",
+    "name",
+    "light",
+    "heavy"
+  ],
+  "tags": {
+    "id": [
+      "primary",
+      "autoinc"
+    ],
+    "name": [
+      "index"
+    ],
+    "heavy": [
+      "heavy"
+    ],
+    "bool": [],
+    "date": [],
+    "light": []
+  },
+  "settings": {}
+}

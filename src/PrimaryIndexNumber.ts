@@ -2,11 +2,27 @@ import * as fs from "fs";
 import { DataBase } from "./db";
 import TableUtilities from "./TableUtilities";
 
+type STRUCTURE_KEY = "id"
+  | "page"
+  | "offset";
+
+const HEADER_STRUCTURE: { key: STRUCTURE_KEY, length: number }[] = [];
+HEADER_STRUCTURE.push({ key: "id", length: 8 });
+HEADER_STRUCTURE.push({ key: "page", length: 2 });
+HEADER_STRUCTURE.push({ key: "offset", length: 50 });
+
+let _currentOffset = 0;
+const pageHeaderOffsets = HEADER_STRUCTURE.reduce((result, e) => {
+  _currentOffset += e.length;
+  result[e.key] = _currentOffset;
+  return result;
+}, {} as Record<HEADER_STRUCTURE_KEY, number>);
+
 
 const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
 const TOMBSTONE = 0xFFFFFFFF;
 
-export class IndexOneNumber {
+export class IndexOneNumber extends Page {
 
   constructor(path: string)
   constructor(tableUtils: TableUtilities, columnName: string)

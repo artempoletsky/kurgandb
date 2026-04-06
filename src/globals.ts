@@ -32,7 +32,13 @@ export const EventNames = ["tableOpen", "recordsRemove", "recordsRemoveLight", "
 
 export type EventName = typeof EventNames[number];
 
-
+export type SchemeRecord = {
+  tableName: string;
+  fields: Record<string, FieldType>;
+  fieldsOrder: string[];
+  fieldsOrderUser: string[];
+  tags: Record<string, FieldTag[]>;
+};
 
 export function randomIndex(length: number, exclude: Set<number> = new Set()): number {
   if (length <= 0) throw new Error("length must be greater than 0");

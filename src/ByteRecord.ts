@@ -1,12 +1,13 @@
 import fs from "fs";
 import { TableScheme, Table, IndicesRecord } from "./table";
-import { DataBase } from "./db";
-import { FieldType, PlainObject } from "./globals";
+import { DataBase, SchemeFile } from "./db";
+import { FieldType, PlainObject, SchemeRecord } from "./globals";
 import TableUtils from "./table_utilities";
 import { IndexOneNumber } from "./IndexOneNumber";
 import { IndexOneString } from "./IndexOneString";
 import FilePatchRecord from "./FilePatchRecord";
 import StringsSaver from "./StringsSaver";
+import TableUtilities from "./TableUtilities";
 
 
 type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
@@ -49,11 +50,8 @@ const DEFAULT_PAGE_SIZE = 0x2000;
 export type TRecord<T, idT extends string | number, LightT = T, VisibleT = T> = ByteRecord<T, idT, LightT, VisibleT> & T;
 
 export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
-  protected _utils: TableUtils<T, idT>;
   protected _data: any[] = [];
   protected _datesObj: Record<string, Date> = {};
-
-  protected _table: Table<T, idT, any, any, LightT, VisibleT>;
 
   protected _numbers: Float64Array;
   protected _datesNumeric?: Float64Array;
@@ -90,6 +88,7 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
   public readonly _stringsSaver: StringsSaver;
 
   public readonly _fpr: FilePatchRecord;
+  public readonly _utils: TableUtilities;
 
   public get $id(): idT {
     return this._id;
@@ -176,7 +175,8 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
   }
 
 
-  constructor(table: Table<T, idT, any, any, LightT, VisibleT>, utils: TableUtils<T, idT>) {
+  constructor(scheme: SchemeRecord) {
+    let utils = TableUtilities.fromScheme(scheme);
     this._bufferPage = Buffer.alloc(this._pageSize);
     this._fpr = new FilePatchRecord({
       pathPage: utils.getPagesFilePath(),
@@ -186,25 +186,25 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
 
     this._utils = utils;
 
-    this._table = table;
+    // this._table = table;
 
     let currentReadPos = 3;
-    this._enumsNum = table.numberOfType["enum"];
+    this._enumsNum = utils.numberOfType["enum"];
     currentReadPos += 1;
     this._enumsStart = currentReadPos;
     currentReadPos += this._enumsNum * 1;
 
-    this._numbersNum = table.numberOfType["number"];
+    this._numbersNum = utils.numberOfType["number"];
     currentReadPos += 1;
     this._numbersStart = currentReadPos;
     currentReadPos += this._numbersNum * 8;
 
-    this._datesNum = table.numberOfType["date"];
+    this._datesNum = utils.numberOfType["date"];
     currentReadPos += 1;
     this._datesStart = currentReadPos;
     currentReadPos += this._datesNum * 8;
 
-    this._stringsNum = table.numberOfType["string"];
+    this._stringsNum = utils.numberOfType["string"];
     currentReadPos += 1;
     this._stringsMetaStart = currentReadPos;
 
@@ -229,15 +229,15 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     });
 
 
-    let primaryKeyType: "string" | "number" = table.scheme.fields[table.primaryKey] as any;
+    let primaryKeyType: "string" | "number" = utils.scheme.fields[utils.primaryKey] as any;
     this._keyType = primaryKeyType as any;
 
-    this._idIndex = table.fieldNameIndex[table.primaryKey];
+    this._idIndex = utils.relationFieldName_Index[utils.primaryKey];
     if (primaryKeyType == "string") {
-      this._primaryKeyIndex = new IndexOneString(table.utils, table.primaryKey) as any;
+      this._primaryKeyIndex = new IndexOneString(utils, utils.primaryKey) as any;
     } else {
 
-      this._primaryKeyIndex = new IndexOneNumber(table.utils as any, table.primaryKey) as any;
+      this._primaryKeyIndex = new IndexOneNumber(utils as any, utils.primaryKey) as any;
     }
 
 
