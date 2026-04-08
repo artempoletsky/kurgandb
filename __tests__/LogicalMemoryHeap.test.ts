@@ -32,6 +32,7 @@ describe("LogicalMemoryHeap", () => {
     id = heap.addString("new data");
     expect(id).toBe(1);
     expect(heap.readString(id)).toEqual("new data");
+    heap.addString("foo bar");
 
     // header = heap.serializeHeader();
     // expect(header.readUint32LE(0)).toBe(12 + 16);
@@ -53,7 +54,10 @@ describe("LogicalMemoryHeap", () => {
     // expect(header.readUint32LE(0)).toBe(12 + 16);
     // expect(heap.__debug.indexMap.get(1)).toEqual(new Uint32Array([0, 8]));
     expect(heap.readString(1)).toEqual("new data");
-    expect(heap.readString(2)).toBeUndefined();
+    expect(heap.readString(2)).toEqual("foo bar");
+    expect(heap.readString(3)).toBeUndefined();
+
+    // heap.commit();
 
   });
 

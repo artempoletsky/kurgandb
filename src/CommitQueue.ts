@@ -3,6 +3,7 @@
 export default class CommitQueue {
   private static queue: Set<string> = new Set();
   private static lastId: number = 0;
+  private static callbacks: Set<() => void> = new Set();
 
   static register(prefix: string): string {
     this.lastId++;
@@ -16,7 +17,15 @@ export default class CommitQueue {
   }
 
   static end(id: string) {
-    this.queue.delete(id);
+    setTimeout(() => {
+      this.queue.delete(id);
+      if (this.queue.size <= 0) {
+        for (const fn of this.callbacks) {
+          fn();
+        }
+        this.callbacks.clear();
+      }
+    });
   }
 
   static busy(): boolean {
@@ -27,5 +36,12 @@ export default class CommitQueue {
     if (this.queue.has(id)) {
       throw "CommitQueue: trying to start a commit while another commit is in progress with id: " + id;
     }
+  }
+
+  static ready(): Promise<void> {
+    if (!this.busy()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      this.callbacks.add(resolve);
+    });
   }
 }

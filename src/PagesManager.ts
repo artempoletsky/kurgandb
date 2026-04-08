@@ -1,6 +1,7 @@
 
 import fs from "fs";
 import { DataBase } from "./db";
+import CommitQueue from "./CommitQueue";
 
 
 
@@ -35,6 +36,8 @@ export default class PagesManager {
   protected pagesCache: Buffer[];
   protected patchOffsets: Map<number, number>;
 
+  protected idCommitQueue: string;
+
   constructor({
     path,
     sizeHeader: sizeHeader,
@@ -57,6 +60,7 @@ export default class PagesManager {
 
     this.memoryBufferSizePatch = memoryBufferSizePatch ?? DEFAULT_MEMORY_BUFFER_SIZE;
 
+    this.idCommitQueue = CommitQueue.register("PagesManager_");
     this.reset();
   }
 
@@ -133,12 +137,17 @@ export default class PagesManager {
     buf.copy(this.memoryPatch, patchOffset, 0, buf.byteLength);
   }
 
-  commit() {
+  async commit() {
+    CommitQueue.start(this.idCommitQueue);
+
     let buf = Buffer.allocUnsafe(this.sizePage);
     for (const [pageNumber, patchOffset] of this.patchOffsets) {
       this.readPatch(buf, patchOffset);
       // fs.writevSync()
-      fs.writeSync(this.fd, buf, 0, this.sizePage, this.sizeHeader + pageNumber * this.sizePage);
+      await (new Promise((resolve) => {
+        fs.write(this.fd, buf, 0, this.sizePage, this.sizeHeader + pageNumber * this.sizePage, resolve);
+      }));
+
     }
 
 
@@ -149,6 +158,7 @@ export default class PagesManager {
     // }
 
     this.reset();
+    CommitQueue.end(this.idCommitQueue);
   }
 
 
