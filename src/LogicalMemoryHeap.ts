@@ -71,28 +71,30 @@ export default class LogicalMemoryHeap {
       throw "__debug method should only be used in tests";
     }
     return {
-      heap: this.heap,
+      // heap: this.heap,
       fd: this.fd,
       path: this.path,
       indexMap: this.indexMap,
-      currentWritePos: this.currentWritePos,
+      // currentWritePos: this.currentWritePos,
       lastId: this.lastId,
-      cavityStarts: this.cavityStarts,
-      cavityEnds: this.cavityEnds,
-      cavityLengths: this.cavityLengths.array,
+      // cavityStarts: this.cavityStarts,
+      // cavityEnds: this.cavityEnds,
+      // cavityLengths: this.cavityLengths.array,
     }
   }
 
-  protected heap!: Buffer;
+  protected heapMap!: Map<number, Buffer>;
+  protected sizeHeap!: number;
+  // protected heap!: Buffer;
   protected fd!: number;
   protected path: string;
   protected indexMap!: Map<number, Uint32Array>;
 
-  protected currentWritePos!: number;
+  // protected currentWritePos!: number;
   protected lastId!: number;
-  protected cavityStarts!: Map<number, number>;
-  protected cavityEnds!: Map<number, number>;
-  protected cavityLengths!: CavityLengthsArray;
+  // protected cavityStarts!: Map<number, number>;
+  // protected cavityEnds!: Map<number, number>;
+  // protected cavityLengths!: CavityLengthsArray;
   protected commitQueueId: string;
   constructor(path: string) {
     this.path = path;
@@ -104,26 +106,31 @@ export default class LogicalMemoryHeap {
     return new Promise<void>((resolve, reject) => {
 
       CommitQueue.start(this.commitQueueId);
-      let header = this.serializeHeader();
-      const result = [header];
-      let starts = Array.from(this.cavityStarts.keys()).sort();
+      // let header = this.serializeHeader();
+      let buf = this.serialize();
 
-      let currentVectorStart = 0;
-      for (const start of starts) {
-        result.push(this.heap.subarray(currentVectorStart, start));
-        currentVectorStart = this.cavityStarts.get(start)!;
-      }
-      result.push(this.heap.subarray(currentVectorStart, this.currentWritePos));
-      console.log("write: " + result[0].readUint32LE(0));
+      // let starts = Array.from(this.cavityStarts.keys()).sort();
+
+      // let currentVectorStart = 0;
+      // for (const start of starts) {
+      //   result.push(this.heap.subarray(currentVectorStart, start));
+      //   currentVectorStart = this.cavityStarts.get(start)!;
+      // }
+      // result.push(this.heap.subarray(currentVectorStart, this.currentWritePos));
+      // console.log("write: " + result[0].readUint32LE(0));
+
+
+
+
 
       // fs.writeSync(this.fd, Buffer.concat(result), 0, );
-      fs.writev(this.fd, result, 0, (err, written) => {
+      fs.write(this.fd, buf, 0, undefined, 0, (err, written: number) => {
         if (err) {
           reject(err);
         } else {
-          // todo: only compact memory instead of reloading
-          this.reset();
-          CommitQueue.end(this.commitQueueId);          
+
+          // this.reset();
+          CommitQueue.end(this.commitQueueId);
           resolve();
         }
       });
@@ -133,6 +140,51 @@ export default class LogicalMemoryHeap {
     });
   }
 
+  serialize(): Buffer {
+    //[headerLen(4)][lastId(8)] [id(8)][len(4)] [data(var)]
+
+    let sizeEntryHeader = 8 + 4;
+    let headerLen = 4 + 8 + this.heapMap.size * sizeEntryHeader;
+    let buf = Buffer.allocUnsafe(headerLen + this.sizeHeap);
+    buf.writeUint32LE(headerLen, 0);
+    buf.writeUint32LE(this.lastId, 4);
+
+    let headerWritePos = 12;
+    let heapWritePos = headerLen;
+    for (const [id, data] of this.heapMap) {
+      buf.writeDoubleLE(id, headerWritePos);
+      buf.writeUint32LE(data.byteLength, headerWritePos + 8);
+      headerWritePos += sizeEntryHeader;
+      data.copy(buf, heapWritePos);
+      heapWritePos += data.byteLength;
+    }
+    return buf;
+  }
+
+  unserialize(buf: Buffer) {
+    let sizeHeader = buf.readUint32LE(0);
+    this.lastId = buf.readUint32LE(4);
+    let sizeEntryHeader = 8 + 4;
+    let recordsNum = (sizeHeader - 12) / sizeEntryHeader;
+
+    let heapReadPos = sizeHeader;
+    let headerReadPos = 12;
+    this.heapMap = new Map();
+    for (let i = 0; i < recordsNum; i++) {
+      let id = buf.readDoubleLE(headerReadPos);
+      let len = buf.readUint32LE(headerReadPos + 8);
+
+      this.heapMap.set(id, buf.subarray(heapReadPos, heapReadPos + len));
+
+      headerReadPos += sizeEntryHeader;
+      heapReadPos += len;
+    }
+    this.sizeHeap = heapReadPos - sizeHeader;
+  }
+
+  /**
+   * @deprecated use it only if we move from js Map to bytes
+   */
   serializeHeader(): Buffer {
     //[headerLen(4)][lastId(8)] [id(8)][start(4)][end(4)]
     let headerLen = 4 + 8 + this.indexMap.size * (8 + 4 + 4);
@@ -159,14 +211,14 @@ export default class LogicalMemoryHeap {
     }
   }
 
-  allocate(size: number) {
-    this.heap = Buffer.concat([this.heap, Buffer.allocUnsafe(size)]);
-  }
+  // allocate(size: number) {
+  //   this.heap = Buffer.concat([this.heap, Buffer.allocUnsafe(size)]);
+  // }
 
-  allocateOverflow() {
-    console.warn("LogicalMemoryHeap: Unexpected allocateOverflow() call. Use allocate() manually for big operations");
-    this.allocate(1024 * 1024 * 2);
-  }
+  // allocateOverflow() {
+  //   console.warn("LogicalMemoryHeap: Unexpected allocateOverflow() call. Use allocate() manually for big operations");
+  //   this.allocate(1024 * 1024 * 2);
+  // }
 
   reset() {
     // let sizeHeader = 1024 * 300;
@@ -179,20 +231,23 @@ export default class LogicalMemoryHeap {
     let stat = fs.statSync(this.path);
     this.fd = fs.openSync(this.path, "r+");
 
-    let data = Buffer.allocUnsafe(stat.size + 1024 * 1024);
+    let data = Buffer.allocUnsafe(stat.size);
     fs.readSync(this.fd, data);
 
     let sizeHeader = data.readUint32LE(0);
-    console.log("read: " + sizeHeader);
+    // console.log("read: " + sizeHeader);
 
-    this.heap = data.subarray(sizeHeader);
-    this.currentWritePos = stat.size - sizeHeader;
+    // this.heap = data.subarray(sizeHeader);
+    // this.currentWritePos = stat.size - sizeHeader;
+    this.sizeHeap = stat.size - sizeHeader;
 
-    this.readHeader(data.subarray(0, sizeHeader));
+    this.unserialize(data);
 
-    this.cavityEnds = new Map();
-    this.cavityStarts = new Map();
-    this.cavityLengths = new CavityLengthsArray();
+    // this.readHeader(data.subarray(0, sizeHeader));
+
+    // this.cavityEnds = new Map();
+    // this.cavityStarts = new Map();
+    // this.cavityLengths = new CavityLengthsArray();
   }
 
 
@@ -201,112 +256,117 @@ export default class LogicalMemoryHeap {
     if (!found) {
       throw "trying to update non existent id from LogicalMemoryHeap, id: " + id;
     }
-    let newEnd = found[0] + data.buffer.byteLength;
-    if (newEnd == found[1]) {
-      data.copy(this.heap, found[0]);
-    } else if (newEnd > found[1]) {
-      this.writeTailId(data, id);
-      this.createCavity(found[0], found[1]);
-    } else {
-      data.copy(this.heap, found[0]);
-      this.createCavity(found[0] + data.byteLength, found[1])
-    }
+
+    let dLen = data.byteLength - found.byteLength;
+    this.sizeHeap += dLen;
+    this.heapMap.set(id, data);
+    // let newEnd = found[0] + data.buffer.byteLength;
+    // if (newEnd == found[1]) {
+    //   data.copy(this.heap, found[0]);
+    // } else if (newEnd > found[1]) {
+    //   this.writeTailId(data, id);
+    //   this.createCavity(found[0], found[1]);
+    // } else {
+    //   data.copy(this.heap, found[0]);
+    //   this.createCavity(found[0] + data.byteLength, found[1])
+    // }
   }
 
   updateString(id: number, string: string) {
     this.update(id, Buffer.from(string, "utf-8"));
   }
 
-  createCavity(start: number, end: number) {
-    if (this.cavityStarts.has(end)) {
-      let oldEnd = this.cavityStarts.get(end)!;
-      this.cavityStarts.delete(end);
-      this.cavityEnds.set(start, oldEnd);
-      this.cavityEnds.set(oldEnd, start);
-      this.cavityLengths.delete(oldEnd - end, end);
-      this.cavityLengths.add(oldEnd - start, start);
-      return;
-    }
+  // createCavity(start: number, end: number) {
+  //   if (this.cavityStarts.has(end)) {
+  //     let oldEnd = this.cavityStarts.get(end)!;
+  //     this.cavityStarts.delete(end);
+  //     this.cavityEnds.set(start, oldEnd);
+  //     this.cavityEnds.set(oldEnd, start);
+  //     this.cavityLengths.delete(oldEnd - end, end);
+  //     this.cavityLengths.add(oldEnd - start, start);
+  //     return;
+  //   }
 
-    if (this.cavityEnds.has(start)) {
-      let oldStart = this.cavityEnds.get(start)!;
-      this.cavityEnds.delete(start);
-      this.cavityStarts.set(oldStart, end);
-      this.cavityStarts.set(end, oldStart);
-      this.cavityLengths.delete(start - oldStart, oldStart);
-      this.cavityLengths.add(end - oldStart, oldStart);
-      return;
+  //   if (this.cavityEnds.has(start)) {
+  //     let oldStart = this.cavityEnds.get(start)!;
+  //     this.cavityEnds.delete(start);
+  //     this.cavityStarts.set(oldStart, end);
+  //     this.cavityStarts.set(end, oldStart);
+  //     this.cavityLengths.delete(start - oldStart, oldStart);
+  //     this.cavityLengths.add(end - oldStart, oldStart);
+  //     return;
 
-    }
-    this.cavityStarts.set(start, end);
-    this.cavityEnds.set(end, start);
-    this.cavityLengths.add(end - start, start);
+  //   }
+  //   this.cavityStarts.set(start, end);
+  //   this.cavityEnds.set(end, start);
+  //   this.cavityLengths.add(end - start, start);
 
 
-  }
+  // }
 
   delete(id: number) {
     const found = this.indexMap.get(id);
     if (!found) {
       throw "trying to delete non existent id from LogicalMemoryHeap, id: " + id;
     }
+    this.sizeHeap -= found.byteLength;
     this.indexMap.delete(id);
-    this.createCavity(found[0], found[1]);
+    // this.createCavity(found[0], found[1]);
   }
 
-  writeTailId(data: Buffer, id: number) {
-    let start = this.currentWritePos;
-    let end = start + data.byteLength;
-    if (end > this.heap.byteLength) {
-      this.allocateOverflow();
-    }
-    this.currentWritePos += data.byteLength;
-    data.copy(this.heap, start);
-    this.indexMap.set(id, new Uint32Array([start, end]));
-  }
+  // writeTailId(data: Buffer, id: number) {
+  //   let start = this.currentWritePos;
+  //   let end = start + data.byteLength;
+  //   if (end > this.heap.byteLength) {
+  //     this.allocateOverflow();
+  //   }
+  //   this.currentWritePos += data.byteLength;
+  //   data.copy(this.heap, start);
+  //   this.indexMap.set(id, new Uint32Array([start, end]));
+  // }
 
   add(data: Buffer): number {
     this.lastId++;
-    this.writeToCavityOrTail(data, this.lastId);
+    this.heapMap.set(this.lastId, data);
+    this.sizeHeap += data.byteLength;
+    // this.writeToCavityOrTail(data, this.lastId);
     return this.lastId;
   }
 
-  writeToCavityOrTail(data: Buffer, id: number) {
-    let freePos = this.cavityLengths.findBestFit(data.byteLength);
-    if (!freePos) {
-      this.writeTailId(data, id);
-      return;
-    }
-    let start = freePos[1];
-    let end = start + data.byteLength;
+  // writeToCavityOrTail(data: Buffer, id: number) {
+  //   let freePos = this.cavityLengths.findBestFit(data.byteLength);
+  //   if (!freePos) {
+  //     this.writeTailId(data, id);
+  //     return;
+  //   }
+  //   let start = freePos[1];
+  //   let end = start + data.byteLength;
 
-    if (freePos.length == data.byteLength) { // completely fill cavity
-      this.cavityLengths.delete(end - start, start);
-      this.cavityStarts.delete(start);
-      this.cavityEnds.delete(end);
-    } else if (freePos.length < data.byteLength) {
-      throw "LogicalMemoryHeap: attempt to write in the smaller than the buffer cavity";
-    } else {
-      let dlen = freePos.length - data.byteLength;
-      let newStart = end - dlen;
-      this.cavityLengths.delete(end - start, start);
-      this.cavityLengths.add(dlen, newStart);
-      this.cavityStarts.delete(start);
-      this.cavityStarts.set(newStart, end);
-      this.cavityEnds.set(end, newStart);
-    }
+  //   if (freePos.length == data.byteLength) { // completely fill cavity
+  //     this.cavityLengths.delete(end - start, start);
+  //     this.cavityStarts.delete(start);
+  //     this.cavityEnds.delete(end);
+  //   } else if (freePos.length < data.byteLength) {
+  //     throw "LogicalMemoryHeap: attempt to write in the smaller than the buffer cavity";
+  //   } else {
+  //     let dlen = freePos.length - data.byteLength;
+  //     let newStart = end - dlen;
+  //     this.cavityLengths.delete(end - start, start);
+  //     this.cavityLengths.add(dlen, newStart);
+  //     this.cavityStarts.delete(start);
+  //     this.cavityStarts.set(newStart, end);
+  //     this.cavityEnds.set(end, newStart);
+  //   }
 
-    this.indexMap.set(id, new Uint32Array([start, end]));
-  }
+  //   this.indexMap.set(id, new Uint32Array([start, end]));
+  // }
 
   addString(string: string) {
     return this.add(Buffer.from(string, "utf-8"));
   }
 
   read(id: number): Buffer | undefined {
-    const found = this.indexMap.get(id);
-    if (!found) return undefined;
-    return this.heap.subarray(found[0], found[1]);
+    return this.heapMap.get(id);
   }
 
   readString(id: number): string | undefined {
