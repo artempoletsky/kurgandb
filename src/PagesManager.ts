@@ -119,6 +119,16 @@ export default class PagesManager {
     fs.readSync(this.fdPatch, buf, 0, this.sizePage, patchOffset);
   }
 
+  async readPatchAsync(buf: Buffer, patchOffset: number) {
+    if (this.memoryPatch) {
+      this.memoryPatch.copy(buf, 0, patchOffset, this.sizePage);
+      return;
+    }
+    return new Promise((resolve) => {
+      fs.read(this.fdPatch, buf, 0, this.sizePage, patchOffset, resolve);
+    });
+  }
+
   writePatch(buf: Buffer, patchOffset: number) {
 
 
@@ -142,12 +152,11 @@ export default class PagesManager {
 
     let buf = Buffer.allocUnsafe(this.sizePage);
     for (const [pageNumber, patchOffset] of this.patchOffsets) {
-      this.readPatch(buf, patchOffset);
+      await this.readPatchAsync(buf, patchOffset);
       // fs.writevSync()
       await (new Promise((resolve) => {
         fs.write(this.fd, buf, 0, this.sizePage, this.sizeHeader + pageNumber * this.sizePage, resolve);
       }));
-
     }
 
 
