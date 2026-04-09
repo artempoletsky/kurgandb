@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { IndexOneNumber } from "../src/IndexOneNumber";
 
-import { describe, expect, test, xdescribe, xtest } from "./test-setup";
+import { afterAll, beforeAll, describe, expect, test, xdescribe, xtest } from "./test-setup";
 import _ from "lodash";
 import { Table } from "../src/table";
 import { DataBase } from "../src/db";
@@ -12,6 +12,16 @@ const TestTableName = "jest_test_table_1";
 
 
 describe("ByteRecord.$serialize", () => {
+    const heapPath = path.join(process.cwd(), "kurgandb_data", "heap.bin");
+
+    function removeTestData() {
+        try { fs.unlinkSync(heapPath); } catch { }
+        // try { fs.unlinkSync(heapPath + ".txt"); } catch { }
+    }
+
+    beforeAll(removeTestData);
+    // afterAll(removeTestData);
+
     type SimpleType = {
         id: number,
         date: Date | string | number,

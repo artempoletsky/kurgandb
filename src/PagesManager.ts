@@ -1,13 +1,9 @@
 
 import fs from "fs";
-import { DataBase } from "./db";
 import CommitQueue from "./CommitQueue";
 
 
 
-function getAbsolutePath(relative: string) {
-  return DataBase.workingDirectory + "/" + relative;
-}
 
 const DEFAULT_MEMORY_BUFFER_SIZE = 1024 * 1024 * 10;
 const PAGE_SIZE = 0x2000;
@@ -47,9 +43,9 @@ export default class PagesManager {
     sizeHeader: number;
     memoryBufferSizePatch?: number;
   }) {
-    this.path = getAbsolutePath(path);
+    this.path = path;
 
-    this.pathPatch = getAbsolutePath(path + ".patch");
+    this.pathPatch = path + ".patch";
 
     this.sizePage = PAGE_SIZE;
 
@@ -81,12 +77,12 @@ export default class PagesManager {
     }
 
     if (this.memoryBufferSizePatch) {
-      this.memoryPatch = Buffer.allocUnsafe(this.memoryBufferSizePatch);
+      this.memoryPatch = Buffer.alloc(this.memoryBufferSizePatch);
     }
   }
 
   writePage(page: number, data: Buffer) {
-    let writePos = this.currentWritePos;
+    let writePos = this.currentWritePosPatch;
     let isNew = !this.patchOffsets.has(page);
     if (!isNew) {
       writePos = this.patchOffsets.get(page)!;
@@ -100,23 +96,25 @@ export default class PagesManager {
     }
   }
 
-  readPage(page: number, buf: Buffer) {
+  readPage(page: number) {
     let isTouched = this.patchOffsets.has(page);
     if (isTouched) {
       // fs.readSync(this.fdPatchPage, buf, 0, this.pageSize, this.pagePatchOffsetMap.get(page)!);
-      this.readPatch(buf, this.patchOffsets.get(page)!);
+      return this.readPatch(this.patchOffsets.get(page)!);
     } else {
+      let buf = Buffer.allocUnsafe(this.sizePage);
       fs.readSync(this.fd, buf, 0, this.sizePage, page * this.sizePage);
+      return buf;
     }
-
   }
 
-  readPatch(buf: Buffer, patchOffset: number) {
+  readPatch(patchOffset: number) {
     if (this.memoryPatch) {
-      this.memoryPatch.copy(buf, 0, patchOffset, this.sizePage);
-      return;
+      return this.memoryPatch.subarray(patchOffset, patchOffset + this.sizePage);
     }
+    let buf = Buffer.allocUnsafe(this.sizePage);
     fs.readSync(this.fdPatch, buf, 0, this.sizePage, patchOffset);
+    return buf;
   }
 
   async readPatchAsync(buf: Buffer, patchOffset: number) {
@@ -144,11 +142,13 @@ export default class PagesManager {
       return;
     }
 
-    buf.copy(this.memoryPatch, patchOffset, 0, buf.byteLength);
+    buf.copy(this.memoryPatch, patchOffset);
   }
 
   async commit() {
     CommitQueue.start(this.idCommitQueue);
+
+    fs.writeSync(this.fd, this.header, 0, this.sizeHeader, 0);
 
     let buf = Buffer.allocUnsafe(this.sizePage);
     for (const [pageNumber, patchOffset] of this.patchOffsets) {

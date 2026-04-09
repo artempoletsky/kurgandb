@@ -84,8 +84,8 @@ export default class ChunkedIndex extends PagesManager {
     let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
     if (!chunkMeta || !chunkMeta.length) return;
 
-    const chunk = Buffer.allocUnsafe(this.sizePage);
-    this.readPage(chunkMeta.page, chunk);
+    const chunk = this.readPage(chunkMeta.page);
+
     const { found, pos } = ChunkedIndex.binarySearchNumber(value, chunk, this.sizeEntry, chunkMeta.length);
     if (!found) return;
 
@@ -121,53 +121,47 @@ export default class ChunkedIndex extends PagesManager {
 
   set(value: number, id: number) {
     if (this.numberOfRecords == 0) {
-      this.maxValue = this.minValue = value;
-      this.writeChunkMeta({
-        length: 0,
-        min: value,
-        max: value,
-        page: 0,
-      }, 0);
-      this.numberOfChunks = 1;
+      this.addChunk("right", value, id);
+      return;
     }
 
-    let { chunkIndex: index, chunkMeta: meta } = this.findChunkIndex(value);
-    if (meta) {
+    let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
+    if (chunkMeta) {
 
-      const chunk = Buffer.allocUnsafe(this.sizePage);
-      this.readPage(meta.page, chunk);
-      let freeSpacePos = meta.length * this.sizeEntry;
+      const chunk = this.readPage(chunkMeta.page);
+      
+      let freeSpacePos = chunkMeta.length * this.sizeEntry;
       if (freeSpacePos + this.sizeEntry > 0x2000) {
-        this.splitChunk(index);
+        this.splitChunk(chunkIndex);
         this.set(value, id);
         return;
       }
 
-      const { found, pos } = ChunkedIndex.binarySearchNumber(value, chunk, this.sizeEntry, meta.length);
+      const { found, pos } = ChunkedIndex.binarySearchNumber(value, chunk, this.sizeEntry, chunkMeta.length);
 
       if (!found) {
         // shift entries to make space for new entry
         chunk.copy(chunk, pos + this.sizeEntry, pos, freeSpacePos);
-        meta.length++;
+        chunkMeta.length++;
         this.numberOfRecords++;
       }
 
-      meta.max = Math.max(value, meta.max);
-      meta.min = Math.min(value, meta.min);
-      this.writeChunkMeta(meta, index);
+      chunkMeta.max = Math.max(value, chunkMeta.max);
+      chunkMeta.min = Math.min(value, chunkMeta.min);
+      this.writeChunkMeta(chunkMeta, chunkIndex);
       this.writeToChunk(value, id, chunk, pos);
 
-      this.writePage(meta.page, chunk);
+      this.writePage(chunkMeta.page, chunk);
 
-    } else if (index = -1) {
+    } else if (chunkIndex = -1) {
       let meta = this.readChunkMeta(0);
       if (meta.length < this.capacityChunk) {
         meta.min = value;
         meta.length++;
         this.writeChunkMeta(meta, 0);
 
-        const chunk = Buffer.allocUnsafe(this.sizePage);
-        this.readPage(meta.page, chunk);
+        const chunk = this.readPage(meta.page);
+        
         chunk.copy(chunk, 0, this.sizeEntry);
         this.writeToChunk(value, id, chunk, 0);
       } else {
@@ -182,8 +176,8 @@ export default class ChunkedIndex extends PagesManager {
         meta.length++;
         this.writeChunkMeta(meta, 0);
 
-        const chunk = Buffer.allocUnsafe(this.sizePage);
-        this.readPage(meta.page, chunk);
+        const chunk = this.readPage(meta.page);
+        
         // chunk.copy(chunk, 0, this.sizeEntry);
         let pos = meta.length * this.sizeEntry;
         this.writeToChunk(value, id, chunk, pos);
@@ -281,9 +275,9 @@ export default class ChunkedIndex extends PagesManager {
 
   splitChunk(chunkIndex: number) {
     const oldMeta = this.readChunkMeta(chunkIndex);
-    const oldChunk = Buffer.allocUnsafe(this.sizePage);
+    const oldChunk = this.readPage(oldMeta.page);
     const newChunk = Buffer.alloc(this.sizePage);
-    this.readPage(oldMeta.page, oldChunk);
+    
     let splitPointLogical = Math.floor(oldMeta.length / 2);
     let splitPointBytes = splitPointLogical * this.sizeEntry;
     const newMin = oldChunk.readDoubleLE(splitPointBytes);
@@ -312,10 +306,10 @@ export default class ChunkedIndex extends PagesManager {
 
   addChunk(direction: "left" | "right", value: any, id: any) {
     const meta: ChunkMeta = {
-      length: 0,
+      length: 1,
       max: value,
       min: value,
-      page: this.numberOfChunks
+      page: this.numberOfChunks,
     };
     let chunkIndex = direction == "left" ? 0 : this.numberOfChunks;
     if (direction == "left") {
@@ -324,7 +318,7 @@ export default class ChunkedIndex extends PagesManager {
     this.writeChunkMeta(meta, chunkIndex);
     this.numberOfChunks++;
 
-    const chunk = Buffer.allocUnsafe(this.sizePage);
+    const chunk = Buffer.alloc(this.sizePage);
     this.writeToChunk(value, id, chunk, 0);
 
     this.writePage(meta.page, chunk);

@@ -84,9 +84,7 @@ export default class FilePatchRecord {
     return this.page;
   }
 
-  formatPage(page: Buffer) {
-    this.
-  }
+  
 
   writePage(page: number, data: Buffer) {
     let writePos = this.currentWritePosPagePatch;
