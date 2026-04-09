@@ -22,7 +22,6 @@ export default class PagesManager {
   protected fd!: number;
   protected fdPatch!: number;
 
-  protected currentWritePos: number = 0;
   protected currentWritePosPatch: number = 0;
 
   protected memoryPatch: Buffer | null = null;
@@ -65,16 +64,15 @@ export default class PagesManager {
       fs.writeFileSync(this.path, Buffer.alloc(this.sizeHeader));
     }
 
-    let stat = fs.statSync(this.path);
+    // let stat = fs.statSync(this.path);
     this.fd = fs.openSync(this.path, "r+");
 
-    this.currentWritePos = stat.size;
     this.currentWritePosPatch = 0;
 
     this.header = Buffer.alloc(this.sizeHeader);
-    if (stat.size >= this.sizeHeader) {
+    // if (stat.size >= this.sizeHeader) {
       fs.readSync(this.fd, this.header);
-    }
+    // }
 
     if (this.memoryBufferSizePatch) {
       this.memoryPatch = Buffer.alloc(this.memoryBufferSizePatch);

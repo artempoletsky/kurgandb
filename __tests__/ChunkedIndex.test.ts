@@ -44,9 +44,12 @@ describe("ChunkedIndex", () => {
     let idx = new ChunkedIndex(indexPath);
     expect(idx.numberOfRecords).toBe(0);
     expect(idx.numberOfChunks).toBe(0);
-    idx.set(1, 1);
+    idx.set(1, 123123);
     expect(idx.numberOfRecords).toBe(1);
     expect(idx.numberOfChunks).toBe(1);
+
+    expect(idx.maxValue).toBe(1);
+    expect(idx.minValue).toBe(1);
     expect(idx.get(1)).toBe(1);
     idx.reset();
     expect(idx.get(1)).toBeUndefined();
