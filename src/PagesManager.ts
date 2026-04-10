@@ -3,8 +3,6 @@ import fs from "fs";
 import CommitQueue from "./CommitQueue";
 
 
-
-
 const DEFAULT_MEMORY_BUFFER_SIZE = 1024 * 1024 * 10;
 const PAGE_SIZE = 0x2000;
 
@@ -28,13 +26,28 @@ export default class PagesManager {
   protected memoryBufferSizePatch: number = 0;
 
 
-  protected pagesCache: Buffer[];
+  // protected pagesCache: Buffer[];
   protected patchOffsets: Map<number, number>;
 
   protected idCommitQueue: string;
 
   protected writingPages: Map<number, Buffer> = new Map();
   protected maxSizeWritingPages = 1;
+
+  get __debug() {
+    if (process.env.NODE_ENV !== "test") {
+      throw "__debug method should only be used in tests";
+    }
+    return {
+      // heap: this.heap,
+      fd: this.fd,
+      path: this.path,
+      patchOffsets: this.patchOffsets,
+      memoryPatch: this.memoryPatch,
+      writingPages: this.writingPages,
+      writePage: this.writePage.bind(this),
+    }
+  }
 
   constructor({
     path,
@@ -52,7 +65,7 @@ export default class PagesManager {
     this.sizePage = PAGE_SIZE;
 
     this.sizeHeader = sizeHeader;
-    this.pagesCache = [];
+    // this.pagesCache = [];
     this.patchOffsets = new Map();
 
 
@@ -132,7 +145,7 @@ export default class PagesManager {
 
   async readPatchAsync(buf: Buffer, patchOffset: number) {
     if (this.memoryPatch) {
-      this.memoryPatch.copy(buf, 0, patchOffset, this.sizePage);
+      this.memoryPatch.copy(buf, 0, patchOffset, patchOffset + this.sizePage);
       return;
     }
     return new Promise((resolve) => {
@@ -147,6 +160,7 @@ export default class PagesManager {
     if (this.writingPages.size >= this.maxSizeWritingPages) {
       let entry = this.writingPages.entries().next().value!;
       this.writePage(entry[0], entry[1]);
+      this.writingPages.delete(entry[0]);
     }
     let buf = this.readPage(page);
     this.writingPages.set(page, buf);

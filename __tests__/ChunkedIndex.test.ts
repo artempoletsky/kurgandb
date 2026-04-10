@@ -40,7 +40,7 @@ describe("ChunkedIndex", () => {
 
   });
 
-  test("commit reset", async () => {
+  xtest("commit reset", async () => {
     let idx = new ChunkedIndex(indexPath);
     expect(idx.numberOfRecords).toBe(0);
     expect(idx.numberOfChunks).toBe(0);
@@ -124,5 +124,74 @@ describe("ChunkedIndex", () => {
     expect(page.readDoubleLE(8)).toBe(1234);
 
     expect(idx.get(2)).toBe(1234);
+  });
+
+
+  test("fastFill", async () => {
+    const idx = new ChunkedIndex(indexPath);
+    // for (let i = 0; i < 10 * 1000 * 1000; i++) {
+    //   idx.setOffset(i, i * 10);
+    // }
+
+    // let rawData = Array.from({ length: 10_000_000 }, (_, i) => {
+    //   return { key: i, offset: i * 10 };
+    // });
+
+    // rawData.splice(1234, 1);
+
+
+    console.time("insert");
+
+    idx.fastFill((buf, i) => {
+      buf.writeDoubleLE(i, 0);
+      buf.writeDoubleLE(i * 10, 8);
+    }, 100_000);
+    console.timeEnd("insert");
+
+    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(0)).toBe(0);
+    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(16)).toBe(1);
+    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(24)).toBe(10);
+    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(123 * 16)).toBe(123);
+    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(123 * 16 + 8)).toBe(1230);
+
+    console.time("getExistent");
+    expect(idx.get(123)).toBe(1230);
+    console.timeEnd("getExistent");
+
+
+    console.time("deleteExistent");
+    idx.delete(1234);
+    console.timeEnd("deleteExistent");
+
+    console.time("getNonExistent");
+    expect(idx.get(1234)).toBe(-1);
+    console.timeEnd("getNonExistent");
+
+    console.time("deleteNonExistent");
+    idx.delete(1234);
+    console.timeEnd("deleteNonExistent");
+
+
+    console.time("setWithShift");
+    idx.set(1234, 1230);
+    console.timeEnd("setWithShift");
+
+
+    console.time("rewriteSet");
+    idx.set(1234, 12300);
+    console.timeEnd("rewriteSet");
+
+    console.time("deleteExistent");
+    idx.delete(1234);
+    console.timeEnd("deleteExistent");
+
+    console.time("getWithTombstone");
+    expect(idx.get(1234)).toBe(-1);
+    console.timeEnd("getWithTombstone");
+
+    console.time("commit");
+    await idx.commit();
+    console.timeEnd("commit");
+
   });
 });

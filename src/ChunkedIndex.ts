@@ -129,7 +129,7 @@ export default class ChunkedIndex extends PagesManager {
     let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
     if (chunkMeta) {
 
-      const chunk = this.getWritingPage(chunkMeta.page); 
+      const chunk = this.getWritingPage(chunkMeta.page);
 
       let freeSpacePos = chunkMeta.length * this.sizeEntry;
       if (freeSpacePos + this.sizeEntry > 0x2000) {
@@ -330,10 +330,61 @@ export default class ChunkedIndex extends PagesManager {
   }
 
   writeToChunk(value: any, id: any, chunk: Buffer, pos: number) {
-    console.log(pos);
-    
     chunk.writeDoubleLE(value, pos);
     chunk.writeDoubleLE(id, pos + 8);
+  }
+
+  // fastFill(keyValuePairs: { key: number, offset: number }[]): void
+  fastFill(
+    fn: (buf: Buffer, index: number) => void,
+    length: number): void {
+
+    // let length: number;
+    // let fn = arg1;
+    // if (typeof arg2 === "number") {
+    //   length = arg2;
+    // } else {
+    //   length = arg1.length;
+    // }
+
+
+
+    let page = this.getWritingPage(0);
+    let pageWritePos = 0;
+    let buf = Buffer.alloc(this.sizeEntry);
+    let min: number | undefined = undefined;
+    fn(buf, 0);
+    min = buf.readDoubleLE(0);
+    this.minValue = min;
+
+    let numberOfChunks = Math.ceil(length / this.capacityChunk);
+    for (let p = 0; p < numberOfChunks; p++) {
+      let end = (p + 1) * this.capacityChunk;
+      let start = p * this.capacityChunk;
+
+      fn(buf, start);
+      let min = buf.readDoubleLE(0);
+      let l = 0;
+
+      page = this.getWritingPage(p);
+      pageWritePos = 0;
+      for (let i = start; i < end && i < length; i++) {
+        fn(buf, i);
+        buf.copy(page, pageWritePos, 0, this.sizeEntry);
+        pageWritePos += this.sizeEntry;
+        l++;
+      }
+
+      this.writeChunkMeta({
+        length: l,
+        max: buf.readDoubleLE(0),
+        min,
+        page: p
+      }, p);
+    }
+
+    this.numberOfChunks = numberOfChunks;
+    this.numberOfRecords = length;
   }
 
 }
