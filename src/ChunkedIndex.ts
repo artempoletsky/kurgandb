@@ -16,6 +16,7 @@ export default class ChunkedIndex extends PagesManager {
 
 
   protected readonly sizeEntry: number = 8 + 8;
+  protected readonly sizeEntryHeader: number = 2 + 8 + 8 + 2;
   protected readonly sizeSmallHeader: number = 2 + 2 + 8 + 8;
   protected readonly capacityChunk: number;
 
@@ -121,9 +122,6 @@ export default class ChunkedIndex extends PagesManager {
 
   set(value: number, id: number) {
     if (this.numberOfRecords == 0) {
-      // min and max valuse will rewrite in the next step this way
-      this.minValue = value + 1;
-      this.maxValue = value - 1;
       this.addChunk("right", value, id);
       return;
     }
@@ -131,7 +129,7 @@ export default class ChunkedIndex extends PagesManager {
     let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
     if (chunkMeta) {
 
-      const chunk = this.readPage(chunkMeta.page);
+      const chunk = this.getWritingPage(chunkMeta.page); 
 
       let freeSpacePos = chunkMeta.length * this.sizeEntry;
       if (freeSpacePos + this.sizeEntry > 0x2000) {
@@ -154,7 +152,6 @@ export default class ChunkedIndex extends PagesManager {
       this.writeChunkMeta(chunkMeta, chunkIndex);
       this.writeToChunk(value, id, chunk, pos);
 
-      this.writePage(chunkMeta.page, chunk);
 
     } else if (chunkIndex = -1) {
       let meta = this.readChunkMeta(0);
@@ -219,10 +216,10 @@ export default class ChunkedIndex extends PagesManager {
 
   writeChunkMeta(meta: ChunkMeta, chunkIndex: number) {
     let oldMeta = this.readChunkMeta(chunkIndex);
-    if (oldMeta.min != meta.min && meta.min < this.minValue) {
+    if (this.numberOfRecords == 0 || oldMeta.min != meta.min && meta.min < this.minValue) {
       this.minValue = meta.min;
     }
-    if (oldMeta.max != meta.max && meta.max > this.maxValue) {
+    if (this.numberOfRecords == 0 || oldMeta.max != meta.max && meta.max > this.maxValue) {
       this.maxValue = meta.max;
     }
     if (oldMeta.length != meta.length) {
@@ -230,20 +227,20 @@ export default class ChunkedIndex extends PagesManager {
       this.numberOfRecords -= d;
     }
 
-    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntry;
+    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntryHeader;
     this.header.writeUint16LE(meta.length, pos);
     this.header.writeDoubleLE(meta.min, pos + 2);
-    this.header.writeDoubleLE(meta.max, pos + 6);
-    this.header.writeUint16LE(meta.page, pos + 10);
+    this.header.writeDoubleLE(meta.max, pos + 10);
+    this.header.writeUint16LE(meta.page, pos + 18);
   }
 
   readChunkMeta(chunkIndex: number): ChunkMeta {
-    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntry;
+    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntryHeader;
 
     const length = this.header.readUint16LE(pos);
     const min = this.header.readDoubleLE(pos + 2);
-    const max = this.header.readDoubleLE(pos + 6);
-    const page = this.header.readUint16LE(pos + 10);
+    const max = this.header.readDoubleLE(pos + 10);
+    const page = this.header.readUint16LE(pos + 18);
     return {
       length,
       min,
@@ -333,6 +330,8 @@ export default class ChunkedIndex extends PagesManager {
   }
 
   writeToChunk(value: any, id: any, chunk: Buffer, pos: number) {
+    console.log(pos);
+    
     chunk.writeDoubleLE(value, pos);
     chunk.writeDoubleLE(id, pos + 8);
   }

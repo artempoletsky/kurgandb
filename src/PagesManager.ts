@@ -33,6 +33,9 @@ export default class PagesManager {
 
   protected idCommitQueue: string;
 
+  protected writingPages: Map<number, Buffer> = new Map();
+  protected maxSizeWritingPages = 1;
+
   constructor({
     path,
     sizeHeader: sizeHeader,
@@ -61,17 +64,26 @@ export default class PagesManager {
 
   reset() {
     if (!fs.existsSync(this.path)) {
-      fs.writeFileSync(this.path, Buffer.alloc(this.sizeHeader));
+      this.header = Buffer.alloc(this.sizeHeader);
+      fs.writeFileSync(this.path, this.header);
     }
 
+    if (!this.fd) {
+      this.fd = fs.openSync(this.path, "r+");
+    }
+
+    this.patchOffsets.clear();
     // let stat = fs.statSync(this.path);
-    this.fd = fs.openSync(this.path, "r+");
+
 
     this.currentWritePosPatch = 0;
 
-    this.header = Buffer.alloc(this.sizeHeader);
+    if (!this.header) {
+      this.header = Buffer.alloc(this.sizeHeader);
+    }
+
     // if (stat.size >= this.sizeHeader) {
-      fs.readSync(this.fd, this.header);
+    fs.readSync(this.fd, this.header, 0, this.sizeHeader, 0);
     // }
 
     if (this.memoryBufferSizePatch) {
@@ -79,7 +91,7 @@ export default class PagesManager {
     }
   }
 
-  writePage(page: number, data: Buffer) {
+  protected writePage(page: number, data: Buffer) {
     let writePos = this.currentWritePosPatch;
     let isNew = !this.patchOffsets.has(page);
     if (!isNew) {
@@ -95,13 +107,16 @@ export default class PagesManager {
   }
 
   readPage(page: number) {
+    if (this.writingPages.has(page)) {
+      return this.writingPages.get(page)!;
+    }
     let isTouched = this.patchOffsets.has(page);
     if (isTouched) {
       // fs.readSync(this.fdPatchPage, buf, 0, this.pageSize, this.pagePatchOffsetMap.get(page)!);
       return this.readPatch(this.patchOffsets.get(page)!);
     } else {
       let buf = Buffer.allocUnsafe(this.sizePage);
-      fs.readSync(this.fd, buf, 0, this.sizePage, page * this.sizePage);
+      fs.readSync(this.fd, buf, 0, this.sizePage, this.sizeHeader + page * this.sizePage);
       return buf;
     }
   }
@@ -125,7 +140,20 @@ export default class PagesManager {
     });
   }
 
-  writePatch(buf: Buffer, patchOffset: number) {
+  getWritingPage(page: number) {
+    if (this.writingPages.has(page)) {
+      return this.writingPages.get(page)!;
+    }
+    if (this.writingPages.size >= this.maxSizeWritingPages) {
+      let entry = this.writingPages.entries().next().value!;
+      this.writePage(entry[0], entry[1]);
+    }
+    let buf = this.readPage(page);
+    this.writingPages.set(page, buf);
+    return buf;
+  }
+
+  protected writePatch(buf: Buffer, patchOffset: number) {
 
 
     this.spitToDiskIf(buf.byteLength + patchOffset);
@@ -145,6 +173,11 @@ export default class PagesManager {
 
   async commit() {
     CommitQueue.start(this.idCommitQueue);
+
+    for (const [page, buf] of this.writingPages) {
+      this.writePage(page, buf);
+    }
+    this.writingPages.clear();
 
     fs.writeSync(this.fd, this.header, 0, this.sizeHeader, 0);
 
