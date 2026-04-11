@@ -96,4 +96,47 @@ describe("NamedByteBuffer", () => {
     expect(page.$getBuffer().byteLength).toBe(1000 * 22);
     expect(page.$capacityArray).toBe(1000);
   });
+
+  type ENTRY_KEY = "value" | "id";
+  const ENTRY_STRUCTURE = new Map<ENTRY_KEY, number>([
+    ["value", 8],
+    ["id", 8],
+  ]);
+
+  test("shift", () => {
+    let page = NamedByteBuffer.createArray(ENTRY_STRUCTURE, 1000);
+
+    for (let i = 0; i < 100; i++) {
+      page.value.set(i, i * 10);
+      page.id.set(i, i);
+    }
+
+    expect(page.value.get(11)).toBe(110);
+    expect(page.id.get(11)).toBe(11);
+    page.$shiftRight(100, 10);
+    expect(page.value.get(10)).toBe(100);
+    expect(page.value.get(11)).toBe(100);
+    expect(page.id.get(10)).toBe(10);
+    expect(page.id.get(11)).toBe(10);
+
+    expect(page.value.get(100)).toBe(990);
+    expect(page.id.get(100)).toBe(99);
+
+    expect(page.value.get(101)).toBe(0);
+    expect(page.id.get(101)).toBe(0);
+
+    page.$shiftLeft(101, 5);
+
+    expect(page.value.get(5)).toBe(60);
+    expect(page.value.get(6)).toBe(70);
+
+    expect(page.id.get(5)).toBe(6);
+    expect(page.id.get(6)).toBe(7);
+
+    expect(page.value.get(99)).toBe(990);
+    expect(page.id.get(99)).toBe(99);
+
+    expect(page.$canShiftRight(1000)).toBe(false);
+    expect(page.$canShiftRight(999)).toBe(true);
+  });
 });

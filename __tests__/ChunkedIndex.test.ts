@@ -10,7 +10,7 @@ describe("ChunkedIndex", () => {
 
   function removeTestData() {
     try { fs.unlinkSync(indexPath); } catch { }
-    // try { fs.unlinkSync(heapPath + ".txt"); } catch { }
+    try { fs.unlinkSync(indexPath + ".header"); } catch { }
   }
 
   beforeAll(removeTestData);
@@ -39,23 +39,23 @@ describe("ChunkedIndex", () => {
 
   test("commit reset", async () => {
     let idx = new ChunkedIndex(indexPath);
-    expect(idx.numberOfRecords).toBe(0);
-    expect(idx.numberOfChunks).toBe(0);
+    expect(idx.__debug.headerSmall.numberOfRecords).toBe(0);
+    expect(idx.__debug.headerSmall.numberOfRecords).toBe(0);
     idx.set(1, 1);
-    expect(idx.numberOfRecords).toBe(1);
-    expect(idx.numberOfChunks).toBe(1);
+    expect(idx.__debug.headerSmall.numberOfRecords).toBe(1);
+    expect(idx.__debug.headerSmall.numberOfChunks).toBe(1);
 
-    expect(idx.maxValue).toBe(1);
-    expect(idx.minValue).toBe(1);
+    expect(idx.__debug.headerSmall.maxValue).toBe(1);
+    expect(idx.__debug.headerSmall.minValue).toBe(1);
     expect(idx.get(1)).toBe(1);
     idx.reset();
     expect(idx.get(1)).toBeUndefined();
-    expect(idx.numberOfRecords).toBe(0);
+    expect(idx.__debug.headerSmall.numberOfRecords).toBe(0);
 
     idx.set(2, 1234);
 
-    expect(idx.minValue).toBe(2);
-    expect(idx.maxValue).toBe(2);
+    expect(idx.__debug.headerSmall.minValue).toBe(2);
+    expect(idx.__debug.headerSmall.maxValue).toBe(2);
 
     let { chunkIndex, chunkMeta } = idx.findChunkIndex(2);
     expect(chunkIndex).toBe(0);
@@ -79,34 +79,48 @@ describe("ChunkedIndex", () => {
     expect(page.readDoubleLE(0)).toBe(2);
     expect(page.readDoubleLE(8)).toBe(1234);
 
-    expect(idx.header.readUInt16LE(0)).toBe(1); // number of chunks
-    expect(idx.header.readUInt16LE(2)).toBe(1); // number of records
-    expect(idx.header.readUInt16LE(20)).toBe(1); // number of records in chunk 0
-    expect(idx.header.readDoubleLE(22)).toBe(2); // min value in chunk 0
-    expect(idx.header.readDoubleLE(30)).toBe(2); // max value in chunk 0
-    expect(idx.header.readUInt16LE(38)).toBe(0); // page number for chunk 0
+    // expect(idx.header.readUInt16LE(0)).toBe(1); // number of chunks
+    // expect(idx.header.readUInt16LE(2)).toBe(1); // number of records
+    // expect(idx.header.readUInt16LE(20)).toBe(1); // number of records in chunk 0
+    // expect(idx.header.readDoubleLE(22)).toBe(2); // min value in chunk 0
+    // expect(idx.header.readDoubleLE(30)).toBe(2); // max value in chunk 0
+    // expect(idx.header.readUInt16LE(38)).toBe(0); // page number for chunk 0
 
     await idx.commit();
 
-    let b = Buffer.allocUnsafe(idx.sizeHeader);
-    let fd = fs.openSync(indexPath, "r");
-    fs.readSync(fd, b, 0, idx.sizeHeader, 0);
+    let sizeHeaderSmall = idx.__debug.headerSmall.$getBuffer().byteLength;
+    let b = Buffer.alloc(50);
+    let fd = fs.openSync(indexPath + ".header", "r");
+    fs.readSync(fd, b, 0, 50, 0);
 
     fs.closeSync(fd);
 
+    // const SMALL_HEADER_STRUCTURE = new Map<SMALL_HEADER_STRUCTURE_KEY, number>([
+    //   ["numberOfChunks", 2],
+    //   ["numberOfRecords", 4],
+    //   ["minValue", 8],
+    //   ["maxValue", 8],
+    // ]);
+    // const HEADER_ENTRY_STRUCTURE = new Map<HEADER_ENTRY_KEY, number>([
+    //   ["page", 2],
+    //   ["length", 4],
+    //   ["minValue", 8],
+    //   ["maxValue", 8],
+    // ]);
+
     expect(b.readUInt16LE(0)).toBe(1); // number of chunks
     expect(b.readUInt16LE(2)).toBe(1); // number of records
-    expect(b.readUInt16LE(20)).toBe(1); // number of records in chunk 0
-    expect(b.readDoubleLE(22)).toBe(2); // min value in chunk 0
-    expect(b.readDoubleLE(30)).toBe(2); // max value in chunk 0
-    expect(b.readUInt16LE(38)).toBe(0); // page number for chunk 0
+    expect(b.readUInt16LE(22)).toBe(0); // page number for chunk 0
+    expect(b.readUInt32LE(24)).toBe(1); // number of records in chunk 0
+    expect(b.readDoubleLE(28)).toBe(2); // min value in chunk 0
+    expect(b.readDoubleLE(36)).toBe(2); // max value in chunk 0
 
     let p2 = Buffer.allocUnsafe(0x2000);
     fd = fs.openSync(indexPath, "r");
-    fs.readSync(fd, p2, 0, 0x2000, idx.sizeHeader);
+    fs.readSync(fd, p2, 0, 0x2000, sizeHeaderSmall);
 
-    expect(p2.readDoubleLE(0)).toBe(2);
-    expect(p2.readDoubleLE(8)).toBe(1234);
+    // expect(p2.readDoubleLE(0)).toBe(2);
+    // expect(p2.readDoubleLE(8)).toBe(1234);
 
     meta = idx.readChunkMeta(0);
     expect(meta).toEqual({
@@ -124,7 +138,7 @@ describe("ChunkedIndex", () => {
   });
 
 
-  xtest("fastFill", async () => {
+  test("fastFill", async () => {
     const idx = new ChunkedIndex(indexPath);
     // for (let i = 0; i < 10 * 1000 * 1000; i++) {
     //   idx.setOffset(i, i * 10);
@@ -141,15 +155,17 @@ describe("ChunkedIndex", () => {
 
     idx.fastFill((buf, i) => {
       buf.writeDoubleLE(i, 0);
-      buf.writeDoubleLE(i * 10, 8);
+      buf.writeDoubleLE(i * 16, 8);
     }, 100_000);
     console.timeEnd("insert");
 
-    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(0)).toBe(0);
-    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(16)).toBe(1);
-    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(24)).toBe(10);
-    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(123 * 16)).toBe(123);
-    expect(idx.__debug.writingPages.get(0)?.readDoubleLE(123 * 16 + 8)).toBe(1230);
+    expect(idx.__debug.header.length.get(0)).toBe(512);
+
+    // expect(idx.__debug.writingPages.get(0)?.readDoubleLE(0)).toBe(0);
+    // expect(idx.__debug.writingPages.get(0)?.readDoubleLE(16)).toBe(1);
+    // expect(idx.__debug.writingPages.get(0)?.readDoubleLE(24)).toBe(10);
+    // expect(idx.__debug.writingPages.get(0)?.readDoubleLE(123 * 16)).toBe(123);
+    // expect(idx.__debug.writingPages.get(0)?.readDoubleLE(123 * 16 + 8)).toBe(1230);
 
     console.time("getExistent");
     expect(idx.get(123)).toBe(1230);

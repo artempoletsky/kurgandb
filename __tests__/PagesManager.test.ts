@@ -23,7 +23,6 @@ describe("PagesManager", () => {
   test("getWritingPage", async () => {
     const idx = new PagesManager({
       path: pagesPath,
-      sizeHeader: 28,
     });
     let p = idx.getWritingPage(0);
     p.writeDoubleLE(123, 32);
@@ -56,10 +55,10 @@ describe("PagesManager", () => {
 
     let fd = fs.openSync(pagesPath, "r");
     
-    fs.readSync(fd, b, 0, b.byteLength, 28);
+    fs.readSync(fd, b, 0, b.byteLength, 0);
     expect(b.readDoubleLE(32)).toBe(123);
 
-    fs.readSync(fd, b, 0, b.byteLength, 28 + 0x2000);
+    fs.readSync(fd, b, 0, b.byteLength, 0 + 0x2000);
     expect(b.readDoubleLE(32)).toBe(321);
     
     fs.closeSync(fd);

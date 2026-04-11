@@ -1,27 +1,23 @@
+import fs from "fs";
 
-
+import NamedByteBuffer, { THeader, TPage } from "./NamedByteBuffer";
 import PagesManager from "./PagesManager";
-import { createOffsetsConst } from "./utils";
 
 
 
 type SMALL_HEADER_STRUCTURE_KEY =
-  "numberofChunks"
+  "numberOfChunks"
   | "numberOfRecords"
   | "minValue"
   | "maxValue"
   | "metaStart";
 
 const SMALL_HEADER_STRUCTURE = new Map<SMALL_HEADER_STRUCTURE_KEY, number>([
-  ["numberofChunks", 2],
+  ["numberOfChunks", 2],
   ["numberOfRecords", 4],
   ["minValue", 8],
   ["maxValue", 8],
-  ["metaStart", 0]
 ]);
-
-const SMALL_HEADER_OFFSETS = createOffsetsConst(SMALL_HEADER_STRUCTURE);
-
 
 type HEADER_ENTRY_KEY =
   "page"
@@ -35,10 +31,17 @@ const HEADER_ENTRY_STRUCTURE = new Map<HEADER_ENTRY_KEY, number>([
   ["length", 4],
   ["minValue", 8],
   ["maxValue", 8],
-  ["metaStart", 0],
 ]);
 
-const HEADER_ENTRY_OFFSETS = createOffsetsConst(HEADER_ENTRY_STRUCTURE);
+type PAGE_ENTRY_KEY =
+  "value"
+  | "id";
+
+const PAGE_ENTRY_STRUCTURE = new Map<PAGE_ENTRY_KEY, number>([
+  ["value", 8],
+  ["id", 8],
+]);
+
 
 
 type ChunkMeta = {
@@ -52,100 +55,97 @@ export default class ChunkedIndex extends PagesManager {
   // public chunks!: Buffer[];
 
 
-  protected readonly sizeEntry: number = 8 + 8;
-  protected readonly sizeEntryHeader: number = HEADER_ENTRY_OFFSETS.metaStart;
-  protected readonly sizeSmallHeader: number = SMALL_HEADER_OFFSETS.metaStart;
-  protected readonly capacityChunk: number;
 
-  public get numberOfChunks(): number {
-    return this.header.readUint16LE(SMALL_HEADER_OFFSETS.numberofChunks);
-  }
-  protected set numberOfChunks(value: number) {
-    this.header.writeUint16LE(value, SMALL_HEADER_OFFSETS.numberofChunks);
-  }
-
-  public get numberOfRecords(): number {
-    return this.header.readUint32LE(SMALL_HEADER_OFFSETS.numberOfRecords);
-  }
-  protected set numberOfRecords(value: number) {
-    this.header.writeUint32LE(value, SMALL_HEADER_OFFSETS.numberOfRecords);
-  }
-
-  public get minValue(): number {
-    return this.header.readDoubleLE(SMALL_HEADER_OFFSETS.minValue);
-  }
-  protected set minValue(value: number) {
-    this.header.writeDoubleLE(value, SMALL_HEADER_OFFSETS.minValue);
-  }
-
-  public get maxValue(): number {
-    return this.header.readDoubleLE(SMALL_HEADER_OFFSETS.maxValue);
-  }
-  protected set maxValue(value: number) {
-    this.header.writeDoubleLE(value, SMALL_HEADER_OFFSETS.maxValue);
-  }
-
+  protected headerSmall!: THeader<SMALL_HEADER_STRUCTURE_KEY>;
+  protected header!: TPage<HEADER_ENTRY_KEY>;
+  protected pageCurrent!: TPage<PAGE_ENTRY_KEY>;
+  protected fdHeader!: number;
+  protected pathHeader!: string;
   constructor(path: string) {
+
+
     super({
-      path,
-      sizeHeader: 0x2000,
+      path
     });
-    this.capacityChunk = Math.floor(this.sizePage / this.sizeEntry);
+
+    this.pageCurrent = NamedByteBuffer.createPage(PAGE_ENTRY_STRUCTURE, 0x2000);
   }
 
-  // override reset(): void {
-  //   super.reset();
-  //   let stat = fs.statSync(this.path);
-  //   // let buf = Buffer.allocUnsafe(stat.size);
-  //   // let minSize = this.sizeBigHeader + this.sizePage;
-  //   this.header = Buffer.alloc(this.sizeHeader);
-  //   if (stat.size >= this.sizeHeader) {
-  //     fs.readSync(this.fd, this.header);
-  //   }
-  //   //   buf = Buffer.alloc(minSize);
-  //   // } else {
-  //   //   buf = Buffer.allocUnsafe(stat.size);
-  //   //   fs.readSync(this.fd, buf);
-  //   // }
+  override reset(): void {
+    let pathHeader = this.pathHeader = this.path + ".header";
+    this.headerSmall = NamedByteBuffer.createHeader(SMALL_HEADER_STRUCTURE);
+    if (!fs.existsSync(pathHeader)) {
+      fs.writeFileSync(pathHeader, Buffer.alloc(this.headerSmall.$getBuffer().byteLength));
+    }
 
-  //   // this.header = buf.subarray(0, this.sizeBigHeader);
-  //   // this.chunks = Array(this.numberOfChunks);
-  //   // for (let i = 0; i < this.numberOfChunks; i++) {
-  //   //   this.chunks[i] = buf.subarray(
-  //   //     this.sizeBigHeader + i * this.sizePage,
-  //   //     this.sizeBigHeader + (i + 1) * this.sizePage);
-  //   // }
+    const stat = fs.statSync(pathHeader);
+    let rawHeader = Buffer.allocUnsafe(stat.size);
+    let fdHeader = this.fdHeader = fs.openSync(pathHeader, "r+");
 
-  // }
+    fs.readSync(fdHeader, rawHeader, 0, rawHeader.byteLength, 0);
+    let b = this.headerSmall.$getBuffer();
+    rawHeader.copy(b, 0, 0, b.byteLength);
+    let readPos = b.byteLength;
+
+
+    let padding = 1000;
+    this.header = NamedByteBuffer.createArray(HEADER_ENTRY_STRUCTURE, this.headerSmall.numberOfRecords + padding);
+    b = this.header.$getBuffer();
+    rawHeader.copy(b, 0, readPos);
+
+
+    super.reset();
+  }
+
+  get __debug() {
+    let r = super.__debug;
+    return {
+      ...r,
+      headerSmall: this.headerSmall,
+      header: this.header,
+      pageCurrent: this.pageCurrent,
+    }
+  }
 
   findValue(value: number) {
     let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
     if (!chunkMeta || !chunkMeta.length) return;
 
-    const chunk = this.readPage(chunkMeta.page);
+    this.pageCurrent.$setBuffer(this.readPage(chunkMeta.page));
 
-    const { found, pos } = ChunkedIndex.binarySearchNumber(value, chunk, this.sizeEntry, chunkMeta.length);
+    const { found, pos } = ChunkedIndex.binarySearchNumber(this.pageCurrent, chunkMeta.length, value);
     if (!found) return;
 
     return {
       chunkIndex,
       chunkMeta,
       pos,
-      chunk,
+      page: this.pageCurrent,
     }
+  }
+
+  protected async _commitBefore(): Promise<void> {
+    let b = this.headerSmall.$getBuffer();
+    await new Promise((resolve) => fs.write(this.fdHeader, b, 0, b.byteLength, 0, resolve));
+    let writePos = b.byteLength
+    b = this.header.$getBuffer();
+    await new Promise((resolve) => fs.write(this.fdHeader, b, 0, b.byteLength, writePos, resolve));
   }
 
   delete(value: number) {
     const found = this.findValue(value);
     if (!found) return;
-    const { chunk, pos, chunkIndex, chunkMeta } = found;
-    chunk.copy(chunk, pos, pos + this.sizeEntry);
+    const { page, pos, chunkIndex, chunkMeta } = found;
+
+    page.$shiftLeft(chunkMeta.length, pos);
+
     chunkMeta.length--;
     if (chunkMeta.length > 0) {
       if (value === chunkMeta.max) {
-        chunkMeta.max = chunk.readDoubleLE(pos - this.sizeEntry);
+        // chunkMeta.max = chunk.readDoubleLE(pos - sizeEntry);
+        chunkMeta.max = page.value.get(pos);
       } else if (value === chunkMeta.min) {
-        chunkMeta.min = chunk.readDoubleLE(pos);
+        chunkMeta.min = page.value.get(pos);
       }
     }
     this.writeChunkMeta(chunkMeta, chunkIndex);
@@ -154,78 +154,77 @@ export default class ChunkedIndex extends PagesManager {
   get(value: number) {
     const found = this.findValue(value);
     if (!found) return;
-    return found.chunk.readDoubleLE(found.pos + 8);
+    return found.page.id.get(found.pos);
   }
 
   set(value: number, id: number) {
-    if (this.numberOfRecords == 0) {
+    if (this.headerSmall.numberOfRecords == 0) {
       this.addChunk("right", value, id);
       return;
     }
 
     let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
+    let p = this.pageCurrent;
+
     if (chunkMeta) {
 
       const chunk = this.getWritingPage(chunkMeta.page);
 
-      let freeSpacePos = chunkMeta.length * this.sizeEntry;
-      if (freeSpacePos + this.sizeEntry > 0x2000) {
+      p.$setBuffer(chunk);
+
+      if (!this.pageCurrent.$canShiftRight(chunkMeta.length)) {
         this.splitChunk(chunkIndex);
         this.set(value, id);
         return;
       }
 
-      const { found, pos } = ChunkedIndex.binarySearchNumber(value, chunk, this.sizeEntry, chunkMeta.length);
+      const { found, pos } = ChunkedIndex.binarySearchNumber(this.pageCurrent, chunkMeta.length, value);
 
       if (!found) {
         // shift entries to make space for new entry
-        chunk.copy(chunk, pos + this.sizeEntry, pos, freeSpacePos);
+        // chunk.copy(chunk, pos + this.sizeEntry, pos, freeSpacePos);
+        this.pageCurrent.$shiftRight(chunkMeta.length, pos);
         chunkMeta.length++;
-        this.numberOfRecords++;
+        this.headerSmall.numberOfRecords++;
       }
 
       chunkMeta.max = Math.max(value, chunkMeta.max);
       chunkMeta.min = Math.min(value, chunkMeta.min);
       this.writeChunkMeta(chunkMeta, chunkIndex);
-      this.writeToChunk(value, id, chunk, pos);
-
+      p.id.set(pos, id);
+      p.value.set(pos, value);
 
     } else if (chunkIndex = -1) {
       let meta = this.readChunkMeta(0);
-      if (meta.length < this.capacityChunk) {
+      if (meta.length < this.header.$capacityArray) {
         meta.min = value;
         meta.length++;
         this.writeChunkMeta(meta, 0);
 
-        const chunk = this.readPage(meta.page);
-
-        chunk.copy(chunk, 0, this.sizeEntry);
-        this.writeToChunk(value, id, chunk, 0);
+        p.$setBuffer(this.readPage(meta.page))
+        p.$shiftRight(meta.length, 0);
+        p.id.set(0, id);
+        p.value.set(0, value);
       } else {
-        // this.splitChunk(0);
-        this.set(value, id);
+        this.addChunk("left", value, id);
       }
     } else {
-      let chunkIndex = this.numberOfChunks - 1;
+      let chunkIndex = this.headerSmall.numberOfChunks - 1;
       let meta = this.readChunkMeta(chunkIndex);
-      if (meta.length < this.capacityChunk) {
+      if (meta.length < this.header.$capacityArray) {
         meta.max = value;
         meta.length++;
         this.writeChunkMeta(meta, 0);
-
-        const chunk = this.readPage(meta.page);
-
-        // chunk.copy(chunk, 0, this.sizeEntry);
-        let pos = meta.length * this.sizeEntry;
-        this.writeToChunk(value, id, chunk, pos);
+        p.$setBuffer(this.readPage(meta.page));
+        p.id.set(meta.length - 1, id);
+        p.value.set(meta.length - 1, value);
       } else {
-        // this.splitChunk(chunkIndex);
-        this.set(value, id);
+        this.addChunk("right", value, id);
       }
     }
   }
 
-  static binarySearchNumber(value: number, buffer: Buffer, entrySize: number, length: number) {
+  static binarySearchNumber(page: TPage<PAGE_ENTRY_KEY>, length: number, value: number) {
 
     // file structure for number keyType is [value (8 bytes)][id (8 bytes)]
     let low = 0;
@@ -234,14 +233,14 @@ export default class ChunkedIndex extends PagesManager {
 
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
-      pos = mid * entrySize;
-      const currentId = buffer.readDoubleLE(pos);
+      pos = mid;
+      const currentValue = page.value.get(mid);
 
-      if (currentId === value) {
+      if (currentValue === value) {
         return { pos, found: true };
       }
 
-      if (currentId < value) {
+      if (currentValue < value) {
         low = mid + 1;
       } else {
         high = mid - 1;
@@ -253,87 +252,89 @@ export default class ChunkedIndex extends PagesManager {
 
   writeChunkMeta(meta: ChunkMeta, chunkIndex: number) {
     let oldMeta = this.readChunkMeta(chunkIndex);
-    if (this.numberOfRecords == 0 || oldMeta.min != meta.min && meta.min < this.minValue) {
-      this.minValue = meta.min;
+    if (this.headerSmall.numberOfRecords == 0 || oldMeta.min != meta.min && meta.min < this.headerSmall.minValue) {
+      this.headerSmall.minValue = meta.min;
     }
-    if (this.numberOfRecords == 0 || oldMeta.max != meta.max && meta.max > this.maxValue) {
-      this.maxValue = meta.max;
+    if (this.headerSmall.numberOfRecords == 0 || oldMeta.max != meta.max && meta.max > this.headerSmall.maxValue) {
+      this.headerSmall.maxValue = meta.max;
     }
     if (oldMeta.length != meta.length) {
       let d = oldMeta.length - meta.length;
-      this.numberOfRecords -= d;
+      this.headerSmall.numberOfRecords -= d;
     }
 
-    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntryHeader;
-    this.header.writeUint32LE(meta.length, pos + HEADER_ENTRY_OFFSETS.length);
-    this.header.writeDoubleLE(meta.min, pos + HEADER_ENTRY_OFFSETS.minValue);
-    this.header.writeDoubleLE(meta.max, pos + HEADER_ENTRY_OFFSETS.maxValue);
-    this.header.writeUint16LE(meta.page, pos + HEADER_ENTRY_OFFSETS.page);
+    this.header.length.set(chunkIndex, meta.length);
+    this.header.minValue.set(chunkIndex, meta.min);
+    this.header.maxValue.set(chunkIndex, meta.max);
+    this.header.page.set(chunkIndex, meta.page);
   }
 
   readChunkMeta(chunkIndex: number): ChunkMeta {
-    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntryHeader;
-
-    const length = this.header.readUint32LE(pos + HEADER_ENTRY_OFFSETS.length);
-    const min = this.header.readDoubleLE(pos + HEADER_ENTRY_OFFSETS.minValue);
-    const max = this.header.readDoubleLE(pos + HEADER_ENTRY_OFFSETS.maxValue);
-    const page = this.header.readUint16LE(pos + HEADER_ENTRY_OFFSETS.page);
     return {
-      length,
-      min,
-      max,
-      page,
+      length: this.header.length.get(chunkIndex),
+      min: this.header.minValue.get(chunkIndex),
+      max: this.header.maxValue.get(chunkIndex),
+      page: this.header.page.get(chunkIndex),
     }
   }
 
 
   findChunkIndex(value: number): { chunkIndex: number; chunkMeta: null | ChunkMeta } {
-    const numberOfChunks = this.numberOfChunks;
-    if (value < this.minValue) return {
+    const numberOfChunks = this.headerSmall.numberOfChunks;
+    if (value < this.headerSmall.minValue) return {
       chunkIndex: -1,
       chunkMeta: null,
     };
-    if (value > this.maxValue) return {
+    if (value > this.headerSmall.maxValue) return {
       chunkIndex: numberOfChunks + 1,
       chunkMeta: null,
     };
 
     for (let i = 0; i < numberOfChunks; i++) {
-      const meta = this.readChunkMeta(i);
-      if (meta.min <= value && value <= meta.max) {
+      let min = this.header.minValue.get(i);
+      let max = this.header.maxValue.get(i);
+      if (min <= value && value <= max) {
         return {
           chunkIndex: i,
-          chunkMeta: meta,
+          chunkMeta: {
+            min,
+            max,
+            length: this.header.length.get(i),
+            page: this.header.page.get(i),
+          },
         };
       }
     }
-    throw "should be unreachable";
+    throw "ChunkedIndex.findChunkIndex: should be unreachable";
   }
 
   splitChunk(chunkIndex: number) {
     const oldMeta = this.readChunkMeta(chunkIndex);
     const oldChunk = this.readPage(oldMeta.page);
     const newChunk = Buffer.alloc(this.sizePage);
+    const sizeEntry = this.pageCurrent.$sizeEntry;
 
     let splitPointLogical = Math.floor(oldMeta.length / 2);
-    let splitPointBytes = splitPointLogical * this.sizeEntry;
+    let splitPointBytes = splitPointLogical * sizeEntry;
     const newMin = oldChunk.readDoubleLE(splitPointBytes);
 
+    let numberOfChunks = this.headerSmall.numberOfChunks;
     // add new chunk to the end of the pages
     const newMeta: ChunkMeta = {
       length: oldMeta.length - splitPointLogical,
       max: oldMeta.max,
       min: newMin,
-      page: this.numberOfChunks
+      page: numberOfChunks
     };
-    this.numberOfChunks++;
+
+    this.headerSmall.numberOfChunks = numberOfChunks + 1;
 
     oldChunk.copy(newChunk, 0, splitPointBytes);
     oldMeta.length = splitPointLogical;
-    oldMeta.max = oldChunk.readDoubleLE(splitPointBytes - this.sizeEntry);
+    oldMeta.max = oldChunk.readDoubleLE(splitPointBytes - sizeEntry);
     this.writeChunkMeta(oldMeta, chunkIndex);
 
-    this.shiftRightHeader(chunkIndex);
+    this.header.$shiftRight(numberOfChunks, chunkIndex);
 
     this.writeChunkMeta(newMeta, chunkIndex + 1);
     // we don't need to physically clear old chunk updating meta is enough
@@ -341,35 +342,30 @@ export default class ChunkedIndex extends PagesManager {
     this.writePage(newMeta.page, newChunk);
   }
 
-  addChunk(direction: "left" | "right", value: any, id: any) {
+  addChunk(direction: "left" | "right", value: number, id: number) {
+    let numberOfChunks = this.headerSmall.numberOfChunks;
     const meta: ChunkMeta = {
       length: 1,
       max: value,
       min: value,
-      page: this.numberOfChunks,
+      page: numberOfChunks,
     };
-    let chunkIndex = direction == "left" ? 0 : this.numberOfChunks;
+    let chunkIndex = direction == "left" ? 0 : numberOfChunks;
     if (direction == "left") {
-      this.shiftRightHeader(0);
+      this.header.$shiftRight(numberOfChunks, 0);
     }
     this.writeChunkMeta(meta, chunkIndex);
-    this.numberOfChunks++;
+    this.headerSmall.numberOfChunks = numberOfChunks + 1;
 
-    const chunk = Buffer.alloc(this.sizePage);
-    this.writeToChunk(value, id, chunk, 0);
+    let p = this.pageCurrent;
+    p.$setBuffer(Buffer.alloc(this.sizePage));
 
-    this.writePage(meta.page, chunk);
+    p.value.set(0, value);
+    p.id.set(0, id);
+
+    this.writePage(meta.page, p.$getBuffer());
   }
 
-  shiftRightHeader(chunkIndex: number) {
-    const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntry;
-    this.header.copy(this.header, pos + this.sizeEntry, pos);
-  }
-
-  writeToChunk(value: any, id: any, chunk: Buffer, pos: number) {
-    chunk.writeDoubleLE(value, pos);
-    chunk.writeDoubleLE(id, pos + 8);
-  }
 
   // fastFill(keyValuePairs: { key: number, offset: number }[]): void
   fastFill(
@@ -388,16 +384,18 @@ export default class ChunkedIndex extends PagesManager {
 
     let page = this.getWritingPage(0);
     let pageWritePos = 0;
-    let buf = Buffer.alloc(this.sizeEntry);
+    let buf = Buffer.alloc(this.header.$sizeEntry);
     let min: number | undefined = undefined;
     fn(buf, 0);
     min = buf.readDoubleLE(0);
-    this.minValue = min;
+    this.headerSmall.minValue = min;
 
-    let numberOfChunks = Math.ceil(length / this.capacityChunk);
+    let capacity = this.header.$capacityArray;
+    let numberOfChunks = Math.ceil(length / capacity);
     for (let p = 0; p < numberOfChunks; p++) {
-      let end = (p + 1) * this.capacityChunk;
-      let start = p * this.capacityChunk;
+      let end = (p + 1) * capacity;
+      let start = p * capacity;
+
 
       fn(buf, start);
       let min = buf.readDoubleLE(0);
@@ -407,8 +405,8 @@ export default class ChunkedIndex extends PagesManager {
       pageWritePos = 0;
       for (let i = start; i < end && i < length; i++) {
         fn(buf, i);
-        buf.copy(page, pageWritePos, 0, this.sizeEntry);
-        pageWritePos += this.sizeEntry;
+        buf.copy(page, pageWritePos, 0, capacity);
+        pageWritePos += capacity;
         l++;
       }
 
@@ -420,8 +418,8 @@ export default class ChunkedIndex extends PagesManager {
       }, p);
     }
 
-    this.numberOfChunks = numberOfChunks;
-    this.numberOfRecords = length;
+    this.headerSmall.numberOfChunks = numberOfChunks;
+    this.headerSmall.numberOfRecords = length;
   }
 
 }

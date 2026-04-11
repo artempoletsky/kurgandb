@@ -123,6 +123,26 @@ try {
   }
 }
 
+export type TPage<T extends string> = Record<T,
+  {
+    set: (index: number, value: number) => void;
+    get: (index: number) => number
+  }> & {
+    $setBuffer: (buffer: Buffer) => void;
+    $getBuffer: () => Buffer;
+    $capacityArray: number;
+    $sizeEntry: number;
+    $sizePage: number;
+    $canShiftRight: (capacity: number, num?: number) => boolean;
+    $shiftRight: (capacity: number, fromIndex: number, num?: number) => void;
+    $shiftLeft: (capacity: number, fromIndex: number, num?: number) => void;
+  };
+
+export type THeader<T extends string> = Record<T, number> & {
+  $setBuffer: (buffer: Buffer) => void;
+  $getBuffer: () => Buffer;
+};
+
 export default class NamedByteBuffer {
   static createHeader<T extends string>(map: Map<T, number>) {
     let methods: Record<string, Function> = {};
@@ -159,7 +179,7 @@ export default class NamedByteBuffer {
     });
   }
 
-  static createArrayOrPage<T extends string>(map: Map<T, number>, arrayLength?: number, pageSize?: number) {
+  static createArrayOrPage<T extends string>(map: Map<T, number>, arrayLength?: number, pageSize?: number): TPage<T> {
     if (arrayLength && pageSize) {
       throw "NamedByteBuffer: Only one of arrayLength or pageSize can be specified";
     }
@@ -182,7 +202,7 @@ export default class NamedByteBuffer {
       get: (index: number) => number;
     }>;
 
-    let b: Buffer = Buffer.alloc(length);
+    let b: Buffer = Buffer.alloc(pageSize);
 
     const $ = {
       $setBuffer(buffer: Buffer) {
@@ -194,6 +214,24 @@ export default class NamedByteBuffer {
       $capacityArray: arrayLength,
       $sizeEntry: entryLength,
       $sizePage: pageSize,
+      $canShiftRight(capacity: number, num: number = 1) {
+        return capacity + num <= arrayLength;
+      },
+      $shiftRight(capacity: number, fromIndex: number, num: number = 1) {
+        if (!this.$canShiftRight(capacity, num)) {
+          throw "NamedByteBuffer: Index out of bounds";
+        }
+        let byteFrom = fromIndex * entryLength;
+        let byteTo = (fromIndex + num) * entryLength;
+        let toShift = (capacity - fromIndex) * entryLength;
+        b.copy(b, byteTo, byteFrom, toShift + byteFrom);
+      },
+      $shiftLeft(capacity: number, fromIndex: number, num: number = 1) {
+        let byteFrom = (fromIndex + num) * entryLength;
+        let byteTo = fromIndex * entryLength;
+        let toShift = (capacity - fromIndex) * entryLength;
+        b.copy(b, byteTo, byteFrom, toShift + byteFrom);
+      },
     } as const;
 
     let result = {} as R;
@@ -207,14 +245,14 @@ export default class NamedByteBuffer {
       result[key] = field;
     }
 
-    return { ...result, ...$ } as R & typeof $;
+    return { ...result, ...$ } as any
   }
 
-  static createArray<T extends string>(map: Map<T, number>, arrayLength: number) {
+  static createArray<T extends string>(map: Map<T, number>, arrayLength: number): TPage<T> {
     return this.createArrayOrPage(map, arrayLength, undefined);
   }
 
-  static createPage<T extends string>(map: Map<T, number>, pageSize: number = 0x2000) {
+  static createPage<T extends string>(map: Map<T, number>, pageSize: number = 0x2000): TPage<T> {
     return this.createArrayOrPage(map, undefined, pageSize);
   }
 }

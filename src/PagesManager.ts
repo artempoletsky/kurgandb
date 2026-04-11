@@ -10,12 +10,10 @@ const PAGE_SIZE = 0x2000;
 
 
 export default class PagesManager {
-  public header!: Buffer;
 
   public readonly path: string;
   public readonly pathPatch: string;
   public readonly sizePage: number;
-  public readonly sizeHeader: number;
 
   protected fd!: number;
   protected fdPatch!: number;
@@ -51,11 +49,9 @@ export default class PagesManager {
 
   constructor({
     path,
-    sizeHeader: sizeHeader,
     memoryBufferSizePatch,
   }: {
     path: string;
-    sizeHeader: number;
     memoryBufferSizePatch?: number;
   }) {
     this.path = path;
@@ -64,7 +60,6 @@ export default class PagesManager {
 
     this.sizePage = PAGE_SIZE;
 
-    this.sizeHeader = sizeHeader;
     // this.pagesCache = [];
     this.patchOffsets = new Map();
 
@@ -77,8 +72,7 @@ export default class PagesManager {
 
   reset() {
     if (!fs.existsSync(this.path)) {
-      this.header = Buffer.alloc(this.sizeHeader);
-      fs.writeFileSync(this.path, this.header);
+      fs.writeFileSync(this.path, Buffer.alloc(0));
     }
 
     if (!this.fd) {
@@ -90,14 +84,6 @@ export default class PagesManager {
 
 
     this.currentWritePosPatch = 0;
-
-    if (!this.header) {
-      this.header = Buffer.alloc(this.sizeHeader);
-    }
-
-    // if (stat.size >= this.sizeHeader) {
-    fs.readSync(this.fd, this.header, 0, this.sizeHeader, 0);
-    // }
 
     if (this.memoryBufferSizePatch) {
       this.memoryPatch = Buffer.alloc(this.memoryBufferSizePatch);
@@ -129,7 +115,7 @@ export default class PagesManager {
       return this.readPatch(this.patchOffsets.get(page)!);
     } else {
       let buf = Buffer.allocUnsafe(this.sizePage);
-      fs.readSync(this.fd, buf, 0, this.sizePage, this.sizeHeader + page * this.sizePage);
+      fs.readSync(this.fd, buf, 0, this.sizePage, page * this.sizePage);
       return buf;
     }
   }
@@ -185,6 +171,10 @@ export default class PagesManager {
     buf.copy(this.memoryPatch, patchOffset);
   }
 
+  protected async _commitBefore(): Promise<void> {
+
+  }
+
   async commit() {
     CommitQueue.start(this.idCommitQueue);
 
@@ -193,14 +183,14 @@ export default class PagesManager {
     }
     this.writingPages.clear();
 
-    fs.writeSync(this.fd, this.header, 0, this.sizeHeader, 0);
+    await this._commitBefore();
 
     let buf = Buffer.allocUnsafe(this.sizePage);
     for (const [pageNumber, patchOffset] of this.patchOffsets) {
       await this.readPatchAsync(buf, patchOffset);
       // fs.writevSync()
       await (new Promise((resolve) => {
-        fs.write(this.fd, buf, 0, this.sizePage, this.sizeHeader + pageNumber * this.sizePage, resolve);
+        fs.write(this.fd, buf, 0, this.sizePage, pageNumber * this.sizePage, resolve);
       }));
     }
 
