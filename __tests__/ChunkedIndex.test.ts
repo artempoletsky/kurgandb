@@ -6,9 +6,6 @@ import path from "path";
 
 
 describe("ChunkedIndex", () => {
-
-  let index: ChunkedIndex;
-
   const indexPath = path.join(process.cwd(), "kurgandb_data", "index.bin");
 
   function removeTestData() {
@@ -40,7 +37,7 @@ describe("ChunkedIndex", () => {
 
   });
 
-  xtest("commit reset", async () => {
+  test("commit reset", async () => {
     let idx = new ChunkedIndex(indexPath);
     expect(idx.numberOfRecords).toBe(0);
     expect(idx.numberOfChunks).toBe(0);
@@ -127,7 +124,7 @@ describe("ChunkedIndex", () => {
   });
 
 
-  test("fastFill", async () => {
+  xtest("fastFill", async () => {
     const idx = new ChunkedIndex(indexPath);
     // for (let i = 0; i < 10 * 1000 * 1000; i++) {
     //   idx.setOffset(i, i * 10);

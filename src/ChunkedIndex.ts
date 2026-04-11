@@ -1,7 +1,44 @@
-import fs from "fs";
-import { DataBase } from "./db";
-import TableUtilities from "./TableUtilities";
+
+
 import PagesManager from "./PagesManager";
+import { createOffsetsConst } from "./utils";
+
+
+
+type SMALL_HEADER_STRUCTURE_KEY =
+  "numberofChunks"
+  | "numberOfRecords"
+  | "minValue"
+  | "maxValue"
+  | "metaStart";
+
+const SMALL_HEADER_STRUCTURE = new Map<SMALL_HEADER_STRUCTURE_KEY, number>([
+  ["numberofChunks", 2],
+  ["numberOfRecords", 4],
+  ["minValue", 8],
+  ["maxValue", 8],
+  ["metaStart", 0]
+]);
+
+const SMALL_HEADER_OFFSETS = createOffsetsConst(SMALL_HEADER_STRUCTURE);
+
+
+type HEADER_ENTRY_KEY =
+  "page"
+  | "length"
+  | "minValue"
+  | "maxValue"
+  | "metaStart";
+
+const HEADER_ENTRY_STRUCTURE = new Map<HEADER_ENTRY_KEY, number>([
+  ["page", 2],
+  ["length", 4],
+  ["minValue", 8],
+  ["maxValue", 8],
+  ["metaStart", 0],
+]);
+
+const HEADER_ENTRY_OFFSETS = createOffsetsConst(HEADER_ENTRY_STRUCTURE);
 
 
 type ChunkMeta = {
@@ -16,36 +53,36 @@ export default class ChunkedIndex extends PagesManager {
 
 
   protected readonly sizeEntry: number = 8 + 8;
-  protected readonly sizeEntryHeader: number = 2 + 8 + 8 + 2;
-  protected readonly sizeSmallHeader: number = 2 + 2 + 8 + 8;
+  protected readonly sizeEntryHeader: number = HEADER_ENTRY_OFFSETS.metaStart;
+  protected readonly sizeSmallHeader: number = SMALL_HEADER_OFFSETS.metaStart;
   protected readonly capacityChunk: number;
 
   public get numberOfChunks(): number {
-    return this.header.readUint16LE(0);
+    return this.header.readUint16LE(SMALL_HEADER_OFFSETS.numberofChunks);
   }
   protected set numberOfChunks(value: number) {
-    this.header.writeUint16LE(value, 0);
+    this.header.writeUint16LE(value, SMALL_HEADER_OFFSETS.numberofChunks);
   }
 
   public get numberOfRecords(): number {
-    return this.header.readUint16LE(2);
+    return this.header.readUint32LE(SMALL_HEADER_OFFSETS.numberOfRecords);
   }
   protected set numberOfRecords(value: number) {
-    this.header.writeUint16LE(value, 2);
+    this.header.writeUint32LE(value, SMALL_HEADER_OFFSETS.numberOfRecords);
   }
 
   public get minValue(): number {
-    return this.header.readDoubleLE(4);
+    return this.header.readDoubleLE(SMALL_HEADER_OFFSETS.minValue);
   }
   protected set minValue(value: number) {
-    this.header.writeDoubleLE(value, 4);
+    this.header.writeDoubleLE(value, SMALL_HEADER_OFFSETS.minValue);
   }
 
   public get maxValue(): number {
-    return this.header.readDoubleLE(12);
+    return this.header.readDoubleLE(SMALL_HEADER_OFFSETS.maxValue);
   }
   protected set maxValue(value: number) {
-    this.header.writeDoubleLE(value, 12);
+    this.header.writeDoubleLE(value, SMALL_HEADER_OFFSETS.maxValue);
   }
 
   constructor(path: string) {
@@ -228,19 +265,19 @@ export default class ChunkedIndex extends PagesManager {
     }
 
     const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntryHeader;
-    this.header.writeUint16LE(meta.length, pos);
-    this.header.writeDoubleLE(meta.min, pos + 2);
-    this.header.writeDoubleLE(meta.max, pos + 10);
-    this.header.writeUint16LE(meta.page, pos + 18);
+    this.header.writeUint32LE(meta.length, pos + HEADER_ENTRY_OFFSETS.length);
+    this.header.writeDoubleLE(meta.min, pos + HEADER_ENTRY_OFFSETS.minValue);
+    this.header.writeDoubleLE(meta.max, pos + HEADER_ENTRY_OFFSETS.maxValue);
+    this.header.writeUint16LE(meta.page, pos + HEADER_ENTRY_OFFSETS.page);
   }
 
   readChunkMeta(chunkIndex: number): ChunkMeta {
     const pos = this.sizeSmallHeader + chunkIndex * this.sizeEntryHeader;
 
-    const length = this.header.readUint16LE(pos);
-    const min = this.header.readDoubleLE(pos + 2);
-    const max = this.header.readDoubleLE(pos + 10);
-    const page = this.header.readUint16LE(pos + 18);
+    const length = this.header.readUint32LE(pos + HEADER_ENTRY_OFFSETS.length);
+    const min = this.header.readDoubleLE(pos + HEADER_ENTRY_OFFSETS.minValue);
+    const max = this.header.readDoubleLE(pos + HEADER_ENTRY_OFFSETS.maxValue);
+    const page = this.header.readUint16LE(pos + HEADER_ENTRY_OFFSETS.page);
     return {
       length,
       min,
