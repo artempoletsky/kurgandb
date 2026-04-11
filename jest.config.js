@@ -39,8 +39,8 @@ const files = fs.readdirSync("./__tests__");
 // currentFile = "FilePatchRecord.test.ts"
 // currentFile = "StringsSaver.test.ts";
 // currentFile = "ByteRecord_serialize.test.ts";
-// currentFile = "LogicalMemoryHeap.test.ts";
-currentFile = "ChunkedIndex.test.ts";
+currentFile = "LogicalMemoryHeap.test.ts";
+// currentFile = "ChunkedIndex.test.ts";
 // currentFile = "PagesManager.test.ts";
 // currentFile = "NamedByteBuffer.test.ts";
 

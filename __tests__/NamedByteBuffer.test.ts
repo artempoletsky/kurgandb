@@ -36,7 +36,7 @@ describe("NamedByteBuffer", () => {
   });
 
   test("header", () => {
-    let header = NamedByteBuffer.createHeader(HEADER_STRUCTURE);
+    let header = NamedByteBuffer.createSuperblock(HEADER_STRUCTURE);
 
     header.numberofChunks = 123;
     header.numberOfRecords = 12345678;

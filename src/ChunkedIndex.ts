@@ -1,6 +1,6 @@
 import fs from "fs";
 
-import NamedByteBuffer, { THeader, TPage } from "./NamedByteBuffer";
+import NamedByteBuffer, { TSuperblock, TPage } from "./NamedByteBuffer";
 import PagesManager from "./PagesManager";
 
 
@@ -56,7 +56,7 @@ export default class ChunkedIndex extends PagesManager {
 
 
 
-  protected headerSmall!: THeader<SMALL_HEADER_STRUCTURE_KEY>;
+  protected headerSmall!: TSuperblock<SMALL_HEADER_STRUCTURE_KEY>;
   protected header!: TPage<HEADER_ENTRY_KEY>;
   protected pageCurrent!: TPage<PAGE_ENTRY_KEY>;
   protected fdHeader!: number;
@@ -73,7 +73,7 @@ export default class ChunkedIndex extends PagesManager {
 
   override reset(): void {
     let pathHeader = this.pathHeader = this.path + ".header";
-    this.headerSmall = NamedByteBuffer.createHeader(SMALL_HEADER_STRUCTURE);
+    this.headerSmall = NamedByteBuffer.createSuperblock(SMALL_HEADER_STRUCTURE);
     if (!fs.existsSync(pathHeader)) {
       fs.writeFileSync(pathHeader, Buffer.alloc(this.headerSmall.$getBuffer().byteLength));
     }

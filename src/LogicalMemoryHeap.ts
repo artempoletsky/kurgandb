@@ -2,6 +2,22 @@ import fs from "fs";
 import fsPromise from "fs/promises";
 import { start } from "repl";
 import CommitQueue from "./CommitQueue";
+import NamedByteBuffer, { TSuperblock, TPage } from "./NamedByteBuffer";
+
+
+//[headerLen(4)][lastId(8)] [id(8)][len(4)] [data(var)]
+type SUPERBLOCK_KEY = "headerLength" | "lastId";
+const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEY, number>([
+  ["headerLength", 4],
+  ["lastId", 8],
+]);
+
+type HEADER_KEY = "id" | "length";
+const HEADER_STRUCTURE = new Map<HEADER_KEY, number>([
+  ["id", 8],
+  ["length", 4],
+]);
+
 
 class CavityLengthsArray {
   public array: [number, number][];
@@ -66,35 +82,26 @@ class CavityLengthsArray {
 
 export default class LogicalMemoryHeap {
 
+  protected superblock!: TSuperblock<SUPERBLOCK_KEY>;
+
   get __debug() {
     if (process.env.NODE_ENV !== "test") {
       throw "__debug method should only be used in tests";
     }
     return {
-      // heap: this.heap,
+      superblock: this.superblock,
       fd: this.fd,
       path: this.path,
-      indexMap: this.indexMap,
-      // currentWritePos: this.currentWritePos,
-      lastId: this.lastId,
-      // cavityStarts: this.cavityStarts,
-      // cavityEnds: this.cavityEnds,
-      // cavityLengths: this.cavityLengths.array,
+      indexMap: this.indexMap
     }
   }
 
   protected heapMap!: Map<number, Buffer>;
   protected sizeHeap!: number;
-  // protected heap!: Buffer;
   protected fd!: number;
   protected path: string;
   protected indexMap!: Map<number, Uint32Array>;
 
-  // protected currentWritePos!: number;
-  protected lastId!: number;
-  // protected cavityStarts!: Map<number, number>;
-  // protected cavityEnds!: Map<number, number>;
-  // protected cavityLengths!: CavityLengthsArray;
   protected commitQueueId: string;
   constructor(path: string) {
     this.path = path;
@@ -103,129 +110,91 @@ export default class LogicalMemoryHeap {
   }
 
   async commit() {
-    return new Promise<void>((resolve, reject) => {
 
-      CommitQueue.start(this.commitQueueId);
-      // let header = this.serializeHeader();
-      let buf = this.serialize();
-
-      // let starts = Array.from(this.cavityStarts.keys()).sort();
-
-      // let currentVectorStart = 0;
-      // for (const start of starts) {
-      //   result.push(this.heap.subarray(currentVectorStart, start));
-      //   currentVectorStart = this.cavityStarts.get(start)!;
-      // }
-      // result.push(this.heap.subarray(currentVectorStart, this.currentWritePos));
-      // console.log("write: " + result[0].readUint32LE(0));
+    CommitQueue.start(this.commitQueueId);
+    // let header = this.serializeHeader();
+    let buffers: Buffer[] = this.serialize();
 
 
-
-
-
-      // fs.writeSync(this.fd, Buffer.concat(result), 0, );
-      fs.write(this.fd, buf, 0, undefined, 0, (err, written: number) => {
-        if (err) {
-          reject(err);
-        } else {
-
-          // this.reset();
-          CommitQueue.end(this.commitQueueId);
-          resolve();
-        }
+    let writingPos = 0;
+    for (const b of buffers) {
+      await new Promise((resolve) => {
+        fs.write(this.fd, b, 0, undefined, writingPos, resolve);
+        writingPos += b.byteLength;
       });
+    }
 
-
-
-    });
+    CommitQueue.end(this.commitQueueId);
   }
 
-  serialize(): Buffer {
+  serialize(): Buffer[] {
     //[headerLen(4)][lastId(8)] [id(8)][len(4)] [data(var)]
 
-    let sizeEntryHeader = 8 + 4;
-    let headerLen = 4 + 8 + this.heapMap.size * sizeEntryHeader;
-    let buf = Buffer.allocUnsafe(headerLen + this.sizeHeap);
-    buf.writeUint32LE(headerLen, 0);
-    buf.writeUint32LE(this.lastId, 4);
-
-    let headerWritePos = 12;
-    let heapWritePos = headerLen;
-    for (const [id, data] of this.heapMap) {
-      buf.writeDoubleLE(id, headerWritePos);
-      buf.writeUint32LE(data.byteLength, headerWritePos + 8);
-      headerWritePos += sizeEntryHeader;
-      data.copy(buf, heapWritePos);
-      heapWritePos += data.byteLength;
+    this.superblock.headerLength = this.heapMap.size;
+    let result: Buffer[] = [this.superblock.$getBuffer()];
+    if (!this.heapMap.size) {
+      return [result[0], Buffer.alloc(0), Buffer.alloc(0)];
     }
-    return buf;
+
+    let header = NamedByteBuffer.createArray(HEADER_STRUCTURE, this.heapMap.size);
+
+    let heapBuf = Buffer.allocUnsafe(this.sizeHeap);
+    let heapWritePos = 0;
+    let i = 0;
+    for (const [id, data] of this.heapMap) {
+      header.id.set(i, id);
+      header.length.set(i, data.byteLength);
+
+      data.copy(heapBuf, heapWritePos);
+      heapWritePos += data.byteLength;
+      i++;
+    }
+    result.push(header.$getBuffer());
+    result.push(heapBuf);
+
+    return result;
   }
 
   unserialize(buf: Buffer) {
-    let sizeHeader = buf.readUint32LE(0);
-    this.lastId = buf.readUint32LE(4);
-    let sizeEntryHeader = 8 + 4;
-    let recordsNum = (sizeHeader - 12) / sizeEntryHeader;
 
-    let heapReadPos = sizeHeader;
-    let headerReadPos = 12;
+
+    let recordsNum = this.superblock.headerLength;
     this.heapMap = new Map();
+    if (!recordsNum) {
+      this.sizeHeap = 0;
+      return;
+    }
+    let header = NamedByteBuffer.createArray(HEADER_STRUCTURE, recordsNum);
+    let sizeEntryHeader = header.$sizeEntry;
+
+    let headerReadPos = this.superblock.$size;
+    let heapReadPos = headerReadPos + sizeEntryHeader * recordsNum;
+
+    const sizeHeader = heapReadPos;
+
+    header.$setBuffer(buf.subarray(headerReadPos, sizeHeader));
+    // this.header =
+
+
     for (let i = 0; i < recordsNum; i++) {
-      let id = buf.readDoubleLE(headerReadPos);
-      let len = buf.readUint32LE(headerReadPos + 8);
+      let id = header.id.get(i);
+      let len = header.length.get(i);
 
       this.heapMap.set(id, buf.subarray(heapReadPos, heapReadPos + len));
 
-      headerReadPos += sizeEntryHeader;
+      // headerReadPos += sizeEntryHeader;
       heapReadPos += len;
     }
     this.sizeHeap = heapReadPos - sizeHeader;
   }
 
-  /**
-   * @deprecated use it only if we move from js Map to bytes
-   */
-  serializeHeader(): Buffer {
-    //[headerLen(4)][lastId(8)] [id(8)][start(4)][end(4)]
-    let headerLen = 4 + 8 + this.indexMap.size * (8 + 4 + 4);
-    const buf = Buffer.allocUnsafe(headerLen);
-    buf.writeUint32LE(headerLen);
-    buf.writeDoubleLE(this.lastId, 4);
-    let writePos = 4 + 8;
-    for (const [id, [start, end]] of this.indexMap) {
-      buf.writeDoubleLE(id, writePos);
-      buf.writeUint32LE(start, writePos + 8);
-      buf.writeUint32LE(end, writePos + 12);
-      writePos += 16;
-    }
-    return buf;
-  }
-
-  readHeader(buf: Buffer) {
-    this.lastId = buf.readDoubleLE(4);
-    let len = (buf.byteLength - 12) / 16;
-    this.indexMap = new Map();
-    for (let i = 0; i < len; i++) {
-      let pos = 12 + i * 16;
-      this.indexMap.set(buf.readDoubleLE(pos), new Uint32Array(buf.subarray(pos + 8, pos + 12)));
-    }
-  }
-
-  // allocate(size: number) {
-  //   this.heap = Buffer.concat([this.heap, Buffer.allocUnsafe(size)]);
-  // }
-
-  // allocateOverflow() {
-  //   console.warn("LogicalMemoryHeap: Unexpected allocateOverflow() call. Use allocate() manually for big operations");
-  //   this.allocate(1024 * 1024 * 2);
-  // }
 
   reset() {
+    let superblock = this.superblock = NamedByteBuffer.createSuperblock(SUPERBLOCK_STRUCTURE);
     // let sizeHeader = 1024 * 300;
     if (!fs.existsSync(this.path)) {
       this.indexMap = new Map();
-      this.lastId = 0;
-      fs.writeFileSync(this.path, this.serializeHeader());
+      fs.writeFileSync(this.path, superblock.$getBuffer());
     }
 
     let stat = fs.statSync(this.path);
@@ -234,20 +203,13 @@ export default class LogicalMemoryHeap {
     let data = Buffer.allocUnsafe(stat.size);
     fs.readSync(this.fd, data);
 
-    let sizeHeader = data.readUint32LE(0);
-    // console.log("read: " + sizeHeader);
 
-    // this.heap = data.subarray(sizeHeader);
-    // this.currentWritePos = stat.size - sizeHeader;
-    this.sizeHeap = stat.size - sizeHeader;
+    let b = superblock.$getBuffer();
+    data.copy(b, 0, 0, b.byteLength);
+    this.sizeHeap = stat.size - superblock.headerLength;
 
     this.unserialize(data);
 
-    // this.readHeader(data.subarray(0, sizeHeader));
-
-    // this.cavityEnds = new Map();
-    // this.cavityStarts = new Map();
-    // this.cavityLengths = new CavityLengthsArray();
   }
 
 
@@ -260,49 +222,13 @@ export default class LogicalMemoryHeap {
     let dLen = data.byteLength - found.byteLength;
     this.sizeHeap += dLen;
     this.heapMap.set(id, data);
-    // let newEnd = found[0] + data.buffer.byteLength;
-    // if (newEnd == found[1]) {
-    //   data.copy(this.heap, found[0]);
-    // } else if (newEnd > found[1]) {
-    //   this.writeTailId(data, id);
-    //   this.createCavity(found[0], found[1]);
-    // } else {
-    //   data.copy(this.heap, found[0]);
-    //   this.createCavity(found[0] + data.byteLength, found[1])
-    // }
   }
 
   updateString(id: number, string: string) {
     this.update(id, Buffer.from(string, "utf-8"));
   }
 
-  // createCavity(start: number, end: number) {
-  //   if (this.cavityStarts.has(end)) {
-  //     let oldEnd = this.cavityStarts.get(end)!;
-  //     this.cavityStarts.delete(end);
-  //     this.cavityEnds.set(start, oldEnd);
-  //     this.cavityEnds.set(oldEnd, start);
-  //     this.cavityLengths.delete(oldEnd - end, end);
-  //     this.cavityLengths.add(oldEnd - start, start);
-  //     return;
-  //   }
 
-  //   if (this.cavityEnds.has(start)) {
-  //     let oldStart = this.cavityEnds.get(start)!;
-  //     this.cavityEnds.delete(start);
-  //     this.cavityStarts.set(oldStart, end);
-  //     this.cavityStarts.set(end, oldStart);
-  //     this.cavityLengths.delete(start - oldStart, oldStart);
-  //     this.cavityLengths.add(end - oldStart, oldStart);
-  //     return;
-
-  //   }
-  //   this.cavityStarts.set(start, end);
-  //   this.cavityEnds.set(end, start);
-  //   this.cavityLengths.add(end - start, start);
-
-
-  // }
 
   delete(id: number) {
     const found = this.indexMap.get(id);
@@ -311,55 +237,18 @@ export default class LogicalMemoryHeap {
     }
     this.sizeHeap -= found.byteLength;
     this.indexMap.delete(id);
-    // this.createCavity(found[0], found[1]);
   }
 
-  // writeTailId(data: Buffer, id: number) {
-  //   let start = this.currentWritePos;
-  //   let end = start + data.byteLength;
-  //   if (end > this.heap.byteLength) {
-  //     this.allocateOverflow();
-  //   }
-  //   this.currentWritePos += data.byteLength;
-  //   data.copy(this.heap, start);
-  //   this.indexMap.set(id, new Uint32Array([start, end]));
-  // }
+
 
   add(data: Buffer): number {
-    this.lastId++;
-    this.heapMap.set(this.lastId, data);
+    let lastId = this.superblock.lastId;
+    lastId++;
+    this.superblock.lastId = lastId;
+    this.heapMap.set(lastId, data);
     this.sizeHeap += data.byteLength;
-    // this.writeToCavityOrTail(data, this.lastId);
-    return this.lastId;
+    return lastId;
   }
-
-  // writeToCavityOrTail(data: Buffer, id: number) {
-  //   let freePos = this.cavityLengths.findBestFit(data.byteLength);
-  //   if (!freePos) {
-  //     this.writeTailId(data, id);
-  //     return;
-  //   }
-  //   let start = freePos[1];
-  //   let end = start + data.byteLength;
-
-  //   if (freePos.length == data.byteLength) { // completely fill cavity
-  //     this.cavityLengths.delete(end - start, start);
-  //     this.cavityStarts.delete(start);
-  //     this.cavityEnds.delete(end);
-  //   } else if (freePos.length < data.byteLength) {
-  //     throw "LogicalMemoryHeap: attempt to write in the smaller than the buffer cavity";
-  //   } else {
-  //     let dlen = freePos.length - data.byteLength;
-  //     let newStart = end - dlen;
-  //     this.cavityLengths.delete(end - start, start);
-  //     this.cavityLengths.add(dlen, newStart);
-  //     this.cavityStarts.delete(start);
-  //     this.cavityStarts.set(newStart, end);
-  //     this.cavityEnds.set(end, newStart);
-  //   }
-
-  //   this.indexMap.set(id, new Uint32Array([start, end]));
-  // }
 
   addString(string: string) {
     return this.add(Buffer.from(string, "utf-8"));

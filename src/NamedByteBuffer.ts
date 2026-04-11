@@ -138,13 +138,14 @@ export type TPage<T extends string> = Record<T,
     $shiftLeft: (capacity: number, fromIndex: number, num?: number) => void;
   };
 
-export type THeader<T extends string> = Record<T, number> & {
+export type TSuperblock<T extends string> = Record<T, number> & {
   $setBuffer: (buffer: Buffer) => void;
   $getBuffer: () => Buffer;
+  $size: number;
 };
 
 export default class NamedByteBuffer {
-  static createHeader<T extends string>(map: Map<T, number>) {
+  static createSuperblock<T extends string>(map: Map<T, number>) {
     let methods: Record<string, Function> = {};
     let offsets = createOffsetsConst(map);
     let length = calculateLength(map);
@@ -163,6 +164,7 @@ export default class NamedByteBuffer {
       $getBuffer() {
         return b;
       },
+      $size: length,
     } as const;
 
     return new Proxy({} as Record<T, number> & typeof $, {
@@ -181,10 +183,10 @@ export default class NamedByteBuffer {
 
   static createArrayOrPage<T extends string>(map: Map<T, number>, arrayLength?: number, pageSize?: number): TPage<T> {
     if (arrayLength && pageSize) {
-      throw "NamedByteBuffer: Only one of arrayLength or pageSize can be specified";
+      throw new Error("NamedByteBuffer: Only one of arrayLength or pageSize can be specified");
     }
     if (!arrayLength && !pageSize) {
-      throw "NamedByteBuffer: Either arrayLength or pageSize must be specified";
+      throw new Error("NamedByteBuffer: Either arrayLength or pageSize must be specified");
     }
 
     let offsets = createOffsetsConst(map);
@@ -206,6 +208,9 @@ export default class NamedByteBuffer {
 
     const $ = {
       $setBuffer(buffer: Buffer) {
+        if (b.byteLength != buffer.byteLength) {
+          throw new Error("NamedByteBuffer: not implemented");
+        }
         b = buffer;
       },
       $getBuffer() {
