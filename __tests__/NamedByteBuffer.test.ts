@@ -139,4 +139,39 @@ describe("NamedByteBuffer", () => {
     expect(page.$canShiftRight(1000)).toBe(false);
     expect(page.$canShiftRight(999)).toBe(true);
   });
+
+  test("get set 16", () => {
+    type key = "sortingKey" | "arg1" | "arg2";
+    const struct = new Map<key, number>([
+      ["sortingKey", 16],
+      ["arg1", 2],
+      ["arg2", 4],
+    ]);
+    let page = NamedByteBuffer.createArray(struct, 100);
+
+    let b = Buffer.alloc(16);
+    b.write("aaaa aaaa a");
+    expect(b.toString("utf-8").startsWith("aaaa aaaa a")).toBe(true);
+    page.sortingKey.set16(0, b);
+
+    let b2 = Buffer.alloc(16);
+    page.sortingKey.get16(0, b2)
+    expect(b2).toEqual(b);
+
+    page.sortingKey.set16(1, Buffer.from("aaaa aaaa c"));
+
+    let toFind = Buffer.alloc(16);
+    toFind.write("aaaa aaaa b");
+
+    let f = page.sortingKey.binarySearchSortKey(toFind, 2);
+    expect(f.found).toBe(false);
+    expect(f.pos).toBe(1);
+    page.$shiftRight(2, 1);
+    page.sortingKey.set16(1, toFind);
+
+    page.sortingKey.binarySearchSortKey(toFind, 3);
+    expect(f.found).toBe(true);
+    expect(f.pos).toBe(1);
+
+  });
 });

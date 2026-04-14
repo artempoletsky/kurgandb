@@ -151,13 +151,13 @@ export default class ChunkedIndex extends PagesManager {
     this.writeChunkMeta(chunkMeta, chunkIndex);
   }
 
-  get(value: number) {
+  get(value: any) {
     const found = this.findValue(value);
     if (!found) return;
     return found.page.id.get(found.pos);
   }
 
-  set(value: number, id: number) {
+  set(value: any, id: number) {
     if (this.headerSmall.numberOfRecords == 0) {
       this.addChunk("right", value, id);
       return;

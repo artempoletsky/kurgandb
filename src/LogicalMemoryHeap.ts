@@ -12,73 +12,13 @@ const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEY, number>([
   ["lastId", 8],
 ]);
 
-type HEADER_KEY = "id" | "length";
+type HEADER_KEY = "id" | "sortKey" | "length";
 const HEADER_STRUCTURE = new Map<HEADER_KEY, number>([
   ["id", 8],
+  ["sortKey", 16],
   ["length", 4],
 ]);
 
-
-class CavityLengthsArray {
-  public array: [number, number][];
-  constructor() {
-    this.array = [];
-  }
-
-  binarySearch(length: number): { found: boolean, index: number } {
-    let left = 0;
-    let right = this.array.length - 1;
-    let mid = 0;
-    while (left <= right) {
-      let mid = ((left + right) >> 1);
-      if (this.array[mid][0] < length) {
-        left = mid + 1;
-      } else if (this.array[mid][0] > length) {
-        right = mid - 1;
-      } else {
-        return { found: true, index: mid };
-      }
-    }
-    return { found: false, index: mid };
-  }
-
-  findBestFit(length: number): [number, number] | undefined {
-    let idx = this.binarySearch(length);
-    if (idx.found) {
-      return this.array[idx.index];
-    }
-    return undefined;
-  }
-
-  delete(length: number, start: number) {
-    let idx = this.binarySearch(length);
-    if (!idx.found) {
-      throw "LogicalMemoryHeap: attempt to delete non existent cavity with length: " + length + " and start: " + start;
-    }
-    ;
-    for (let i = idx.index; i > 0; i--) {
-      if (this.array[i][1] == start) {
-        this.array.splice(i, 1);
-        return;
-      }
-      if (this.array[i][0] != length) break;
-    }
-
-    for (let i = idx.index; i < this.array.length; i++) {
-      if (this.array[i][1] == start) {
-        this.array.splice(i, 1);
-        return;
-      }
-      if (this.array[i][0] != length) break;
-    }
-    throw "LogicalMemoryHeap: attempt to delete non existent cavity with length: " + length + " and start: " + start;
-  }
-
-  add(length: number, start: number) {
-    let { index } = this.binarySearch(length);
-    this.array.splice(index, 0, [length, start]);
-  }
-}
 
 export default class LogicalMemoryHeap {
 
@@ -144,9 +84,14 @@ export default class LogicalMemoryHeap {
     for (const [id, data] of this.heapMap) {
       header.id.set(i, id);
       header.length.set(i, data.byteLength);
+      if (data.byteLength > 16) {
+        data.copy(heapBuf, heapWritePos);
+        header.sortKey.set16(i, data.subarray(0, 16));
+        heapWritePos += data.byteLength;
+      } else {
+        header.sortKey.set16(i, data);
+      }
 
-      data.copy(heapBuf, heapWritePos);
-      heapWritePos += data.byteLength;
       i++;
     }
     result.push(header.$getBuffer());
@@ -175,15 +120,23 @@ export default class LogicalMemoryHeap {
     header.$setBuffer(buf.subarray(headerReadPos, sizeHeader));
     // this.header =
 
-
     for (let i = 0; i < recordsNum; i++) {
       let id = header.id.get(i);
       let len = header.length.get(i);
 
-      this.heapMap.set(id, buf.subarray(heapReadPos, heapReadPos + len));
+      let data: Buffer;
+      if (len <= 16) {
+        data = Buffer.alloc(len);
+        header.sortKey.get16(i, data);
+      } else {
+        data = buf.subarray(heapReadPos, heapReadPos + len);
+        heapReadPos += len;
+      }
+
+      this.heapMap.set(id, data);
 
       // headerReadPos += sizeEntryHeader;
-      heapReadPos += len;
+
     }
     this.sizeHeap = heapReadPos - sizeHeader;
   }
@@ -261,4 +214,38 @@ export default class LogicalMemoryHeap {
   readString(id: number): string | undefined {
     return this.read(id)?.toString("utf-8");
   }
+
+  static getSortingKey(data: Buffer): Buffer {
+    const buf = Buffer.alloc(16);
+    // buf.write(string, "utf-8");
+    data.copy(buf, 0);
+    return buf;
+  }
+
+  static compareSortingKeys(key1: Buffer, key2: Buffer) {
+    return key1.compare(key2);
+  }
+
+  compareString(string: string, id: number) {
+    let b = this.read(id);
+    if (!b) {
+      throw new Error(`LogicalMemoryHeap.compareString; id not found; id:${id} string: ${string}`);
+    }
+    return LogicalMemoryHeap.compareStringBuffer(string, b, 0, b.byteLength)
+  }
+
+  static compareStringBuffer(str: string, buf: Buffer, offset: number, idLen: number): number {
+    const target = Buffer.from(str, "utf-8");
+    const minLen = Math.min(idLen, target.length);
+
+    for (let i = 0; i < minLen; i++) {
+      const a = buf[offset + i];
+      const b = target[i];
+      if (a !== b) return a - b;
+    }
+
+    if (idLen === target.length) return 0;
+    return idLen - target.length;
+  }
+
 }

@@ -1,17 +1,49 @@
-import * as fs from "fs";
+
+import LogicalMemoryHeap from "./LogicalMemoryHeap";
+import NamedByteBuffer, { TPage, TSuperblock } from "./NamedByteBuffer";
+import PagesManager from "./PagesManager";
 
 
-const MIN_BUFFER_SIZE = 1024 * 1024; // 1MB
-// const TOMBSTONE = 0xFFFFFFFF;
-const FIXED_RECORD_SIZE = 10;
-const START_OFFSET = 4;
-const LEN_OFFSET = 8;
+type SUPERBLOCK_KEY =
+  "numberOfChunks"
+  | "numberOfRecords"
+  | "minValue"
+  | "maxValue";
 
+const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEY, number>([
+  ["numberOfChunks", 2],
+  ["numberOfRecords", 4],
+  ["minValue", 8],
+  ["maxValue", 8],
+]);
+
+type HEADER_KEY =
+  "page"
+  | "numberOfRecords"
+  | "minValue"
+  | "maxValue";
+
+const HEADER_STRUCTURE = new Map<HEADER_KEY, number>([
+  ["page", 2],
+  ["numberOfRecords", 4],
+  ["minValue", 8],
+  ["maxValue", 8],
+]);
+
+type PAGE_ENTRY_KEY =
+  "idHeap"
+  | "value";
+
+const PAGE_STRUCTURE = new Map<PAGE_ENTRY_KEY, number>([
+  ["idHeap", 8],
+  ["value", 8],
+]);
 
 // stores multiple offsets for a single number key
 // one to many relationship between key and offsets
 export class IndexManyNumber {
 
+  protected heap!: LogicalMemoryHeap;
   constructor(path: string)
   constructor(tableName: string, columnName: string)
   constructor(a1: string, a2?: string) {
@@ -50,10 +82,54 @@ export class IndexManyNumber {
     return this.lengthBufferOffset;
   }
 
+  findChunx(value: number): IterableIterator<[number, TPage<PAGE_ENTRY_KEY>]> {
+    return {
+      [Symbol.iterator]() {
+        return this;
+      },
+      next(): IteratorResult<[number, TPage<PAGE_ENTRY_KEY>]> {
+        return { done: true, value: undefined as any };
+      }
+    };
+  }
+
+  static binarySearchChunk(chunk: TPage<"value">, length: number, value: number) {
+    let lo = 0;
+    let hi = length - 1;
+    let mid = 0;
+
+    while (lo <= hi) {
+      mid = Math.floor((lo + hi) / 2);
+      let v = chunk.value.get(mid);
+      if (v === value) {
+        return {
+          found: true,
+          pos: mid,
+        };
+      }
+      if (v < value) {
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+
+    return {
+      found: false,
+      pos: mid,
+    };
+  }
+
+  findHeapId(value: number): number {
+    for (const [len, chunk] of this.findChunx(value)) {
+
+    }
+  }
+
   get(value: number) {
-    const { pos, found } = this.binarySearch(value);
-    if (!found) return [];
-    return this.readOffsetsAtPositionInFixedBuffer(pos);
+    let heapId = this.findHeapId(value);
+    if (heapId === -1) return undefined;
+    return new Float64Array(this.heap.read(heapId)!);
   }
 
 
