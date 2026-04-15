@@ -169,7 +169,7 @@ describe("NamedByteBuffer", () => {
     page.$shiftRight(2, 1);
     page.sortingKey.set16(1, toFind);
 
-    page.sortingKey.binarySearchSortKey(toFind, 3);
+    f = page.sortingKey.binarySearchSortKey(toFind, 3);
     expect(f.found).toBe(true);
     expect(f.pos).toBe(1);
 
