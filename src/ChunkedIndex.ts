@@ -56,7 +56,7 @@ export default class ChunkedIndex extends PagesManager {
 
 
 
-  protected headerSmall!: TSuperblock<SMALL_HEADER_STRUCTURE_KEY>;
+  protected superblock!: TSuperblock<SMALL_HEADER_STRUCTURE_KEY>;
   protected header!: TPage<HEADER_ENTRY_KEY>;
   protected pageCurrent!: TPage<PAGE_ENTRY_KEY>;
   protected fdHeader!: number;
@@ -73,9 +73,9 @@ export default class ChunkedIndex extends PagesManager {
 
   override reset(): void {
     let pathHeader = this.pathHeader = this.path + ".header";
-    this.headerSmall = NamedByteBuffer.createSuperblock(SMALL_HEADER_STRUCTURE);
+    this.superblock = NamedByteBuffer.createSuperblock(SMALL_HEADER_STRUCTURE);
     if (!fs.existsSync(pathHeader)) {
-      fs.writeFileSync(pathHeader, Buffer.alloc(this.headerSmall.$getBuffer().byteLength));
+      fs.writeFileSync(pathHeader, Buffer.alloc(this.superblock.$getBuffer().byteLength));
     }
 
     const stat = fs.statSync(pathHeader);
@@ -83,13 +83,13 @@ export default class ChunkedIndex extends PagesManager {
     let fdHeader = this.fdHeader = fs.openSync(pathHeader, "r+");
 
     fs.readSync(fdHeader, rawHeader, 0, rawHeader.byteLength, 0);
-    let b = this.headerSmall.$getBuffer();
+    let b = this.superblock.$getBuffer();
     rawHeader.copy(b, 0, 0, b.byteLength);
     let readPos = b.byteLength;
 
 
     let padding = 1000;
-    this.header = NamedByteBuffer.createArray(HEADER_ENTRY_STRUCTURE, this.headerSmall.numberOfRecords + padding);
+    this.header = NamedByteBuffer.createArray(HEADER_ENTRY_STRUCTURE, this.superblock.numberOfRecords + padding);
     b = this.header.$getBuffer();
     rawHeader.copy(b, 0, readPos);
 
@@ -101,7 +101,7 @@ export default class ChunkedIndex extends PagesManager {
     let r = super.__debug;
     return {
       ...r,
-      headerSmall: this.headerSmall,
+      headerSmall: this.superblock,
       header: this.header,
       pageCurrent: this.pageCurrent,
     }
@@ -125,7 +125,7 @@ export default class ChunkedIndex extends PagesManager {
   }
 
   protected async _commitBefore(): Promise<void> {
-    let b = this.headerSmall.$getBuffer();
+    let b = this.superblock.$getBuffer();
     await new Promise((resolve) => fs.write(this.fdHeader, b, 0, b.byteLength, 0, resolve));
     let writePos = b.byteLength
     b = this.header.$getBuffer();
@@ -158,7 +158,7 @@ export default class ChunkedIndex extends PagesManager {
   }
 
   set(value: any, id: number) {
-    if (this.headerSmall.numberOfRecords == 0) {
+    if (this.superblock.numberOfRecords == 0) {
       this.addChunk("right", value, id);
       return;
     }
@@ -185,7 +185,7 @@ export default class ChunkedIndex extends PagesManager {
         // chunk.copy(chunk, pos + this.sizeEntry, pos, freeSpacePos);
         this.pageCurrent.$shiftRight(chunkMeta.length, pos);
         chunkMeta.length++;
-        this.headerSmall.numberOfRecords++;
+        this.superblock.numberOfRecords++;
       }
 
       chunkMeta.max = Math.max(value, chunkMeta.max);
@@ -209,7 +209,7 @@ export default class ChunkedIndex extends PagesManager {
         this.addChunk("left", value, id);
       }
     } else {
-      let chunkIndex = this.headerSmall.numberOfChunks - 1;
+      let chunkIndex = this.superblock.numberOfChunks - 1;
       let meta = this.readChunkMeta(chunkIndex);
       if (meta.length < this.header.$capacityArray) {
         meta.max = value;
@@ -252,15 +252,15 @@ export default class ChunkedIndex extends PagesManager {
 
   writeChunkMeta(meta: ChunkMeta, chunkIndex: number) {
     let oldMeta = this.readChunkMeta(chunkIndex);
-    if (this.headerSmall.numberOfRecords == 0 || oldMeta.min != meta.min && meta.min < this.headerSmall.minValue) {
-      this.headerSmall.minValue = meta.min;
+    if (this.superblock.numberOfRecords == 0 || oldMeta.min != meta.min && meta.min < this.superblock.minValue) {
+      this.superblock.minValue = meta.min;
     }
-    if (this.headerSmall.numberOfRecords == 0 || oldMeta.max != meta.max && meta.max > this.headerSmall.maxValue) {
-      this.headerSmall.maxValue = meta.max;
+    if (this.superblock.numberOfRecords == 0 || oldMeta.max != meta.max && meta.max > this.superblock.maxValue) {
+      this.superblock.maxValue = meta.max;
     }
     if (oldMeta.length != meta.length) {
       let d = oldMeta.length - meta.length;
-      this.headerSmall.numberOfRecords -= d;
+      this.superblock.numberOfRecords -= d;
     }
 
     this.header.length.set(chunkIndex, meta.length);
@@ -280,12 +280,12 @@ export default class ChunkedIndex extends PagesManager {
 
 
   findChunkIndex(value: number): { chunkIndex: number; chunkMeta: null | ChunkMeta } {
-    const numberOfChunks = this.headerSmall.numberOfChunks;
-    if (value < this.headerSmall.minValue) return {
+    const numberOfChunks = this.superblock.numberOfChunks;
+    if (value < this.superblock.minValue) return {
       chunkIndex: -1,
       chunkMeta: null,
     };
-    if (value > this.headerSmall.maxValue) return {
+    if (value > this.superblock.maxValue) return {
       chunkIndex: numberOfChunks + 1,
       chunkMeta: null,
     };
@@ -318,7 +318,7 @@ export default class ChunkedIndex extends PagesManager {
     let splitPointBytes = splitPointLogical * sizeEntry;
     const newMin = oldChunk.readDoubleLE(splitPointBytes);
 
-    let numberOfChunks = this.headerSmall.numberOfChunks;
+    let numberOfChunks = this.superblock.numberOfChunks;
     // add new chunk to the end of the pages
     const newMeta: ChunkMeta = {
       length: oldMeta.length - splitPointLogical,
@@ -327,7 +327,7 @@ export default class ChunkedIndex extends PagesManager {
       page: numberOfChunks
     };
 
-    this.headerSmall.numberOfChunks = numberOfChunks + 1;
+    this.superblock.numberOfChunks = numberOfChunks + 1;
 
     oldChunk.copy(newChunk, 0, splitPointBytes);
     oldMeta.length = splitPointLogical;
@@ -343,7 +343,7 @@ export default class ChunkedIndex extends PagesManager {
   }
 
   addChunk(direction: "left" | "right", value: number, id: number) {
-    let numberOfChunks = this.headerSmall.numberOfChunks;
+    let numberOfChunks = this.superblock.numberOfChunks;
     const meta: ChunkMeta = {
       length: 1,
       max: value,
@@ -355,7 +355,7 @@ export default class ChunkedIndex extends PagesManager {
       this.header.$shiftRight(numberOfChunks, 0);
     }
     this.writeChunkMeta(meta, chunkIndex);
-    this.headerSmall.numberOfChunks = numberOfChunks + 1;
+    this.superblock.numberOfChunks = numberOfChunks + 1;
 
     let p = this.pageCurrent;
     p.$setBuffer(Buffer.alloc(this.sizePage));
@@ -388,7 +388,7 @@ export default class ChunkedIndex extends PagesManager {
     let min: number | undefined = undefined;
     fn(buf, 0);
     min = buf.readDoubleLE(0);
-    this.headerSmall.minValue = min;
+    this.superblock.minValue = min;
 
     let capacity = this.header.$capacityArray;
     let numberOfChunks = Math.ceil(length / capacity);
@@ -418,8 +418,8 @@ export default class ChunkedIndex extends PagesManager {
       }, p);
     }
 
-    this.headerSmall.numberOfChunks = numberOfChunks;
-    this.headerSmall.numberOfRecords = length;
+    this.superblock.numberOfChunks = numberOfChunks;
+    this.superblock.numberOfRecords = length;
   }
 
 }
