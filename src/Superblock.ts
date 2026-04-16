@@ -100,13 +100,22 @@ try {
 }
 
 export type TSuperblock<T extends string> = Record<T, number> & {
+  $copyToEnd: (page: Buffer) => void;
+  $copyToStart: (page: Buffer) => void;
   $setBuffer: (buffer: Buffer, readingPos?: number) => void;
   $getBuffer: () => Buffer;
   $size: number;
 };
 
 export default class Superblock {
-  static create<T extends string>(map: Map<T, number>) {
+  static fromPageTail<T extends string>(map: Map<T, number>, page: Buffer) {
+    let result = this.create(map);
+    let b = result.$getBuffer();
+    page.copy(b, 0, page.byteLength - result.$size, page.byteLength);
+    return result;
+  }
+
+  static create<T extends string>(map: Map<T, number>): TSuperblock<T> {
     let methods: Record<string, Function> = {};
     let offsets = createOffsetsConst(map);
     let length = calculateLength(map);
