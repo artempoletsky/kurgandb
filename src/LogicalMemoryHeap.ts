@@ -59,7 +59,7 @@ export default class LogicalMemoryHeap {
     let writingPos = 0;
     for (const b of buffers) {
       await new Promise((resolve) => {
-        fs.write(this.fd, b, 0, undefined, writingPos, resolve);
+        fs.write(this.fd, b, 0, b.byteLength, writingPos, resolve);
         writingPos += b.byteLength;
       });
     }
