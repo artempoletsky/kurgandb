@@ -3,7 +3,7 @@ import fs from "fs";
 import CommitQueue from "./CommitQueue";
 import PatchFile from "./PatchFile";
 import Superblock, { TSuperblock } from "./Superblock";
-import { TPage } from "./NamedByteBuffer";
+import { TPageView } from "./BytePageView";
 
 
 const PAGE_SIZE = 0x2000;
@@ -37,7 +37,7 @@ export default class PagesManager {
   protected maxSizeReadingPages = 1;
 
   public superblock!: TSuperblock<SUPERBLOCK_KEYS>;
-  public freePages!: TPage<EMPTY_PAGES_KEYS>;
+  public freePages!: TPageView<EMPTY_PAGES_KEYS>;
 
   get __debug() {
     if (process.env.NODE_ENV !== "test") {

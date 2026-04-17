@@ -1,148 +1,55 @@
-import _, { set } from "lodash";
-import { $ } from "./utils";
+import _ from "lodash";
+import { calculateLength, createOffsetsConst, lenToMethods } from "./Superblock";
 
 
 
-export function createOffsetsConst<T extends string>(structure: Map<T, number>): Record<T, number> {
-  let _currentOffset = 0;
-  return Array.from(structure).reduce((result, e) => {
-    result[e[0]] = _currentOffset;
-    _currentOffset += e[1];
-    return result;
-  }, {} as Record<T, number>);
-}
-
-export function calculateLength(structure: Map<string, number>): number {
-  return Array.from(structure).reduce((sum, e) => sum + e[1], 0);
-}
-
-
-export function lenToMethods(len: number, isFloat: boolean = false): { setMethod: string, getMethod: string } {
-  let setMethod: string = "";
-  let getMethod: string = "";
-
-  if (isFloat) {
-    throw "not implemented";
-  }
-
-  let b: Buffer;
-  switch (len) {
-    case 1:
-      setMethod = "writeUint8";
-      getMethod = "readUint8";
-      break;
-    case 2:
-      setMethod = "writeUint16LE";
-      getMethod = "readUint16LE";
-      break;
-    case 4:
-      setMethod = "writeUint32LE";
-      getMethod = "readUint32LE";
-      break
-    case 8:
-      setMethod = "writeDoubleLE";
-      getMethod = "readDoubleLE";
-      break;
-    case 16:
-      setMethod = "set16";
-      getMethod = "get16";
-      break;
-  }
-
-  if (!setMethod || !getMethod) {
-    throw new Error(`NamedByteBuffer; lenToMethods; Unsupported length ${len}`);
-  }
-  return { setMethod, getMethod };
-}
-
-export function generateFunction(type: "set" | "get", entryLength: number | undefined, method: string, offset: number, field: string): Function {
+export function generateFunction(type: "set" | "get", entryLength: number, method: string, offset: number, field: string): Function {
   let mainbody: string;
 
   if (method == "get16") {
-    if (entryLength !== undefined)
-      return new Function("b", "i", "v", `
+    return new Function("b", "i", "v", `
   let s = i * ${entryLength} + ${offset};
   b.copy(v, 0, s, s + 16);`);
-
-    return new Function("b", "v", `b.copy(v, 0, ${offset}, ${offset + 16})`);
   } else if (method == "set16") {
-    if (entryLength !== undefined)
-      return new Function("b", "i", "v", `v.copy(b, i * ${entryLength} + ${offset}, 0, 16);`);
-
-    return new Function("b", "v", `v.copy(b, ${offset}, 0, 16);`);
-    // return new Function("b", "v", )
+    return new Function("b", "i", "v", `v.copy(b, i * ${entryLength} + ${offset}, 0, 16);`);
   }
-  if (entryLength !== undefined) {
-    if (type === "set") {
-      mainbody = `b.${method}(v, i * ${entryLength} + ${offset});`;
-    } else {
-      mainbody = `return b.${method}(i * ${entryLength} + ${offset});`;
-    }
+
+  if (type === "set") {
+    mainbody = `b.${method}(v, i * ${entryLength} + ${offset});`;
   } else {
-    if (type === "set") {
-      mainbody = `b.${method}(v, ${offset});`;
-    } else {
-      mainbody = `return b.${method}(${offset});`;
-    }
+    mainbody = `return b.${method}(i * ${entryLength} + ${offset});`;
   }
 
 
   if (process.env.NODE_ENV === "production") {
-    if (entryLength !== undefined) {
-      if (type === "set")
-        return new Function("b", "i", "v", mainbody);
-      else
-        return new Function("b", "i", mainbody);
-
-    } else {
-      if (type === "set")
-        return new Function("b", "v", mainbody);
-      else
-        return new Function("b", mainbody);
-    }
+    if (type === "set")
+      return new Function("b", "i", "v", mainbody);
+    else
+      return new Function("b", "i", mainbody);
 
   } else {
-    if (entryLength !== undefined) {
-      if (type === "set") {
-        return new Function("b", "i", "v", `
+
+    if (type === "set") {
+      return new Function("b", "i", "v", `
 try { 
   ${mainbody} 
 } catch (e) { 
  console.error('Error setting "${field}" at offset ${offset} with value, index', v, i, e); 
  throw e;   
 }`);
-      } else {
-        return new Function("b", "i", `
+    } else {
+      return new Function("b", "i", `
 try { 
   ${mainbody} 
 } catch (e) { 
  console.error('Error getting "${field}" at offset ${offset} with index', i, e); 
  throw e;   
 }`);
-      }
-    } else {
-      if (type === "set") {
-        return new Function("b", "v", `
-try { 
-  ${mainbody} 
-} catch (e) { 
- console.error('Error setting "${field}" at offset ${offset} with value', v, e); 
- throw e;   
-}`);
-      } else {
-        return new Function("b", `
-try { 
-  ${mainbody} 
-} catch (e) { 
- console.error('Error getting "${field}" at offset ${offset}', e); 
- throw e;   
-}`);
-      }
     }
   }
 }
 
-export type TPage<T extends string> = Record<T,
+export type TPageView<T extends string> = Record<T,
   {
     set: (index: number, value: number) => void;
     get: (index: number) => number
@@ -161,56 +68,9 @@ export type TPage<T extends string> = Record<T,
     $shiftLeft: (capacity: number, fromIndex: number, num?: number) => void;
   };
 
-export type TSuperblock<T extends string> = Record<T, number> & {
-  $setBuffer: (buffer: Buffer) => void;
-  $getBuffer: () => Buffer;
-  $size: number;
-};
 
-export default class NamedByteBuffer {
-  static createSuperblock<T extends string>(map: Map<T, number>) {
-    let methods: Record<string, Function> = {};
-    let offsets = createOffsetsConst(map);
-    let length = calculateLength(map);
-
-    for (const [key, len] of map) {
-      let { setMethod, getMethod } = lenToMethods(len);
-      methods[key + "Set"] = generateFunction("set", undefined, setMethod, offsets[key], key);
-      methods[key + "Get"] = generateFunction("get", undefined, getMethod, offsets[key], key);
-    }
-    let b: Buffer = Buffer.alloc(length);
-
-    const $ = {
-      $setBuffer(buffer: Buffer) {
-        b = buffer;
-      },
-      $getBuffer() {
-        return b;
-      },
-      $size: length,
-    } as const;
-
-    return new Proxy({} as Record<T, number> & typeof $, {
-      get(target, prop: T) {
-        if (prop in $) {
-          return $[prop as keyof typeof $];
-        }
-        return methods[prop + "Get"](b);
-      },
-      set(target, prop: T, value) {
-        methods[prop + "Set"](b, value);
-        return true;
-      }
-    });
-  }
-
-  static createArrayOrPage<T extends string>(map: Map<T, number>, arrayLength?: number, pageSize?: number): TPage<T> {
-    if (arrayLength && pageSize) {
-      throw new Error("NamedByteBuffer: Only one of arrayLength or pageSize can be specified");
-    }
-    if (!arrayLength && !pageSize) {
-      throw new Error("NamedByteBuffer: Either arrayLength or pageSize must be specified");
-    }
+export default class BytePageView {
+  static create<T extends string>(map: Map<T, number>, tailReserved: number = 0, pageSize: number = 0x2000): TPageView<T> {
 
     let offsets = createOffsetsConst(map);
     let entryLength = calculateLength(map);
@@ -289,11 +149,11 @@ export default class NamedByteBuffer {
     return { ...result, ...$ } as any
   }
 
-  static createArray<T extends string>(map: Map<T, number>, arrayLength: number): TPage<T> {
+  static createArray<T extends string>(map: Map<T, number>, arrayLength: number): TPageView<T> {
     return this.createArrayOrPage(map, arrayLength, undefined);
   }
 
-  static createPage<T extends string>(map: Map<T, number>, pageSize: number = 0x2000): TPage<T> {
+  static createPage<T extends string>(map: Map<T, number>, pageSize: number = 0x2000): TPageView<T> {
     return this.createArrayOrPage(map, undefined, pageSize);
   }
 }
@@ -301,7 +161,7 @@ export default class NamedByteBuffer {
 
 
 export function binarySearchValue<T extends string>(
-  page: TPage<T>,
+  page: TPageView<T>,
   length: number,
   value: number,
   key: T | "value" = "value") {
@@ -343,7 +203,7 @@ function binarySearchValue2(
 }
 
 export function binarySearchSortKey<T extends string>(
-  page: TPage<T>,
+  page: TPageView<T>,
   value: Buffer,
   length: number,
   key: T | "sortKey" = "sortKey") {

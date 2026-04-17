@@ -1,6 +1,6 @@
 
 import LogicalMemoryHeap from "./LogicalMemoryHeap";
-import NamedByteBuffer, { TPage, TSuperblock } from "./NamedByteBuffer";
+import NamedByteBuffer, { TPageView, TSuperblock } from "./BytePageView";
 import PagesManager from "./PagesManager";
 
 
@@ -82,18 +82,18 @@ export class IndexManyNumber {
     return this.lengthBufferOffset;
   }
 
-  findChunx(value: number): IterableIterator<[number, TPage<PAGE_ENTRY_KEY>]> {
+  findChunx(value: number): IterableIterator<[number, TPageView<PAGE_ENTRY_KEY>]> {
     return {
       [Symbol.iterator]() {
         return this;
       },
-      next(): IteratorResult<[number, TPage<PAGE_ENTRY_KEY>]> {
+      next(): IteratorResult<[number, TPageView<PAGE_ENTRY_KEY>]> {
         return { done: true, value: undefined as any };
       }
     };
   }
 
-  static binarySearchChunk(chunk: TPage<"value">, length: number, value: number) {
+  static binarySearchChunk(chunk: TPageView<"value">, length: number, value: number) {
     let lo = 0;
     let hi = length - 1;
     let mid = 0;

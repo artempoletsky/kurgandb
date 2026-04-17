@@ -1,4 +1,4 @@
-import NamedByteBuffer, { TPage } from "./NamedByteBuffer";
+import NamedByteBuffer, { TPageView } from "./BytePageView";
 import Superblock from "./Superblock";
 
 type SUPERBLOCK_KEYS = "pageLength" | "pageMin" | "pageMax" | "level" | "parentPage";
@@ -49,7 +49,7 @@ export default class Tree {
   }
 
 
-  findChunkIndex(value: number, node: TPage<"minValue" | "maxValue">): { chunkIndex: number; chunkMeta: null | ChunkMeta } {
+  findChunkIndex(value: number, node: TPageView<"minValue" | "maxValue">): { chunkIndex: number; chunkMeta: null | ChunkMeta } {
     const numberOfChunks = this.superblock.numberOfChunks;
     if (value < this.superblock.minValue) return {
       chunkIndex: -1,

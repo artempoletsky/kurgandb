@@ -1,6 +1,6 @@
 import fs from "fs";
 
-import NamedByteBuffer, { TSuperblock, TPage } from "./NamedByteBuffer";
+import NamedByteBuffer, { TSuperblock, TPageView } from "./BytePageView";
 import PagesManager from "./PagesManager";
 
 
@@ -57,8 +57,8 @@ export default class ChunkedIndex extends PagesManager {
 
 
   protected superblock!: TSuperblock<SMALL_HEADER_STRUCTURE_KEY>;
-  protected header!: TPage<HEADER_ENTRY_KEY>;
-  protected pageCurrent!: TPage<PAGE_ENTRY_KEY>;
+  protected header!: TPageView<HEADER_ENTRY_KEY>;
+  protected pageCurrent!: TPageView<PAGE_ENTRY_KEY>;
   protected fdHeader!: number;
   protected pathHeader!: string;
   constructor(path: string) {
@@ -224,7 +224,7 @@ export default class ChunkedIndex extends PagesManager {
     }
   }
 
-  static binarySearchNumber(page: TPage<PAGE_ENTRY_KEY>, length: number, value: number) {
+  static binarySearchNumber(page: TPageView<PAGE_ENTRY_KEY>, length: number, value: number) {
 
     // file structure for number keyType is [value (8 bytes)][id (8 bytes)]
     let low = 0;

@@ -1,5 +1,5 @@
 import fs from "fs";
-import NamedByteBuffer, { TPage, TSuperblock } from "./NamedByteBuffer";
+import NamedByteBuffer, { TPageView, TSuperblock } from "./BytePageView";
 import DiscableBuffer from "./DiscableBuffer";
 import CommitQueue from "./CommitQueue";
 import { pipeline } from "stream/promises";

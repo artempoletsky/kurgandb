@@ -1,6 +1,6 @@
 
 import { afterAll, beforeAll, describe, expect, test, xdescribe, xtest } from "./test-setup";
-import NamedByteBuffer, { calculateLength, createOffsetsConst } from "../src/NamedByteBuffer";
+import NamedByteBuffer, { calculateLength, createOffsetsConst } from "../src/BytePageView";
 
 
 describe("NamedByteBuffer", () => {

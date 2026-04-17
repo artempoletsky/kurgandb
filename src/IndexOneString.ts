@@ -1,6 +1,6 @@
 
 import LogicalMemoryHeap from "./LogicalMemoryHeap";
-import NamedByteBuffer, { TPage, TSuperblock } from "./NamedByteBuffer";
+import NamedByteBuffer, { TPageView, TSuperblock } from "./BytePageView";
 import PagesManager from "./PagesManager";
 
 
@@ -54,7 +54,7 @@ const PAGE_STRUCTURE = new Map<PAGE_ENTRY_KEY, number>([
 
 export class IndexOneString extends PagesManager {
   protected superblock!: TSuperblock<SUPERBLOCK_KEY>;
-  protected header!: TPage<HEADER_KEY>;
+  protected header!: TPageView<HEADER_KEY>;
   protected heap: LogicalMemoryHeap;
   constructor(path: string) {
     super({ path });
