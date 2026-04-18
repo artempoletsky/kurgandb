@@ -41,9 +41,10 @@ const files = fs.readdirSync("./__tests__");
 // currentFile = "ByteRecord_serialize.test.ts";
 // currentFile = "LogicalMemoryHeap.test.ts";
 // currentFile = "ChunkedIndex.test.ts";
-currentFile = "PagesManager.test.ts";
-// currentFile = "NamedByteBuffer.test.ts";
+// currentFile = "PagesManager.test.ts";
+// currentFile = "BytePageView.test.ts";
 // currentFile = "PatchFile.test.ts"
+currentFile = "Superblock.test.ts"
 
 const runStressTests = false;
 

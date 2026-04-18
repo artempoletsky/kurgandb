@@ -1,8 +1,5 @@
 import _, { set } from "lodash";
 import { $ } from "./utils";
-import VariableBuffer from "./VariableBuffer";
-
-type BufferLike = Buffer | VariableBuffer;
 
 export function createOffsetsConst<T extends string>(structure: Map<T, number>): Record<T, number> {
   let _currentOffset = 0;
@@ -99,11 +96,44 @@ try {
   }
 }
 
+export function generateCompareFunction(offset: number, field: string) {
+  const mainbody = `return b.compare(v, 0, 16, ${offset}, ${offset + 16})`;
+  if (process.env.NODE_ENV === "production")
+    return new Function("b", "v", mainbody);
+  else {
+    return new Function("b", "v", `try { 
+  ${mainbody} 
+} catch (e) { 
+ console.error('Error comparing "${field}" at offset ${offset}', e); 
+ throw e;   
+}`);
+  }
+}
+
 export type TSuperblock<T extends string> = Record<T, number> & {
-  $copyToEnd: (page: Buffer) => void;
-  $copyToStart: (page: Buffer) => void;
+  $readFromPage: (page: Buffer) => void;
+  $writeToPage: (page: Buffer) => void;
+  // $copyToStart: (page: Buffer) => void;
   $setBuffer: (buffer: Buffer, readingPos?: number) => void;
   $getBuffer: () => Buffer;
+  /**
+   * Copies data from **view to target**
+   * @param target 
+   * @param key - the superblock key
+   */
+  $get16: (target: Buffer, key: T) => void;
+  /**
+  * Copies data from **source to view**
+  * @param source 
+  * @param key - the superblock key
+  */
+  $set16: (source: Buffer, key: T) => void;
+  /**
+   * Means **key.compare(buffer)**
+   * @param buffer
+   * @param key 
+   */
+  $compare16: (source: Buffer, key: T) => number;
   $size: number;
 };
 
@@ -118,23 +148,42 @@ export default class Superblock {
   static create<T extends string>(map: Map<T, number>): TSuperblock<T> {
     let methods: Record<string, Function> = {};
     let offsets = createOffsetsConst(map);
-    let length = calculateLength(map);
+    let superblockLength = calculateLength(map);
 
     for (const [key, len] of map) {
       let { setMethod, getMethod } = lenToMethods(len);
       methods[key + "Set"] = generateFunctionSuperblock("set", setMethod, offsets[key], key);
       methods[key + "Get"] = generateFunctionSuperblock("get", getMethod, offsets[key], key);
+
+      if (len == 16) {
+        methods[key + "Compare"] = generateCompareFunction(offsets[key], key);
+      }
     }
-    let b: Buffer = Buffer.alloc(length);
+    let b: Buffer = Buffer.alloc(superblockLength);
 
     const $ = {
+      $readFromPage(page: Buffer) {
+        page.copy(b, 0, page.byteLength - superblockLength);
+      },
+      $writeToPage(page: Buffer) {
+        b.copy(page, page.byteLength - superblockLength);
+      },
+      $compare16(buffer: Buffer, key: T) {
+        return methods[key + "Compare"](b, buffer);
+      },
+      $get16(target: Buffer, key: T) {
+        methods[key + "Get"](b, target);
+      },
+      $set16(target: Buffer, key: T) {
+        methods[key + "Set"](b, target);
+      },
       $setBuffer(buffer: Buffer) {
         b = buffer;
       },
       $getBuffer() {
         return b;
       },
-      $size: length,
+      $size: superblockLength,
     } as const;
 
     return new Proxy({} as Record<T, number> & typeof $, {

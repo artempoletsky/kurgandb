@@ -94,7 +94,7 @@ export default class PagesManager {
       sb.buriedHere = 0;
       sb.prevSematary = lastSematary;
       let p = this.getWritingPage(index);
-      sb.$copyToEnd(p);
+      sb.$readFromPage(p);
       this.superblock.prevSematary = index;
       this.saveSuperblock();
       return;
@@ -103,12 +103,12 @@ export default class PagesManager {
     this.freePages.$setBuffer(p);
     this.freePages.page.set(buriedHere, index);
     sb.buriedHere = ++buriedHere;
-    sb.$copyToEnd(p);
+    sb.$readFromPage(p);
   }
 
   saveSuperblock() {
     let wp = this.getWritingPage(0);
-    this.superblock.$copyToEnd(wp);
+    this.superblock.$readFromPage(wp);
   }
 
   getFreePageId(): number {
@@ -126,7 +126,7 @@ export default class PagesManager {
       sb.buriedHere = --buriedHere;
       this.freePages.$setBuffer(p);
       p = this.getWritingPage(lastSematary);
-      sb.$copyToEnd(p);
+      sb.$readFromPage(p);
       return this.freePages.page.get(buriedHere);
     }
 

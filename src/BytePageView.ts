@@ -74,26 +74,13 @@ export default class BytePageView {
 
     let offsets = createOffsetsConst(map);
     let entryLength = calculateLength(map);
-    if (!arrayLength) {
-      arrayLength = Math.floor(pageSize! / entryLength);
-    }
-    if (!pageSize) {
-      pageSize = arrayLength * entryLength;
-    }
-    let length = entryLength * arrayLength;
 
-    type R = Record<T, {
-      set: (index: number, value: number) => void;
-      get: (index: number) => number;
-    }>;
+    const arrayLength = Math.floor((pageSize - tailReserved)! / entryLength);
 
     let b: Buffer = Buffer.alloc(pageSize);
 
     const $ = {
       $setBuffer(buffer: Buffer) {
-        if (b.byteLength != buffer.byteLength) {
-          throw new Error("NamedByteBuffer: not implemented");
-        }
         b = buffer;
       },
       $getBuffer() {
@@ -122,7 +109,7 @@ export default class BytePageView {
       },
     } as const;
 
-    let result = {} as R;
+    let result = {} as TPageView<T>;
     for (const [key, len] of map) {
       let { setMethod, getMethod } = lenToMethods(len);
       let field = {} as any;
@@ -146,15 +133,7 @@ export default class BytePageView {
 
     }
 
-    return { ...result, ...$ } as any
-  }
-
-  static createArray<T extends string>(map: Map<T, number>, arrayLength: number): TPageView<T> {
-    return this.createArrayOrPage(map, arrayLength, undefined);
-  }
-
-  static createPage<T extends string>(map: Map<T, number>, pageSize: number = 0x2000): TPageView<T> {
-    return this.createArrayOrPage(map, undefined, pageSize);
+    return { ...result, ...$ };
   }
 }
 
