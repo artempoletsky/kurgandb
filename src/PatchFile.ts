@@ -1,8 +1,9 @@
 import fs from "fs";
-import NamedByteBuffer, { TPageView, TSuperblock } from "./BytePageView";
+import BytePageView from "./PageViewArray";
 import DiscableBuffer from "./DiscableBuffer";
 import CommitQueue from "./CommitQueue";
 import { pipeline } from "stream/promises";
+import Superblock, { TSuperblock } from "./PageViewSuperblock";
 
 type OFFSETS_STRUCTURE_KEY = "offsetPatch" | "offsetFile" | "length";
 
@@ -60,7 +61,10 @@ export default class PatchFile {
     if (isTouched) {
       return this.readPatch(buffer, offset, length);
     } else {
-      fs.readSync(this.fd, buffer, 0, length, offset);
+      let bytesRead = fs.readSync(this.fd, buffer, 0, length, offset);
+      if (bytesRead < length) {
+        buffer.fill(0, bytesRead);
+      }
     }
   }
 
@@ -79,7 +83,7 @@ export default class PatchFile {
 
     let meta = this.patchOffsets.get(fileOffset);
     if (!meta || meta.length < data.byteLength) {
-      meta = NamedByteBuffer.createSuperblock(OFFSETS_STRUCTURE);
+      meta = Superblock.create(OFFSETS_STRUCTURE);
       meta.offsetFile = fileOffset;
       meta.length = data.length;
       meta.offsetPatch = this.writePosPatch;
@@ -101,20 +105,14 @@ export default class PatchFile {
 
 
   async commit() {
+    if (!this.patchOffsets.size) return;
     CommitQueue.start(this.commitQueueId);
-
     if (this.patchBuffer.usingMemory) {
-      let maxLen = 0;
-      for (const [, { length }] of this.patchOffsets) {
-        maxLen = Math.max(length, maxLen);
-      }
-
-      let buffer = Buffer.allocUnsafe(maxLen);
+      let buffer = this.patchBuffer.memory!;
 
       for (const [offsetFile, { offsetPatch, length }] of this.patchOffsets) {
-        this.patchBuffer.copy(buffer, offsetPatch, length);
         await new Promise(resolve => {
-          fs.write(this.fd, buffer, 0, length, offsetFile, resolve);
+          fs.write(this.fd, buffer, offsetPatch, length, offsetFile, resolve);
         });
       }
     } else {
@@ -133,6 +131,12 @@ export default class PatchFile {
       }
     }
 
+    await new Promise(resolve => fs.fsync(this.fd, resolve));
+
+    this.patchOffsets.clear();
+    this.writePosPatch = 0;
+    let stat = fs.statSync(this.path);
+    this.writePosFile = stat.size;
     CommitQueue.end(this.commitQueueId);
   }
 }

@@ -1,5 +1,5 @@
 
-import Superblock, { calculateLength, createOffsetsConst } from "../src/Superblock";
+import Superblock, { calculateLength, createOffsetsConst } from "../src/PageViewSuperblock";
 import { afterAll, beforeAll, describe, expect, test, xdescribe, xtest } from "./test-setup";
 
 

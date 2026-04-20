@@ -1,8 +1,12 @@
 import HeapDumb from "./HeapDumb";
-
+import PagesManager from "./PagesManager";
 
 
 export default class HeapLogical {
+  static init() {
+    let p = PagesManager.current().readPage(1);
+
+  }
   // static dumb = HeapDumb;
 
   static createId(): number {

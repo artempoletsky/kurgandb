@@ -111,9 +111,6 @@ export function generateCompareFunction(offset: number, field: string) {
 }
 
 export type TSuperblock<T extends string> = Record<T, number> & {
-  $readFromPage: (page: Buffer) => void;
-  $writeToPage: (page: Buffer) => void;
-  // $copyToStart: (page: Buffer) => void;
   $setBuffer: (buffer: Buffer, readingPos?: number) => void;
   $getBuffer: () => Buffer;
   /**
@@ -138,17 +135,17 @@ export type TSuperblock<T extends string> = Record<T, number> & {
 };
 
 export default class Superblock {
-  static fromPageTail<T extends string>(map: Map<T, number>, page: Buffer) {
-    let result = this.create(map);
-    let b = result.$getBuffer();
-    page.copy(b, 0, page.byteLength - result.$size, page.byteLength);
-    return result;
-  }
 
-  static create<T extends string>(map: Map<T, number>): TSuperblock<T> {
+  static create<T extends string>(map: Map<T, number>, pageLen?: number): TSuperblock<T> {
     let methods: Record<string, Function> = {};
     let offsets = createOffsetsConst(map);
     let superblockLength = calculateLength(map);
+
+    if (pageLen) {
+      for (const key in offsets) {
+        offsets[key] += pageLen - superblockLength;
+      }
+    }
 
     for (const [key, len] of map) {
       let { setMethod, getMethod } = lenToMethods(len);
@@ -159,15 +156,9 @@ export default class Superblock {
         methods[key + "Compare"] = generateCompareFunction(offsets[key], key);
       }
     }
-    let b: Buffer = Buffer.alloc(superblockLength);
+    let b: Buffer = Buffer.alloc(pageLen || superblockLength);
 
     const $ = {
-      $readFromPage(page: Buffer) {
-        page.copy(b, 0, page.byteLength - superblockLength);
-      },
-      $writeToPage(page: Buffer) {
-        b.copy(page, page.byteLength - superblockLength);
-      },
       $compare16(buffer: Buffer, key: T) {
         return methods[key + "Compare"](b, buffer);
       },

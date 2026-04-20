@@ -1,6 +1,6 @@
 
 import { afterAll, beforeAll, describe, expect, test, xdescribe, xtest } from "./test-setup";
-import BytePageView from "../src/BytePageView";
+import BytePageView from "../src/PageViewArray";
 
 
 describe("BytePageView", () => {

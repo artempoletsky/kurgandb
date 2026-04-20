@@ -2,7 +2,7 @@ import fs from "fs";
 import fsPromise from "fs/promises";
 import { start } from "repl";
 import CommitQueue from "./CommitQueue";
-import NamedByteBuffer, { TSuperblock, TPageView } from "./BytePageView";
+import NamedByteBuffer, { TSuperblock, TPageView } from "./PageViewArray";
 
 
 //[headerLen(4)][lastId(8)] [id(8)][len(4)] [data(var)]

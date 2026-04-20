@@ -1,5 +1,5 @@
 import _ from "lodash";
-import { calculateLength, createOffsetsConst, lenToMethods } from "./Superblock";
+import { calculateLength, createOffsetsConst, lenToMethods, TSuperblock } from "./PageViewSuperblock";
 
 
 
@@ -58,6 +58,7 @@ export type TPageView<T extends string> = Record<T,
     binarySearchValue: (value: number, length: number) => { found: boolean, pos: number };
     binarySearchSortKey: (value: Buffer, length: number) => { found: boolean, pos: number };
   }> & {
+    $copyToSuperblock: (superblock: TSuperblock<T>, index: number) => void;
     $setBuffer: (buffer: Buffer) => void;
     $getBuffer: () => Buffer;
     $capacityArray: number;
@@ -80,6 +81,11 @@ export default class BytePageView {
     let b: Buffer = Buffer.alloc(pageSize);
 
     const $ = {
+      $copyToSuperblock(superblock: TSuperblock<T>, index: number) {
+        let superblockBuffer = superblock.$getBuffer();
+        // let start = 
+        b.copy(superblockBuffer, 0, entryLength * index);
+      },
       $setBuffer(buffer: Buffer) {
         b = buffer;
       },

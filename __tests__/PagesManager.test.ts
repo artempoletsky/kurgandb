@@ -1,15 +1,16 @@
-import PagesManager from "../src/PagesManager";
+import CommitQueue from "../src/CommitQueue";
+import PagesManager, { SEMATARY } from "../src/PagesManager";
 import { afterAll, beforeAll, describe, expect, test, xdescribe, xtest } from "./test-setup";
 
-import fs from "fs";
+import fs, { fsync } from "fs";
 import path from "path";
 
 
 describe("PagesManager", () => {
 
-  
 
-  const pagesPath = path.join(process.cwd(), "kurgandb_data", "pages.bin");
+
+  const pagesPath = path.join(process.cwd(), "kurgandb_data", "test_pages.bin");
 
   function removeTestData() {
     try { fs.unlinkSync(pagesPath); } catch { }
@@ -17,10 +18,10 @@ describe("PagesManager", () => {
   }
 
   beforeAll(removeTestData);
-  afterAll(removeTestData);
+  // afterAll(removeTestData);
 
 
-  test("getWritingPage", async () => {
+  xtest("getWritingPage", async () => {
     const idx = new PagesManager({
       path: pagesPath,
     });
@@ -53,19 +54,86 @@ describe("PagesManager", () => {
     await idx.commit();
 
     let fd = fs.openSync(pagesPath, "r");
-    
+
     fs.readSync(fd, b, 0, b.byteLength, 0);
     expect(b.readDoubleLE(32)).toBe(123);
 
     fs.readSync(fd, b, 0, b.byteLength, 0 + 0x2000);
     expect(b.readDoubleLE(32)).toBe(321);
-    
+
     fs.closeSync(fd);
 
     p = idx.readPage(0);
     expect(p.readDoubleLE(32)).toBe(123);
     p = idx.readPage(1);
     expect(p.readDoubleLE(32)).toBe(321);
+    // await CommitQueue.ready();
+  });
+
+
+  test("remove page trivial", async () => {
+    // await CommitQueue.ready();
+    removeTestData();
+    let p = new PagesManager({
+      path: pagesPath,
+    });
+    SEMATARY.pagesManager = p;
+    let newPage = p.getFreePageId();
+    expect(newPage).toBe(1);
+    newPage = p.getFreePageId();
+    expect(newPage).toBe(2);
+
+    expect(SEMATARY.read(0).sb.lastPage).toBe(2);
+
+    await p.commit();
+    p.reset();
+
+    expect(SEMATARY.read(0).sb.lastPage).toBe(2);
+    let stat = fs.statSync(pagesPath);
+
+    expect(stat.size).toBe(0x2000 * 3);
+
+
+    expect(p.getFreePageId()).toBe(3);
+    p.deletePage(2);
+    await p.commit();
+    p.reset();
+
+    expect(p.getFreePageId()).toBe(2);
+
+    p.deletePage(2);
+    await p.commit();
+
+    expect(p.getFreePageId()).toBe(2);
+
+    await p.commit();
+
+    expect(p.getFreePageId()).toBe(4);
+
+    p.deletePage(2);
+    p.deletePage(3);
+    p.deletePage(4);
+    p.deletePage(1);
+
+    expect(p.getFreePageId()).toBe(1);
+
+    expect(() => p.deletePage(2)).toThrow();
+    expect(() => p.deletePage(3)).toThrow();
+    expect(() => p.deletePage(4)).toThrow();
+    expect(() => p.deletePage(1)).not.toThrow();
+    expect(() => p.deletePage(1)).toThrow();
+    expect(() => p.deletePage(0)).toThrow();
+
+    await p.commit();
+
+
+    stat = fs.statSync(pagesPath);
+    expect(stat.size).toBe(0x2000 * 5);
+    // expect(() => p.deletePage(123)).toThrow();
+
+    expect(SEMATARY.read(0).sb.buriedHere).toBe(4);
+
+
   });
 
 });

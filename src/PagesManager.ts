@@ -2,27 +2,36 @@
 import fs from "fs";
 import CommitQueue from "./CommitQueue";
 import PatchFile from "./PatchFile";
-import Superblock, { TSuperblock } from "./Superblock";
-import { TPageView } from "./BytePageView";
+import Superblock, { TSuperblock } from "./PageViewSuperblock";
+import BytePageView, { TPageView } from "./PageViewArray";
+import { DataBase } from "./db";
+import { PageView } from "./PageView";
 
 
 const PAGE_SIZE = 0x2000;
 
-type SUPERBLOCK_KEYS = "lastPage" | "buriedHere" | "prevSematary";
-const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEYS, number>([
+export type SEMATARY_SUPERBLOCK_KEYS = "lastPage" | "buriedHere" | "prevSematary";
+export type SEMATARY_ENTRY_KEYS = "page";
+
+export const SEMATARY = new PageView<SEMATARY_SUPERBLOCK_KEYS, SEMATARY_ENTRY_KEYS>([
   ["lastPage", 4],
   ["buriedHere", 4],
   ["prevSematary", 4],
-]);
-
-type EMPTY_PAGES_KEYS = "page";
-const EMPTY_PAGES_STRUCTURE = new Map<EMPTY_PAGES_KEYS, number>([
+], [
   ["page", 4],
 ]);
 
-
-
 export default class PagesManager {
+
+  static currentPagesManager: PagesManager;
+
+  static current() {
+    if (this.currentPagesManager) return this.currentPagesManager;
+    this.currentPagesManager = new PagesManager({
+      path: DataBase.workingDirectory + "/pages.bin"
+    });
+    return this.currentPagesManager;
+  }
 
   public readonly path: string;
   public readonly sizePage: number;
@@ -31,13 +40,15 @@ export default class PagesManager {
 
   protected idCommitQueue: string;
 
-  protected writingPages: Map<number, Buffer> = new Map();
-  protected readingPages: Map<number, Buffer> = new Map();
+  // protected writingPages: Map<number, Buffer> = new Map();
+  // protected readingPages: Map<number, Buffer> = new Map();
   protected maxSizeWritingPages = 1;
   protected maxSizeReadingPages = 1;
 
-  public superblock!: TSuperblock<SUPERBLOCK_KEYS>;
-  public freePages!: TPageView<EMPTY_PAGES_KEYS>;
+  /**
+   * Temporary page for various utility uses
+   */
+  protected thePage: Buffer;
 
   get __debug() {
     if (process.env.NODE_ENV !== "test") {
@@ -46,7 +57,7 @@ export default class PagesManager {
     return {
       // heap: this.heap,
       path: this.path,
-      writingPages: this.writingPages,
+      // writingPages: this.writingPages,
       writePage: this.writePage.bind(this),
     }
   }
@@ -68,14 +79,32 @@ export default class PagesManager {
     // this.memoryBufferSizePatch = memoryBufferSizePatch ?? DEFAULT_MEMORY_BUFFER_SIZE;
     this.file = new PatchFile(path);
     this.idCommitQueue = CommitQueue.register("PagesManager_");
-    this.reset();
+    this.thePage = Buffer.alloc(this.sizePage);
+    this.reset();    
   }
 
   reset() {
     this.file.reset();
-    let p0 = this.readPage(0);
-    this.superblock = Superblock.fromPageTail(SUPERBLOCK_STRUCTURE, p0);
-    // this.freePages = 
+  }
+
+  throwPageAlreadyDeleted(index: number) {
+    throw new Error(`PagesManager;deletePage: page: "${index}" was deleted before`);
+  }
+
+  doesSemataryContainPage(index: number) {
+    let length = SEMATARY.sb.buriedHere;
+    for (let i = 0; i < length; i++) {
+      if (SEMATARY.ar.page.get(i) == index) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  doesPageHaveTombstone(index: number) {
+    this.readPage(this.thePage, index);
+    let offset = this.thePage.readUInt32LE(0);
+    return this.thePage.subarray(offset, offset + 8).toString() == "deadpage";
   }
 
   deletePage(index: number) {
@@ -83,115 +112,82 @@ export default class PagesManager {
       throw new Error("PagesManager;deletePage: wrong page index");
     }
 
-    let { prevSematary: lastSematary } = this.superblock;
+    let sem = SEMATARY.read(0); //read anyway we need this 100%
+    if (this.doesSemataryContainPage(index)) this.throwPageAlreadyDeleted(index);
 
-    let semataryCapacity = 123;
+    const lastSematary = sem.sb.prevSematary;
+    if (lastSematary != 0) {
+      sem.read(lastSematary); //read anyway we need this 100%
+      if (this.doesSemataryContainPage(index)) this.throwPageAlreadyDeleted(index);
 
-    let page = this.readPage(lastSematary);
-    let sb = Superblock.fromPageTail(SUPERBLOCK_STRUCTURE, page);
-    let buriedHere = sb.buriedHere;
-    if (buriedHere >= semataryCapacity) {
-      sb.buriedHere = 0;
-      sb.prevSematary = lastSematary;
-      let p = this.getWritingPage(index);
-      sb.$readFromPage(p);
-      this.superblock.prevSematary = index;
-      this.saveSuperblock();
+      if (sem.sb.prevSematary != 0) //check the tombstone only when we have more than 2 semataries
+        if (this.doesPageHaveTombstone(index)) this.throwPageAlreadyDeleted(index);
+    }
+
+
+
+
+    let buriedHere = sem.sb.buriedHere;
+    if (buriedHere >= sem.capacity) {
+      sem.read(index);
+      sem.sb.buriedHere = 0;
+      sem.sb.prevSematary = lastSematary;
+      sem.save();
+
+      sem.read(0).sb.prevSematary = index;
+      sem.save();
       return;
     }
-    let p = this.getWritingPage(lastSematary);
-    this.freePages.$setBuffer(p);
-    this.freePages.page.set(buriedHere, index);
-    sb.buriedHere = ++buriedHere;
-    sb.$readFromPage(p);
-  }
 
-  saveSuperblock() {
-    let wp = this.getWritingPage(0);
-    this.superblock.$readFromPage(wp);
+    sem.ar.page.set(buriedHere, index);
+    sem.sb.buriedHere = ++buriedHere;
+    sem.save();
   }
 
   getFreePageId(): number {
-    let { prevSematary: lastSematary, buriedHere } = this.superblock;
+    let sem = SEMATARY.read(0);
+    let { prevSematary: lastSematary, buriedHere } = sem.sb;
+
     if (lastSematary != 0) {
-      let p = this.readPage(lastSematary);
-      let sb = Superblock.fromPageTail(SUPERBLOCK_STRUCTURE, p);
-      let { buriedHere, prevSematary } = sb;
+      sem.read(lastSematary);
+
+      let { buriedHere, prevSematary } = sem.sb;
       if (buriedHere == 0) {
-        this.superblock.prevSematary = prevSematary;
-        this.saveSuperblock();
+        sem.read(0).sb.prevSematary = prevSematary;
+        sem.save();
         return lastSematary;
       }
 
-      sb.buriedHere = --buriedHere;
-      this.freePages.$setBuffer(p);
-      p = this.getWritingPage(lastSematary);
-      sb.$readFromPage(p);
-      return this.freePages.page.get(buriedHere);
+      sem.sb.buriedHere = --buriedHere;
+      sem.save();
+      return sem.ar.page.get(buriedHere);
     }
 
     if (!buriedHere) {
-      let last = this.superblock.lastPage;
-      this.superblock.lastPage = ++last;
-      this.saveSuperblock();
-      return last;
+      let newPage = ++sem.sb.lastPage
+      sem.save();
+      this.createPage(newPage);
+      return newPage;
     }
 
-    this.superblock.buriedHere = --buriedHere;
-    this.saveSuperblock();
-    this.freePages.$setBuffer(this.readPage(0));
-    return this.freePages.page.get(buriedHere);
+    sem.sb.buriedHere = --buriedHere;
+    sem.save();
+    return sem.ar.page.get(buriedHere);
+  }
+
+  protected createPage(index: number) {
+    this.thePage.fill(0);
+    this.writePage(index, this.thePage);
   }
 
 
-  protected writePage(page: number, data: Buffer) {
+  writePage(page: number, data: Buffer) {
     let pos = this.sizePage * page;
     this.file.write(pos, data);
   }
 
-  readPage(page: number) {
-    if (this.writingPages.has(page)) {
-      return this.writingPages.get(page)!;
-    }
-
-    if (this.readingPages.has(page)) {
-      return this.readingPages.get(page)!;
-    }
-
-    let freeBuffer: Buffer | undefined;
-    if (this.readingPages.size >= this.maxSizeReadingPages) {
-      let entry = this.readingPages.entries().next().value!;
-      freeBuffer = entry[1];
-      this.readingPages.delete(entry[0])
-    }
-
-    if (!freeBuffer) {
-      freeBuffer = Buffer.allocUnsafe(this.sizePage);
-    }
-
-    this.readingPages.set(page, freeBuffer);
-    this.file.read(freeBuffer, page * this.sizePage, this.sizePage);
-    return freeBuffer;
-  }
-
-  getWritingPage(page: number) {
-    if (this.writingPages.has(page)) {
-      return this.writingPages.get(page)!;
-    }
-    let freeBuffer: Buffer | undefined;
-    if (this.writingPages.size >= this.maxSizeWritingPages) {
-      let entry = this.writingPages.entries().next().value!;
-      this.writePage(entry[0], entry[1]);
-      this.writingPages.delete(entry[0]);
-      freeBuffer = entry[1];
-    }
-    if (!freeBuffer) {
-      freeBuffer = Buffer.allocUnsafe(this.sizePage);
-    }
-    let buf = this.readPage(page);
-    buf.copy(freeBuffer, 0, 0, this.sizePage);
-    this.writingPages.set(page, freeBuffer);
-    return freeBuffer;
+  readPage(target: Buffer, page: number): void {
+    this.file.read(target, page * this.sizePage, this.sizePage);
   }
 
   protected async _commitBefore(): Promise<void> {
@@ -201,15 +197,17 @@ export default class PagesManager {
   async commit() {
     CommitQueue.start(this.idCommitQueue);
 
-    for (const [page, buf] of this.writingPages) {
-      this.writePage(page, buf);
-    }
-    this.writingPages.clear();
+    // for (const [page, buf] of this.writingPages) {
+    //   this.writePage(page, buf);
+    // }
+    // this.writingPages.clear();
 
     await this._commitBefore();
 
+    CommitQueue.end(this.idCommitQueue);
+
     await this.file.commit();
 
-    CommitQueue.end(this.idCommitQueue);
+
   }
 }

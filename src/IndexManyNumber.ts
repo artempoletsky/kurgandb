@@ -1,6 +1,6 @@
 
 import LogicalMemoryHeap from "./LogicalMemoryHeap";
-import NamedByteBuffer, { TPageView, TSuperblock } from "./BytePageView";
+import NamedByteBuffer, { TPageView, TSuperblock } from "./PageViewArray";
 import PagesManager from "./PagesManager";
 
 

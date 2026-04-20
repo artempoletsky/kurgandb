@@ -1,6 +1,6 @@
 import fs from "fs";
 
-import NamedByteBuffer, { TSuperblock, TPageView } from "./BytePageView";
+import NamedByteBuffer, { TSuperblock, TPageView } from "./PageViewArray";
 import PagesManager from "./PagesManager";
 
 

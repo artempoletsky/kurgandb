@@ -1,5 +1,7 @@
-import NamedByteBuffer, { TPageView } from "./BytePageView";
-import Superblock from "./Superblock";
+import BytePageView from "./PageViewArray";
+import NamedByteBuffer, { TPageView } from "./PageViewArray";
+import PagesManager from "./PagesManager";
+import Superblock, { TSuperblock } from "./PageViewSuperblock";
 
 type SUPERBLOCK_KEYS = "pageLength" | "pageMin" | "pageMax" | "level" | "parentPage";
 const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEYS, number>([
@@ -19,63 +21,130 @@ const CHUNK_STRUCTURE = new Map<CHUNK_KEYS, number>([
 ]);
 
 let sb = Superblock.create(SUPERBLOCK_STRUCTURE);
-let pageNamed = NamedByteBuffer.createPage(CHUNK_STRUCTURE, 0x2000);
-export function recurFindChunk(page: Buffer, value: number): ChunkMeta | null {
-  sb.$setBuffer(page.subarray(page.byteLength - sb.$size, page.byteLength));
-  pageNamed.$setBuffer(page);
+let pv = BytePageView.create(CHUNK_STRUCTURE, sb.$size);
+
+export function recurFindChunk(page: Buffer, value: number): {
+  indexInPage: number
+  result: TSuperblock<CHUNK_KEYS> | null
+} {
+  // sb.$setBuffer(page.subarray(page.byteLength - sb.$size, page.byteLength));
+  sb.$readFromPage(page);
+  pv.$setBuffer(page);
 
   let lo = 0;
   let hi = sb.pageLength - 1;
   let mid = 0;
   while (lo <= hi) {
     mid = Math.floor((lo + hi) / 2);
-    if (pageNamed.limbMin.get(mid) <= value && value <= pageNamed.limbMax.get(mid)) {
+    let left = pv.limbMin.get(mid);
+    if (left <= value && value <= pv.limbMax.get(mid)) {
       if (sb.level == 0) {
-
+        let result = Superblock.create(CHUNK_STRUCTURE);
+        pv.$copyToSuperblock(result, mid);
+        return {
+          indexInPage: mid,
+          result,
+        };
       } else {
-        // pageNamed.page.get()
-        let newPage: Buffer;
-        return recurFindChunk(newPage, value);
+        let nextPage: Buffer = PagesManager.current().readPage(pv.page.get(mid));
+        return recurFindChunk(nextPage, value);
       }
     }
+
+    if (value < left) {
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
   }
-  return null;
+  return {
+    indexInPage: mid,
+    result: null,
+  };
 }
 
-export default class Tree {
+export function findInChunk<T extends string>(pv: TPageView<T>,
+  lo: number,
+  hi: number,
+  value: number,
+  key: T | "id" = "id"
+): { index: number; found: boolean; } {
+
+  let mid = 0;
+  while (lo <= hi) {
+    mid = Math.floor((lo + hi) / 2);
+    let v = pv[key as T].get(mid);
+    if (v == value) {
+      return {
+        found: true,
+        index: mid,
+      };
+    }
+
+    if (value > v) {
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return {
+    found: false,
+    index: mid,
+  };
+}
+
+export function findInChunkMultipleRecur<T extends string>(pv: TPageView<T>,
+  lo: number,
+  hi: number,
+  values: number[],
+  result: number[],
+  resultLo: number,
+  resultHi: number,
+  key: T,
+) {
+
+  let inputMid = Math.floor(resultLo + resultHi / 2); // middle index of the input array
+  let foundMid = findInChunk(pv, lo, hi, values[inputMid], key);
+  result[inputMid] = foundMid.found ? foundMid.index : -1;
+
+  if (inputMid + 1 < resultHi) {
+    findInChunkMultipleRecur(pv, foundMid.index + 1, hi, values, result, inputMid + 1, resultHi, key);
+  }
+
+  if (resultLo < inputMid - 1) {
+    findInChunkMultipleRecur(pv, lo, foundMid.index - 1, values, result, resultLo, inputMid - 1, key);
+  }
+}
+
+export function fundInChunkMultiple<T extends string>(pv: TPageView<T>,
+  values: [],
+  lenght: number,
+  key: T | "id" = "id") {
+  const result = new Array(values.length);
+  findInChunkMultipleRecur(pv as any, 0, lenght - 1, values, result, 0, result.length - 1, key);
+  return result;
+}
+
+export default class Tree<T extends string> {
+  headerPageIndex: number;
+  pv: TPageView<T>;
+
+  constructor(headerPageIndex: number, pageStructure: Map<T, number>) {
+    this.headerPageIndex = headerPageIndex;
+    this.pv = BytePageView.create(pageStructure);
+  }
+
+  set(id: number, record: TSuperblock<T>) {
+    findInChunkMultiple(this.pv, [id], );
+    let p = PagesManager.current().readPage(this.headerPageIndex);
+    let c = recurFindChunk(p, id);
+    if (c.result?.page) {
+
+    }
+  }
 
   openRoot(page: number) {
 
-  }
-
-
-  findChunkIndex(value: number, node: TPageView<"minValue" | "maxValue">): { chunkIndex: number; chunkMeta: null | ChunkMeta } {
-    const numberOfChunks = this.superblock.numberOfChunks;
-    if (value < this.superblock.minValue) return {
-      chunkIndex: -1,
-      chunkMeta: null,
-    };
-    if (value > this.superblock.maxValue) return {
-      chunkIndex: numberOfChunks + 1,
-      chunkMeta: null,
-    };
-
-    for (let i = 0; i < numberOfChunks; i++) {
-      let min = node.minValue.get(i);
-      let max = node.maxValue.get(i);
-      if (min <= value && value <= max) {
-        return {
-          chunkIndex: i,
-          chunkMeta: {
-            min,
-            max,
-            length: this.header.length.get(i),
-            page: this.header.page.get(i),
-          },
-        };
-      }
-    }
-    throw "ChunkedIndex.findChunkIndex: should be unreachable";
   }
 
 

@@ -1,7 +1,7 @@
 import fs from "fs";
 
 export default class DiscableBuffer {
-  protected memory: Buffer | null = null;
+  public memory: Buffer | null = null;
   protected fd: number = 0;
   protected maxSize: number;
   protected path: string;
@@ -32,7 +32,10 @@ export default class DiscableBuffer {
       this.memory.copy(target, 0, position, target.length + position);
       return;
     }
-    fs.readSync(this.fd, target, 0, length, position);
+    let bytesRead = fs.readSync(this.fd, target, 0, length, position);
+    if (bytesRead < length) {
+      target.fill(0, length);
+    }
   }
 
   write(data: Buffer, offset: number) {

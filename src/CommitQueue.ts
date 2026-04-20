@@ -11,30 +11,40 @@ export default class CommitQueue {
     return id;
   }
 
-  static async start(id: string) {
-    this.crashIfBusyWith(id);
-    this.queue.add(id);
+  static currentId: string = "";
+
+  static start(id: string) {
+    if (this.currentId) {
+      throw new Error(`CommitQueue: trying to start a commit: "${id}" while another commit is in progress with id: "${this.currentId}"`);
+    }
+    // this.crashIfBusyWith(id);
+    // this.queue.add(id);
+    this.currentId = id;
   }
 
   static end(id: string) {
+    if (this.currentId != id)
+      throw new Error(`CommitQueue: trying to end a commit: "${id}" while another commit is in progress with id: "${this.currentId}"`)
+    this.currentId = "";
     setTimeout(() => {
-      this.queue.delete(id);
-      if (this.queue.size <= 0) {
-        for (const fn of this.callbacks) {
-          fn();
-        }
-        this.callbacks.clear();
+      if (this.currentId != "") return;
+      // this.queue.delete(id);
+      // if (this.queue.size <= 0) {
+      for (const fn of this.callbacks) {
+        fn();
       }
+      this.callbacks.clear();
+      // }
     });
   }
 
   static busy(): boolean {
-    return this.queue.size > 0;
+    return this.currentId != "";
   }
 
   static crashIfBusyWith(id: string) {
-    if (this.queue.has(id)) {
-      throw "CommitQueue: trying to start a commit while another commit is in progress with id: " + id;
+    if (this.currentId) {
+      throw new Error(`CommitQueue: trying to start a commit: "${id}" while another commit is in progress with id: "${this.currentId}"`);
     }
   }
 

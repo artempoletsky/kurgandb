@@ -5,8 +5,7 @@ import { FieldType, PlainObject, SchemeRecord } from "./globals";
 import TableUtils from "./table_utilities";
 import { IndexOneNumber } from "./IndexOneNumber";
 import { IndexOneString } from "./IndexOneString";
-import FilePatchRecord from "./FilePatchRecord";
-import StringsSaver from "./StringsSaver";
+
 import TableUtilities from "./TableUtilities";
 
 
