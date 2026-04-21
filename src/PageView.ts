@@ -38,7 +38,8 @@ export class PageView<T1 extends string, T2 extends string> {
 
     this.capacity = this.ar.$capacityArray;
     setTimeout(() => {
-      this.pagesManager = PagesManager.current();
+      if (!this.pagesManager)
+        this.pagesManager = PagesManager.current();
     });
 
   }

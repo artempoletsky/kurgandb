@@ -77,18 +77,31 @@ describe("PagesManager", () => {
     let p = new PagesManager({
       path: pagesPath,
     });
-    SEMATARY.pagesManager = p;
-    let newPage = p.getFreePageId();
-    expect(newPage).toBe(1);
-    newPage = p.getFreePageId();
-    expect(newPage).toBe(2);
+    let sem = SEMATARY;
+    sem.pagesManager = p;
+    
+    expect(p.getFreePageId()).toBe(1);
+    expect(p.getFreePageId()).toBe(2);
 
-    expect(SEMATARY.read(0).sb.lastPage).toBe(2);
+    expect(sem.read(0).sb.lastPage).toBe(2);
 
+    expect(sem.pagesManager.path).toBe(pagesPath);
     await p.commit();
+    expect(sem.pagesManager.path).toBe(pagesPath);
     p.reset();
+    expect(sem.pagesManager.path).toBe(pagesPath);
 
-    expect(SEMATARY.read(0).sb.lastPage).toBe(2);
+    let fd =fs.openSync(pagesPath, "r"); 
+    let p0Raw = Buffer.alloc(0x2000);
+
+    fs.readSync(fd, p0Raw, 0, 0x2000, 0);
+    expect(p0Raw.readUint32LE(0x2000 - 12)).toBe(2);
+
+    p.readPage(p0Raw, 0);
+    expect(p0Raw.readUint32LE(0x2000 - 12)).toBe(2);
+
+    
+    expect(sem.read(0).sb.lastPage).toBe(2);
     let stat = fs.statSync(pagesPath);
 
     expect(stat.size).toBe(0x2000 * 3);

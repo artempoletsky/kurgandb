@@ -64,21 +64,21 @@ describe("Superblock", () => {
 
   test("write read page", () => {
     let p = Buffer.alloc(0x2000);
-    let sb = Superblock.create(HEADER_STRUCTURE);
-
+    let sb = Superblock.create(HEADER_STRUCTURE, 0x2000);
+    sb.$setBuffer(p);
+    
     sb.numberofChunks = 123;
     sb.numberOfRecords = 12345678;
     sb.random1Byte = 42;
     sb.minValue = -123;
     sb.maxValue = 12345;
 
-    sb.$writeToPage(p);
-
     // expect(b.readDoubleLE(15)).toBe(12345);
     expect(p.readDoubleLE(0x2000 - 8)).toBe(12345);
 
-    let sb2 = Superblock.create(HEADER_STRUCTURE);
-    sb2.$readFromPage(p);
+    let sb2 = Superblock.create(HEADER_STRUCTURE, 0x2000);
+
+    sb2.$setBuffer(p);
 
     expect(sb2.numberofChunks).toBe(123);
     expect(sb2.numberOfRecords).toBe(12345678);
