@@ -2,6 +2,7 @@ import BytePageView from "./PageViewArray";
 import NamedByteBuffer, { TPageView } from "./PageViewArray";
 import PagesManager from "./PagesManager";
 import Superblock, { TSuperblock } from "./PageViewSuperblock";
+import { PageView } from "./PageView";
 
 type SUPERBLOCK_KEYS = "pageLength" | "pageMin" | "pageMax" | "level" | "parentPage";
 const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEYS, number>([
@@ -20,8 +21,22 @@ const CHUNK_STRUCTURE = new Map<CHUNK_KEYS, number>([
   ["page", 4],
 ]);
 
-let sb = Superblock.create(SUPERBLOCK_STRUCTURE);
-let pv = BytePageView.create(CHUNK_STRUCTURE, sb.$size);
+// let sb = Superblock.create(SUPERBLOCK_STRUCTURE);
+// let pv = BytePageView.create(CHUNK_STRUCTURE, sb.$size);
+
+
+export const NUMBER_BTREE_CHUNK = new PageView<SUPERBLOCK_KEYS, CHUNK_KEYS>([
+  ["pageLength", 4],
+  ["pageMin", 8],
+  ["pageMax", 8],
+  ["parentPage", 4],
+  ["level", 1],
+], [
+  ["limbLength", 4],
+  ["limbMin", 8],
+  ["limbMax", 8],
+  ["page", 4],
+]);
 
 export function recurFindChunk(page: Buffer, value: number): {
   indexInPage: number
@@ -116,7 +131,7 @@ export function findInChunkMultipleRecur<T extends string>(pv: TPageView<T>,
   }
 }
 
-export function fundInChunkMultiple<T extends string>(pv: TPageView<T>,
+export function findInChunkMultiple<T extends string>(pv: TPageView<T>,
   values: [],
   lenght: number,
   key: T | "id" = "id") {
@@ -135,7 +150,9 @@ export default class Tree<T extends string> {
   }
 
   set(id: number, record: TSuperblock<T>) {
-    findInChunkMultiple(this.pv, [id], );
+    let chunk = NUMBER_BTREE_CHUNK;
+    
+    findInChunkMultiple(chunk.ar, [id], chunk.sb.pageLength, chunk.ar.);
     let p = PagesManager.current().readPage(this.headerPageIndex);
     let c = recurFindChunk(p, id);
     if (c.result?.page) {
