@@ -7,42 +7,133 @@ import { PageView } from "./PageView";
 type SUPERBLOCK_KEYS = "pageLength" | "pageMin" | "pageMax" | "level" | "parentPage";
 
 type CHUNK_KEYS = "page" | "limbMin" | "limbMax" | "limbLength";
+
+const ENTRY_STRUCTURE: [CHUNK_KEYS, number][] = [
+  ["limbLength", 4],
+  ["limbMin", 8],
+  ["limbMax", 8],
+  ["page", 4],
+];
+
 export const NUMBER_BTREE_CHUNK = new PageView<SUPERBLOCK_KEYS, CHUNK_KEYS>([
   ["pageLength", 4],
   ["pageMin", 8],
   ["pageMax", 8],
   ["parentPage", 4],
   ["level", 1],
-], [
-  ["limbLength", 4],
-  ["limbMin", 8],
-  ["limbMax", 8],
-  ["page", 4],
-]);
+], ENTRY_STRUCTURE);
 
 // let sb = Superblock.create(SUPERBLOCK_STRUCTURE);
 // let pv = BytePageView.create(CHUNK_STRUCTURE, sb.$size);
 
 
+// const serviceEntry = Superblock.create(new Map(ENTRY_STRUCTURE));
+
+export function addLeaf(limbIndex: number, newPageIndex: number, value: number) {
+  const { ar, sb } = NUMBER_BTREE_CHUNK.read(limbIndex);
+  let { pageLength } = sb;
+  let searchResult = findChunk(value);
+  let leafIndex = searchResult.indexInPage;
 
 
-export function addLeaf(limbIndex: number, newPageIndex: number, minValue: number, maxValue: number) {
+  ar.$shiftRight(pageLength, leafIndex);
+  ar.limbLength.set(leafIndex, 1);
+  ar.page.set(leafIndex, newPageIndex);
+  ar.limbMax.set(leafIndex, value);
+  ar.limbMin.set(leafIndex, value);
 
+  // serviceEntry.limbLength = 1;
+  // serviceEntry.page = newPageIndex;
+  // serviceEntry.limbMax = value;
+  // serviceEntry.limbMin = value;
+  // ar.$writeEntry(pageLength, serviceEntry);
+
+
+  sb.pageLength = ++pageLength;
+  NUMBER_BTREE_CHUNK.save();
 }
 
-export function deleteLeaf(limbIndex: number, chunkIndex: number) {
+export function deleteLeaf(limbIndex: number, leafIndex: number) {
+  const { ar, sb } = NUMBER_BTREE_CHUNK.read(limbIndex);
+  ar.$shiftLeft(sb.pageLength, leafIndex);
+  NUMBER_BTREE_CHUNK.save();
+}
 
+export function splitLimb(pageIndex: number, arrayIndex: number) {
+  const { ar, sb } = NUMBER_BTREE_CHUNK.read(pageIndex);
+
+  let {} = sb.pageLength;
+
+
+  const initialLimbLenght = sb.pageLength;
+  if (initialLimbLenght < 2)
+    throw new Error(`Tree;splitLimb: length is too short for splitting`);
+
+  let leftLenght = Math.floor(initialLimbLenght / 2);
+  let rightLength = initialLimbLenght - leftLenght;
+  let rightMax = sb.pageMax;
+  let rightMin = ar.limbMin.get(leftLenght);
+  let rightLevel = sb.level;
+  let rightParentPage = sb.parentPage;
+
+  sb.pageLength = leftLenght;
+  sb.pageMax = ar.limbMax.get(leftLenght - 1);
+
+  let entryLength = ar.$capacityArray;
+  const rightData = Buffer.allocUnsafe((initialLimbLenght - leftLenght) * entryLength);
+  let pageBuffer = ar.$getBuffer();
+  pageBuffer.copy(rightData, 0, leftLenght * entryLength);
+  NUMBER_BTREE_CHUNK.save().create();
+
+  sb.pageLength = rightLength;
+  sb.pageMax = rightMax;
+  sb.pageMin = rightMin;
+  sb.level = rightLevel;
+  sb.parentPage = rightParentPage;
+  rightData.copy(pageBuffer, 0, 0, 0);
+
+  NUMBER_BTREE_CHUNK.save();
+  if (rightParentPage){
+    
+  }
 }
 
 
-
-export function recurFindChunk(page: Buffer, value: number): {
-  indexInPage: number
-  result: TSuperblock<CHUNK_KEYS> | null
+export function findChunk(value: number): {
+  indexInPage: number;
+  found: boolean;
 } {
-  // sb.$setBuffer(page.subarray(page.byteLength - sb.$size, page.byteLength));
-  sb.$readFromPage(page);
-  pv.$setBuffer(page);
+  const { ar, sb } = NUMBER_BTREE_CHUNK;
+
+  let lo = 0;
+  let hi = sb.pageLength - 1;
+  let mid = 0;
+  while (lo <= hi) {
+    mid = Math.floor((lo + hi) / 2);
+    let left = ar.limbMin.get(mid);
+    if (left <= value && value <= ar.limbMax.get(mid)) {
+      return {
+        indexInPage: mid,
+        found: true,
+      };
+    }
+
+    if (value < left) {
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return {
+    indexInPage: mid,
+    found: false,
+  };
+}
+export function recurFindChunk(value: number): {
+  indexInPage: number;
+  found: boolean;
+} {
+  const { ar, sb } = NUMBER_BTREE_CHUNK;
 
   let lo = 0;
   let hi = sb.pageLength - 1;

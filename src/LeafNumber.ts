@@ -81,11 +81,12 @@ export function findInChunkMultiple<T extends string>(pv: TPageView<T>,
 export function remove(pageIndex: number, value: number) {
   let v = LEAF_NUMBER.read(pageIndex);
   let { pageLength } = v.sb
-  let index = findInChunk(v.ar, 0, pageLength - 1, value, "value");
+  
+  let index = v.ar.value.binarySearchValue(value, pageLength);
   if (!index.found) {
     throw new Error(`LeafNumber: Trying to delete not existent record from the leaf`);
   }
-  v.ar.$shiftLeft(v.sb.pageLength, index.index);
+  v.ar.$shiftLeft(v.sb.pageLength, index.pos);
   v.save();
 }
 

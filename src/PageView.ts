@@ -60,6 +60,10 @@ export class PageView<T1 extends string, T2 extends string> {
     return this;
   }
 
+  create() {
+    return this.read(this.pagesManager.getFreePageId());
+  }
+
 }
 
 
