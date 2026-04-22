@@ -5,26 +5,8 @@ import Superblock, { TSuperblock } from "./PageViewSuperblock";
 import { PageView } from "./PageView";
 
 type SUPERBLOCK_KEYS = "pageLength" | "pageMin" | "pageMax" | "level" | "parentPage";
-const SUPERBLOCK_STRUCTURE = new Map<SUPERBLOCK_KEYS, number>([
-  ["pageLength", 4],
-  ["pageMin", 8],
-  ["pageMax", 8],
-  ["parentPage", 4],
-  ["level", 1],
-]);
 
 type CHUNK_KEYS = "page" | "limbMin" | "limbMax" | "limbLength";
-const CHUNK_STRUCTURE = new Map<CHUNK_KEYS, number>([
-  ["limbLength", 4],
-  ["limbMin", 8],
-  ["limbMax", 8],
-  ["page", 4],
-]);
-
-// let sb = Superblock.create(SUPERBLOCK_STRUCTURE);
-// let pv = BytePageView.create(CHUNK_STRUCTURE, sb.$size);
-
-
 export const NUMBER_BTREE_CHUNK = new PageView<SUPERBLOCK_KEYS, CHUNK_KEYS>([
   ["pageLength", 4],
   ["pageMin", 8],
@@ -37,6 +19,22 @@ export const NUMBER_BTREE_CHUNK = new PageView<SUPERBLOCK_KEYS, CHUNK_KEYS>([
   ["limbMax", 8],
   ["page", 4],
 ]);
+
+// let sb = Superblock.create(SUPERBLOCK_STRUCTURE);
+// let pv = BytePageView.create(CHUNK_STRUCTURE, sb.$size);
+
+
+
+
+export function addLeaf(limbIndex: number, newPageIndex: number, minValue: number, maxValue: number) {
+
+}
+
+export function deleteLeaf(limbIndex: number, chunkIndex: number) {
+
+}
+
+
 
 export function recurFindChunk(page: Buffer, value: number): {
   indexInPage: number
@@ -78,67 +76,6 @@ export function recurFindChunk(page: Buffer, value: number): {
   };
 }
 
-export function findInChunk<T extends string>(pv: TPageView<T>,
-  lo: number,
-  hi: number,
-  value: number,
-  key: T | "id" = "id"
-): { index: number; found: boolean; } {
-
-  let mid = 0;
-  while (lo <= hi) {
-    mid = Math.floor((lo + hi) / 2);
-    let v = pv[key as T].get(mid);
-    if (v == value) {
-      return {
-        found: true,
-        index: mid,
-      };
-    }
-
-    if (value > v) {
-      hi = mid - 1;
-    } else {
-      lo = mid + 1;
-    }
-  }
-  return {
-    found: false,
-    index: mid,
-  };
-}
-
-export function findInChunkMultipleRecur<T extends string>(pv: TPageView<T>,
-  lo: number,
-  hi: number,
-  values: number[],
-  result: number[],
-  resultLo: number,
-  resultHi: number,
-  key: T,
-) {
-
-  let inputMid = Math.floor(resultLo + resultHi / 2); // middle index of the input array
-  let foundMid = findInChunk(pv, lo, hi, values[inputMid], key);
-  result[inputMid] = foundMid.found ? foundMid.index : -1;
-
-  if (inputMid + 1 < resultHi) {
-    findInChunkMultipleRecur(pv, foundMid.index + 1, hi, values, result, inputMid + 1, resultHi, key);
-  }
-
-  if (resultLo < inputMid - 1) {
-    findInChunkMultipleRecur(pv, lo, foundMid.index - 1, values, result, resultLo, inputMid - 1, key);
-  }
-}
-
-export function findInChunkMultiple<T extends string>(pv: TPageView<T>,
-  values: [],
-  lenght: number,
-  key: T | "id" = "id") {
-  const result = new Array(values.length);
-  findInChunkMultipleRecur(pv as any, 0, lenght - 1, values, result, 0, result.length - 1, key);
-  return result;
-}
 
 export default class Tree<T extends string> {
   headerPageIndex: number;
@@ -149,10 +86,10 @@ export default class Tree<T extends string> {
     this.pv = BytePageView.create(pageStructure);
   }
 
-  set(id: number, record: TSuperblock<T>) {
+  addLeaf(min: number, max: number, page: number) {
     let chunk = NUMBER_BTREE_CHUNK;
-    
-    findInChunkMultiple(chunk.ar, [id], chunk.sb.pageLength, chunk.ar.);
+
+    findInChunkMultiple(chunk.ar, [min, max], chunk.sb.pageLength,);
     let p = PagesManager.current().readPage(this.headerPageIndex);
     let c = recurFindChunk(p, id);
     if (c.result?.page) {
