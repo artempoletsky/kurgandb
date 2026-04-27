@@ -7,6 +7,8 @@ import { IndexOneNumber } from "./IndexOneNumber";
 import { IndexOneString } from "./IndexOneString";
 
 import TableUtilities from "./TableUtilities";
+import _ from "lodash";
+import HeapLogical from "./HeapLogical";
 
 
 type RECORD_STRUCTURE_KEY = "SERVICE_FLAGS"
@@ -36,6 +38,15 @@ RECORD_STRUCTURE.push({ key: "JSON_LEN", length: 1 });
 RECORD_STRUCTURE.push({ key: "RESERVED", length: 50 });
 
 
+const TYPE_LENGTHS: Record<FieldType, number> = {
+  boolean: 1,
+  enum: 1,
+  number: 8,
+  date: 8,
+  string: 1,
+  json: 1,
+};
+
 let _currentOffset = 0;
 const offsets = RECORD_STRUCTURE.reduce((result, e) => {
   _currentOffset += e.length;
@@ -43,6 +54,111 @@ const offsets = RECORD_STRUCTURE.reduce((result, e) => {
   return result;
 }, {} as Record<RECORD_STRUCTURE_KEY, number>);
 
+
+
+export function calculateFieldOffsets(scheme: SchemeRecord) {
+  const offsetsByName: Record<string, number> = {};
+  const typeBlocksLenghts: Map<FieldType, number> = new Map([
+    ["boolean", 0],
+    ["enum", 0],
+    ["number", 0],
+    ["date", 0],
+    ["string", 0],
+    ["json", 0],
+  ]);
+
+  for (const element of scheme.fields) {
+    let v = typeBlocksLenghts.get(element.type)!;
+    typeBlocksLenghts.set(element.type, v + 1);
+  }
+
+
+  let currentOffset = 0;
+  const typeBlocksOffsets = new Map<FieldType, number>();
+
+  for (const [type, len] of typeBlocksLenghts) {
+    typeBlocksOffsets.set(type, currentOffset);
+    currentOffset += len * TYPE_LENGTHS[type];
+  }
+  const heapStart = currentOffset;
+
+  const indexByType: Record<FieldType, number> = {
+    boolean: 0,
+    enum: 0,
+    number: 0,
+    date: 0,
+    string: 0,
+    json: 0,
+  };
+
+  for (const { type, name } of scheme.fields) {
+    offsetsByName[name] = indexByType[type] * TYPE_LENGTHS[type] + typeBlocksOffsets.get(type)!;
+    indexByType[type]++;
+  }
+  return {
+    heapStart,
+    offsetsByName,
+  };
+}
+
+type StringsMap = Map<string, {
+  value: string;
+  heapId: number;
+}>;
+export function readStrings(buffer: Buffer, keys: string[], metaOffset: number, stringsTailStart: number) {
+  let result: StringsMap = new Map();
+  let currentTailOffset = 0;
+  for (let i = 0; i < keys.length; i++) {
+    let len = buffer[metaOffset + i];
+    let key = keys[i];
+    let start = stringsTailStart + currentTailOffset;
+    if (len < 255) {
+      let end = start + len;
+      result.set(key, {
+        value: buffer.subarray(start, end).toString("utf8"),
+        heapId: -1
+      });
+      currentTailOffset += len;
+    } else {
+      let heapId = buffer.readUint32LE(start);
+      currentTailOffset += 4;
+      result.set(key, {
+        value: HeapLogical.getString(heapId),
+        heapId,
+      });
+    }
+  }
+  return result;
+}
+
+export function writeStrings(buffer: Buffer, source: StringsMap, metaOffset: number, stringsTailStart: number) {
+
+  let currentTailOffset = stringsTailStart;
+  let currentHeadOffset = metaOffset;
+  for (let [key, { value, heapId }] of source) {
+    let len = Buffer.byteLength(value);
+    if (len >= 255) {
+      if (heapId >= 0) {
+        HeapLogical.setString(heapId, value);
+      } else {
+        heapId = HeapLogical.createId();
+        HeapLogical.setString(heapId, value);
+      }
+      buffer.writeUint32LE(heapId);
+      currentTailOffset += 4;
+      len = 255;
+    } else {
+      if (heapId >= 0) HeapLogical.delete(heapId);
+      buffer.write(value, currentTailOffset, "utf-8")
+      currentTailOffset += len;
+    }
+
+    buffer[currentHeadOffset] = len;
+    currentHeadOffset++;
+  }
+
+  return currentTailOffset;
+}
 
 const DEFAULT_PAGE_SIZE = 0x2000;
 
@@ -84,45 +200,11 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
   protected _primaryKeyIndex: idT extends string ? IndexOneString : IndexOneNumber;
   protected _idIndex: number;
 
-  public readonly _stringsSaver: StringsSaver;
-
   public readonly _fpr: FilePatchRecord;
   public readonly _utils: TableUtilities;
 
   public get $id(): idT {
     return this._id;
-  }
-
-
-
-  $readPage(page: number) {
-    // if (this._cache.has(page)) {
-    //     buf = this._cache.get(page)!;
-    // } else {
-
-    //     this._cache.set(page, buf);
-    // }
-    this._fpr.readPage(page, this._bufferPage);
-
-
-
-    this._stringsCache = [];
-    this._jsonCache = [];
-
-    this._stringsSaver.readPage();
-
-    this._numbers = new Float64Array(this._bufferPage.buffer, this._numbersStart, this._numbersNum);
-    this._datesNumeric = new Float64Array(this._bufferPage.buffer, this._datesStart, this._datesNum);
-    this._enums = new Uint8Array(this._bufferPage.buffer, this._enumsStart, this._enumsNum);
-
-    if (this._keyType == "number") {
-      this._id = this._numbers[this._idIndex] as any;
-    } else {
-      this._id = this._stringsSaver.getString(this._idIndex) as any;
-    }
-
-
-    return this._bufferPage;
   }
 
 
@@ -173,9 +255,16 @@ export class ByteRecord<T, idT extends string | number, LightT, VisibleT> {
     }
   }
 
+  $cast(buffer: Buffer, offset: number) {
+    this._strings = readStrings(buffer, this._stringKeys, offset + this._stringsMetaOffset, offset + this._stringsTailStart);
+
+  }
 
   constructor(scheme: SchemeRecord) {
     let utils = TableUtilities.fromScheme(scheme);
+
+
+
     this._bufferPage = Buffer.alloc(this._pageSize);
     this._fpr = new FilePatchRecord({
       pathPage: utils.getPagesFilePath(),

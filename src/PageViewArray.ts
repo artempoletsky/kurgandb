@@ -60,6 +60,12 @@ export type TPageView<T extends string> = Record<T,
   }> & {
     $writeEntry: (index: number, superblock: TSuperblock<T>) => void;
     $readEntry: (index: number, superblock: TSuperblock<T>) => void;
+    /**
+     * Returns writeable superblock entry at index
+     * @param index 
+     * @returns 
+     */
+    $getEntry: (index: number) => TSuperblock<T>;
     $setBuffer: (buffer: Buffer) => void;
     $getBuffer: () => Buffer;
     $capacityArray: number;
@@ -81,7 +87,14 @@ export default class BytePageView {
 
     let b: Buffer = Buffer.alloc(pageSize);
 
+    let serviceSB = Superblock.create(map, 0);
     const $ = {
+      $getEntry(index: number) {
+        let start = index * entryLength;
+        let buffer = b.subarray(start, start + entryLength);
+        serviceSB.$setBuffer(buffer);
+        return serviceSB;
+      },
       $writeEntry(index: number, superblock: TSuperblock<T>) {
         let superblockBuffer = superblock.$getBuffer();
         superblockBuffer.copy(b, entryLength * index);

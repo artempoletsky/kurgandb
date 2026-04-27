@@ -34,10 +34,12 @@ export type EventName = typeof EventNames[number];
 
 export type SchemeRecord = {
   tableName: string;
-  fields: Record<string, FieldType>;
-  fieldsOrder: string[];
+  fields: {
+    name: string,
+    type: FieldType,
+    tags: FieldTag[],
+  }[];
   fieldsOrderUser: string[];
-  tags: Record<string, FieldTag[]>;
 };
 
 export function randomIndex(length: number, exclude: Set<number> = new Set()): number {

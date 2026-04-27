@@ -78,10 +78,10 @@ export function findInChunkMultiple<T extends string>(pv: TPageView<T>,
   return result;
 }
 
-export function remove(pageIndex: number, value: number) {
-  let v = LEAF_NUMBER.read(pageIndex);
+export function remove(v: PageView<any, any>, pageIndex: number, value: number) {
+  v.read(pageIndex);
   let { pageLength } = v.sb
-  
+
   let index = v.ar.value.binarySearchValue(value, pageLength);
   if (!index.found) {
     throw new Error(`LeafNumber: Trying to delete not existent record from the leaf`);
@@ -90,8 +90,8 @@ export function remove(pageIndex: number, value: number) {
   v.save();
 }
 
-export function add(pageIndex: number, value: number, payload: any) {
-  let v = LEAF_NUMBER.read(pageIndex);
+export function add(v: PageView<any, any>, pageIndex: number, value: number, payload: any) {
+  v.read(pageIndex);
   if (v.capacity == v.sb.pageLength) {
     split(pageIndex, value, payload);
     return;
@@ -101,8 +101,7 @@ export function add(pageIndex: number, value: number, payload: any) {
   v.sb.pageLength++;
 }
 
-export function split(pageIndex: number, value: number, payload: any) {
-  let v = LEAF_NUMBER;
+export function split(v: PageView<any, any>, pageIndex: number, value: number, payload: any) {
   let newPageId = v.pagesManager.getFreePageId();
-
 }
+

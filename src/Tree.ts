@@ -1,5 +1,6 @@
 import BytePageView from "./PageViewArray";
 import NamedByteBuffer, { TPageView } from "./PageViewArray";
+import * as Leaf from "./LeafNumber";
 import PagesManager from "./PagesManager";
 import Superblock, { TSuperblock } from "./PageViewSuperblock";
 import { PageView } from "./PageView";
@@ -62,7 +63,7 @@ export function deleteLeaf(limbIndex: number, leafIndex: number) {
 export function splitLimb(pageIndex: number, arrayIndex: number) {
   const { ar, sb } = NUMBER_BTREE_CHUNK.read(pageIndex);
 
-  let {} = sb.pageLength;
+  let { } = sb.pageLength;
 
 
   const initialLimbLenght = sb.pageLength;
@@ -93,8 +94,8 @@ export function splitLimb(pageIndex: number, arrayIndex: number) {
   rightData.copy(pageBuffer, 0, 0, 0);
 
   NUMBER_BTREE_CHUNK.save();
-  if (rightParentPage){
-    
+  if (rightParentPage) {
+
   }
 }
 
@@ -168,20 +169,20 @@ export function recurFindChunk(value: number): {
 }
 
 
-export default class Tree<T extends string> {
-  headerPageIndex: number;
-  pv: TPageView<T>;
+export default class Tree<T1 extends string, T2 extends string> {
+  root: number;
+  pv: PageView<T1, T2> & PageView<"length", "id">;
 
-  constructor(headerPageIndex: number, pageStructure: Map<T, number>) {
-    this.headerPageIndex = headerPageIndex;
-    this.pv = BytePageView.create(pageStructure);
+  constructor(rootPageIndex: number, pageStructure: PageView<T1, T2> & PageView<"length", "id">) {
+    this.root = rootPageIndex;
+    this.pv = pageStructure;
   }
 
   addLeaf(min: number, max: number, page: number) {
     let chunk = NUMBER_BTREE_CHUNK;
 
     findInChunkMultiple(chunk.ar, [min, max], chunk.sb.pageLength,);
-    let p = PagesManager.current().readPage(this.headerPageIndex);
+    let p = PagesManager.current().readPage(this.root);
     let c = recurFindChunk(p, id);
     if (c.result?.page) {
 
@@ -192,21 +193,20 @@ export default class Tree<T extends string> {
 
   }
 
+  insertRecord(rec: Record<T2, number> & Record<"id", number>) {
+    
+  }
 
-  findValue(value: number) {
-    let { chunkIndex, chunkMeta } = this.findChunkIndex(value);
-    if (!chunkMeta || !chunkMeta.length) return;
+  findValue(id: number): TSuperblock<T2> | null {
 
-    this.pageCurrent.$setBuffer(this.readPage(chunkMeta.page));
+    const { ar, sb } = NUMBER_BTREE_CHUNK.read(this.root);
+    let { found, indexInPage } = findChunk(id);
+    if (!found) return null;
+    let leaf = ar.page.get(indexInPage);
+    this.pv.read(leaf);
+    let searchRes = Leaf.findInChunk(this.pv.ar, 0, this.pv.sb.length - 1, id, "id");
+    if (!searchRes.found) throw Error("Tree: Inconsistent leaf-tree reference");
 
-    const { found, pos } = ChunkedIndex.binarySearchNumber(this.pageCurrent, chunkMeta.length, value);
-    if (!found) return;
-
-    return {
-      chunkIndex,
-      chunkMeta,
-      pos,
-      page: this.pageCurrent,
-    }
+    return this.pv.ar.$getEntry(searchRes.index);
   }
 }

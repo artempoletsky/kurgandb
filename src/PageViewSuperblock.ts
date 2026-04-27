@@ -111,7 +111,7 @@ export function generateCompareFunction(offset: number, field: string) {
 }
 
 export type TSuperblock<T extends string> = Record<T, number> & {
-  $setBuffer: (buffer: Buffer, readingPos?: number) => void;
+  $setBuffer: (buffer: Buffer) => void;
   $getBuffer: () => Buffer;
   /**
    * Copies data from **view to target**

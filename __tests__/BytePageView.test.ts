@@ -116,4 +116,40 @@ describe("BytePageView", () => {
     expect(f.pos).toBe(1);
 
   });
+
+  test("$getEntry", () => {
+    type key = "id" | "some" | "user" | "data";
+    let ar = BytePageView.create<key>(new Map([
+      ["id", 8],
+      ["some", 4],
+      ["user", 4],
+      ["data", 4],
+    ]));
+
+    let entry = ar.$getEntry(5);
+    entry.id = 12345;
+    entry.some = 1;
+    entry.user = 2;
+    entry.data = 3;
+
+    expect(ar.id.get(5)).toBe(12345);
+    expect(ar.some.get(5)).toBe(1);
+    expect(ar.user.get(5)).toBe(2);
+    expect(ar.data.get(5)).toBe(3);
+
+    ar.id.set(10, 54321);
+    ar.some.set(10, 1);
+    ar.user.set(10, 2);
+    ar.data.set(10, 3);
+
+    ar.$getEntry(10);
+
+    expect(entry.id).toBe(54321);
+    expect(entry.some).toBe(1);
+    expect(entry.user).toBe(2);
+    expect(entry.data).toBe(3);
+
+  });
+
+
 });

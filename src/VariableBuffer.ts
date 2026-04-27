@@ -118,4 +118,8 @@ export default class VariableBuffer implements IBuffer {
     
     return result;
   }
+
+  write(str: string, offset: number){
+    // this.buffers[0].write(,)
+  }
 }
