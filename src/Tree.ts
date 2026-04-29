@@ -189,12 +189,13 @@ export default class Tree<T1 extends string, T2 extends string> {
     }
   }
 
-  openRoot(page: number) {
+  deleteRecord(id: number) {
 
   }
 
-  insertRecord(rec: Record<T2, number> & Record<"id", number>) {
-    
+  
+  createRecord(id?: number): TSuperblock<T2> {
+
   }
 
   findValue(id: number): TSuperblock<T2> | null {
